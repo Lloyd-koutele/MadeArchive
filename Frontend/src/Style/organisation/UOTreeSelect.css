@@ -1,0 +1,67 @@
+.uo-select-tree {
+    max-height: 220px;
+    overflow-y: auto;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.4rem;
+    background: var(--white-choc);
+}
+
+.uo-select-node {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.4rem;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background var(--transition);
+}
+
+.uo-select-node:hover {
+    background: var(--cream);
+}
+
+.uo-select-node.selected {
+    background: rgba(214, 158, 46, 0.12);
+    font-weight: 600;
+}
+
+.uo-select-toggle,
+.uo-select-toggle-spacer {
+    width: 1rem;
+    flex-shrink: 0;
+}
+
+.uo-select-toggle {
+    background: none;
+    border: none;
+    color: var(--text-light);
+    font-size: 0.7rem;
+    cursor: pointer;
+    padding: 0;
+}
+
+.uo-select-icon {
+    font-size: 0.85rem;
+    opacity: 0.75;
+    flex-shrink: 0;
+}
+
+.uo-select-text {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.87rem;
+    color: var(--dark-soft);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.uo-select-children {
+    margin-top: 0.1rem;
+}
+
+.uo-select-empty {
+    font-size: 0.85rem;
+    color: var(--text-light);
+    padding: 0.6rem;
+}

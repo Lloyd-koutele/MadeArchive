@@ -1,0 +1,114 @@
+.audit-log-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.audit-log-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.audit-log-header h3 {
+    margin: 0;
+    color: var(--dark-choc, #2C1A0E);
+}
+
+.audit-log-count {
+    font-size: 0.82rem;
+    color: var(--text-light, #9E8878);
+}
+
+.audit-log-filters {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0.6rem;
+    align-items: end;
+    background: var(--cream, #F5EDE0);
+    border: 1px solid var(--border, #E8D9C5);
+    border-radius: var(--radius, 10px);
+    padding: 0.85rem;
+}
+
+.audit-log-search {
+    grid-column: span 2;
+}
+
+.audit-log-filter-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.audit-log-export-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.audit-log-export-label {
+    font-size: 0.82rem;
+    color: var(--text-light, #9E8878);
+}
+
+.audit-log-table th {
+    white-space: nowrap;
+}
+
+.audit-log-date {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.8rem;
+}
+
+.audit-log-role {
+    color: var(--text-light, #9E8878);
+    font-size: 0.75rem;
+}
+
+.audit-log-anonyme {
+    font-style: italic;
+    color: var(--text-light, #9E8878);
+}
+
+.audit-log-description {
+    max-width: 420px;
+    white-space: normal;
+    line-height: 1.35;
+}
+
+.audit-log-row {
+    cursor: pointer;
+}
+
+.audit-log-row:hover {
+    background: rgba(139, 94, 60, 0.06);
+}
+
+.audit-log-detail-row td {
+    background: var(--cream, #F5EDE0);
+    padding: 0.75rem 1rem;
+}
+
+.audit-log-detail-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    font-size: 0.82rem;
+}
+
+.audit-log-details-json {
+    margin: 0.4rem 0 0;
+    padding: 0.6rem;
+    background: var(--white-choc, #FDF8F3);
+    border: 1px solid var(--border, #E8D9C5);
+    border-radius: var(--radius-sm, 6px);
+    font-size: 0.75rem;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+}

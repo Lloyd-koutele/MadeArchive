@@ -1,0 +1,256 @@
+@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&display=swap");
+
+/* ─────────────────────────────────────────
+   1. Reset & Configuration globale
+───────────────────────────────────────── */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: "Playfair Display", serif;
+}
+
+html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 60px;
+}
+
+/* FIX: overflow-x caché pour supprimer la bande/ligne à droite */
+body {
+    width: 100%;
+    min-height: 100vh;
+    overflow-x: hidden;
+    margin: 0;
+    padding: 0;
+    background-image: url('../../public/image2.jpg');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+}
+
+li {
+    list-style: none;
+}
+
+a {
+    text-decoration: none;
+    color: antiquewhite;
+    font-size: 1rem;
+}
+
+a:hover {
+    color: #7abdf5;
+}
+
+/* ─────────────────────────────────────────
+   2. Page wrapper
+   FIX: flex column + min-height pour que le
+   footer reste toujours en bas
+───────────────────────────────────────── */
+.page {
+    width: 100%;
+    overflow-x: hidden;
+}
+
+/* ─────────────────────────────────────────
+   3. Header fixe
+───────────────────────────────────────── */
+header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    z-index: 1000;
+    padding: 0 2rem;
+    background-color: rgba(0, 0, 0, 0.6);
+}
+
+/* ─────────────────────────────────────────
+   4. Navbar
+───────────────────────────────────────── */
+.navbar {
+    width: 100%;
+    max-width: 1200px;
+    height: 60px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.navbar .logo {
+    margin-right: auto;
+    margin-left: clamp(-40px, calc(-8vw + 88px), 0px);
+}
+
+.navbar .buttons {
+    margin-left: auto;
+    margin-right: clamp(-100px, calc(-20vw + 220px), 0px);
+}
+
+.navbar .logo a {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #fff;
+}
+
+.navbar .links {
+    display: flex;
+    gap: 2rem;
+}
+
+.navbar .burger-menu-button {
+    color: #fff;
+    font-size: 1.5rem;
+    cursor: pointer;
+    display: none;
+}
+
+/* ─────────────────────────────────────────
+   5. Boutons d'action
+   FIX: classe correcte sur les bons éléments
+───────────────────────────────────────── */
+.buttons {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.action-button {
+    background-color: aquamarine;
+    color: #120d31;
+    padding: 0.5rem 1.2rem;
+    border: 1px solid aquamarine;
+    border-radius: 5px;
+    outline: none;
+    font-size: 0.9rem;
+    font-weight: bold;
+    cursor: pointer;
+    white-space: nowrap;
+    font-family: "Playfair Display", serif;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.action-button:hover {
+    background-color: #fff;
+    border-color: #fff;
+    color: #120d31;
+}
+
+/* Variante transparente (Se connecter dans la navbar) */
+.action-button.pro {
+    background-color: transparent;
+    color: #fff;
+    border: 1px solid #fff;
+}
+
+.action-button.pro:hover {
+    background-color: #fff;
+    color: #120d31;
+}
+
+/* ─────────────────────────────────────────
+   6. Main
+   FIX: flex: 1 pour pousser le footer en bas
+───────────────────────────────────────── */
+main {
+    margin-top: 60px;
+    padding-bottom: 60px; /* compense la hauteur du footer fixe */
+}
+
+main section {
+    height: 100vh;
+    padding: 100px 2rem;
+}
+
+main section h2 {
+    color: #ffffff;
+    font-size: 2.5rem;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+    margin-bottom: 15px;
+}
+
+main section p {
+    color: #f0f0f0;
+    font-size: 1.2rem;
+    text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.6);
+}
+
+/* ─────────────────────────────────────────
+   8. Burger Menu
+───────────────────────────────────────── */
+.burger-menu {
+    display: none;
+    height: 0;
+    position: absolute;
+    right: 2rem;
+    top: 60px;
+    width: 220px;
+    background: rgba(0, 0, 0, 0.85);
+    border-radius: 10px;
+    overflow: hidden;
+    transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    padding: 0 1rem;
+}
+
+.burger-menu.open {
+    height: 340px;
+}
+
+.burger-menu .links {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 1rem;
+}
+
+.burger-menu li {
+    padding: 0.7rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.divider {
+    height: 1px;
+    background-color: rgba(255, 255, 255, 0.3);
+    width: 80%;
+    margin: 0.5rem auto 1rem auto;
+}
+
+.buttons-burger-menu {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding-bottom: 1rem;
+}
+
+.buttons-burger-menu .action-button {
+    width: 85%;
+    justify-content: center;
+}
+
+/* ─────────────────────────────────────────
+   9. Responsive
+───────────────────────────────────────── */
+@media (max-width: 700px) {
+    header {
+        background-color: rgba(0, 0, 0, 0.7);
+    }
+
+    .navbar .links,
+    .navbar .buttons {
+        display: none;
+    }
+
+    .navbar .burger-menu-button {
+        display: block;
+    }
+
+    .burger-menu {
+        display: block;
+    }
+}

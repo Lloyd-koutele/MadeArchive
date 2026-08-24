@@ -1,0 +1,80 @@
+.qodo
+HELP.md
+.gradle
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+bin/
+!**/src/main/**/bin/
+!**/src/test/**/bin/
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+out/
+!**/src/main/**/out/
+!**/src/test/**/out/
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+### VS Code ###
+.vscode/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.env
+
+# Forcer Git à gérer automatiquement les fins de lignes pour tous les fichiers texte
+* text=auto
+
+# S'assurer que les fichiers de code restent en LF (recommandé pour le web/Java)
+*.java text eol=lf
+*.tsx text eol=lf
+*.ts text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.json text eol=lf
+*.gradle text eol=lf
+*.properties text eol=lf
+# HSM fichier (clés privées PKI - ne JAMAIS versionner)
+hsm/
+*.p12

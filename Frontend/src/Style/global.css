@@ -1,0 +1,244 @@
+@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=DM+Sans:wght@300;400;500&display=swap");
+
+/* ─────────────────────────────────────────
+   VARIABLES — Charte chocolat
+───────────────────────────────────────── */
+:root {
+    --white-choc:     #FDF8F3;   /* blanc chocolat chaud */
+    --cream:          #F5EDE0;   /* crème */
+    --border:         #E8D9C5;   /* bordure douce */
+    --text-light:     #9E8878;   /* texte secondaire */
+    --dark-choc:      #2C1A0E;   /* chocolat noir principal */
+    --dark-mid:       #3D2512;   /* chocolat mid */
+    --dark-soft:      #5C3D2E;   /* chocolat adouci */
+    --accent:         #8B5E3C;   /* accent brun */
+    --success:        #4A7C59;
+    --error:          #9B3A3A;
+    --shadow-sm:      0 1px 4px rgba(44,26,14,0.08);
+    --shadow-md:      0 4px 16px rgba(44,26,14,0.12);
+    --shadow-lg:      0 8px 32px rgba(44,26,14,0.16);
+    --radius:         10px;
+    --radius-sm:      6px;
+    --transition:     0.2s ease;
+}
+
+/* ─────────────────────────────────────────
+   Reset
+───────────────────────────────────────── */
+*, *::before, *::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 60px;
+}
+
+body {
+    width: 100%;
+    min-height: 100vh;
+    overflow-x: hidden;
+    background-color: var(--white-choc);
+    background-image: url('../../public/image2.jpg');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+    font-family: 'DM Sans', sans-serif;
+    color: var(--dark-choc);
+}
+
+li { list-style: none; }
+
+a {
+    text-decoration: none;
+    color: var(--white-choc);
+    font-size: 1rem;
+    transition: color var(--transition);
+}
+
+a:hover { color: var(--border); }
+
+/* ─────────────────────────────────────────
+   Header
+───────────────────────────────────────── */
+header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    z-index: 1000;
+    padding: 0 2rem;
+    background-color: rgba(44, 26, 14, 0.85);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid rgba(253,248,243,0.1);
+}
+
+/* ─────────────────────────────────────────
+   Navbar
+───────────────────────────────────────── */
+.navbar {
+    width: 100%;
+    max-width: 1200px;
+    height: 60px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.navbar .logo a {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--white-choc);
+    letter-spacing: 0.5px;
+}
+
+.navbar .links {
+    display: flex;
+    gap: 2rem;
+}
+
+.navbar .burger-menu-button {
+    color: var(--white-choc);
+    font-size: 1.4rem;
+    cursor: pointer;
+    display: none;
+    background: none;
+    border: none;
+}
+
+/* ─────────────────────────────────────────
+   Boutons globaux
+───────────────────────────────────────── */
+.buttons {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.action-button {
+    background-color: var(--white-choc);
+    color: var(--dark-choc);
+    padding: 0.45rem 1.2rem;
+    border: 1.5px solid var(--white-choc);
+    border-radius: var(--radius-sm);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.88rem;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color var(--transition), color var(--transition), border-color var(--transition), box-shadow var(--transition);
+}
+
+.action-button:hover {
+    background-color: var(--cream);
+    border-color: var(--cream);
+    box-shadow: 0 0 0 3px rgba(253,248,243,0.25);
+}
+
+.action-button.pro {
+    background-color: transparent;
+    color: var(--white-choc);
+    border: 1.5px solid rgba(253,248,243,0.6);
+}
+
+.action-button.pro:hover {
+    background-color: rgba(253,248,243,0.12);
+    border-color: var(--white-choc);
+    box-shadow: 0 0 0 3px rgba(253,248,243,0.15);
+}
+
+/* ─────────────────────────────────────────
+   Main
+───────────────────────────────────────── */
+main {
+    margin-top: 60px;
+    padding-bottom: 60px;
+}
+
+main section {
+    height: 100vh;
+    padding: 100px 2rem;
+}
+
+main section h2 {
+    font-family: 'Cormorant Garamond', serif;
+    color: var(--white-choc);
+    font-size: 2.8rem;
+    font-weight: 700;
+    text-shadow: 1px 2px 8px rgba(44,26,14,0.5);
+    margin-bottom: 15px;
+}
+
+main section p {
+    color: rgba(253,248,243,0.9);
+    font-size: 1.1rem;
+    text-shadow: 1px 1px 4px rgba(44,26,14,0.4);
+}
+
+/* ─────────────────────────────────────────
+   Burger Menu
+───────────────────────────────────────── */
+.burger-menu {
+    display: none;
+    height: 0;
+    position: absolute;
+    right: 2rem;
+    top: 60px;
+    width: 220px;
+    background: rgba(44, 26, 14, 0.95);
+    border-radius: var(--radius);
+    overflow: hidden;
+    transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    padding: 0 1rem;
+    border: 1px solid rgba(253,248,243,0.1);
+}
+
+.burger-menu.open { height: 340px; }
+
+.burger-menu .links {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 1rem;
+}
+
+.burger-menu li {
+    padding: 0.7rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.divider {
+    height: 1px;
+    background-color: rgba(253,248,243,0.15);
+    width: 80%;
+    margin: 0.5rem auto 1rem auto;
+}
+
+.buttons-burger-menu {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding-bottom: 1rem;
+}
+
+.buttons-burger-menu .action-button { width: 85%; }
+
+/* ─────────────────────────────────────────
+   Responsive
+───────────────────────────────────────── */
+@media (max-width: 700px) {
+    header { background-color: rgba(44,26,14,0.95); }
+    .navbar .links,
+    .navbar .buttons { display: none; }
+    .navbar .burger-menu-button { display: block; }
+    .burger-menu { display: block; }
+}

@@ -1,0 +1,417 @@
+<mxfile host="Electron">
+  <diagram name="Page-1" id="-6EBr52QrmFzBgpofhij">
+    <mxGraphModel dx="754" dy="634" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-7" parent="1" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=26;fillColor=none;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;" value="&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 14px;&quot;&gt;&lt;b style=&quot;&quot;&gt;User&lt;/b&gt;&lt;/font&gt;" vertex="1">
+          <mxGeometry height="160" width="150" x="590" y="980" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-8" parent="YHkQXi13ai3U-iRGIfHO-7" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;whiteSpace=wrap;html=1;" value="&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;id : UUID&lt;/font&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;nom: String&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;prenom: String&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;email: String&lt;br&gt;&lt;/font&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;password: String&lt;/font&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;telephone : String&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;isActif : Boolean&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;createdAt: LocalDateTime&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="134" width="150" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-11" parent="1" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=26;fillColor=none;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;" value="&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 14px;&quot;&gt;&lt;b style=&quot;&quot;&gt;Role&lt;/b&gt;&lt;/font&gt;" vertex="1">
+          <mxGeometry height="70" width="150" x="880" y="1070" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-12" parent="YHkQXi13ai3U-iRGIfHO-11" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;whiteSpace=wrap;html=1;" value="&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;id : Long&lt;/font&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;Role_Name: name&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="44" width="150" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-15" parent="1" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=40;fillColor=none;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;" value="&lt;div&gt;&lt;span style=&quot;font-family: &amp;quot;Times New Roman&amp;quot;; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&lt;font&gt;&amp;lt;&amp;lt;ENUM&amp;gt;&amp;gt;&lt;/font&gt;&lt;/span&gt;&lt;/div&gt;&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 14px;&quot;&gt;&lt;b&gt;Role_Name&lt;/b&gt;&lt;/font&gt;" vertex="1">
+          <mxGeometry height="104" width="90" x="1090" y="1070" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-16" parent="YHkQXi13ai3U-iRGIfHO-15" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;whiteSpace=wrap;html=1;" value="&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;ADMIN&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;EDITOR&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;USER&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="64" width="90" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-17" parent="1" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=26;fillColor=none;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;" value="&lt;b&gt;&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 14px;&quot;&gt;UserActiveToken&lt;/font&gt;&lt;/b&gt;" vertex="1">
+          <mxGeometry height="90" width="150" x="380" y="980" as="geometry">
+            <mxRectangle height="30" width="140" x="10" y="897" as="alternateBounds" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-18" parent="YHkQXi13ai3U-iRGIfHO-17" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;whiteSpace=wrap;html=1;" value="&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;user: User&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;accessToken : String&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;expiresAt : Instant&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="64" width="150" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-20" edge="1" parent="1" source="YHkQXi13ai3U-iRGIfHO-8" style="endArrow=none;html=1;edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="YHkQXi13ai3U-iRGIfHO-12" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="530" y="360" as="sourcePoint" />
+            <mxPoint x="690" y="360" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-21" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-20" style="edgeLabel;resizable=0;html=1;align=left;verticalAlign=bottom;" value="1" vertex="1">
+          <mxGeometry relative="1" x="-1" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-22" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-20" style="edgeLabel;resizable=0;html=1;align=right;verticalAlign=bottom;" value="&lt;font style=&quot;font-size: 18px;&quot;&gt;*&lt;/font&gt;" vertex="1">
+          <mxGeometry relative="1" x="1" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-23" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-20" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="&lt;font face=&quot;Times New Roman&quot;&gt;Possede&lt;/font&gt;" vertex="1">
+          <mxGeometry relative="1" x="0.0261" y="-1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-29" edge="1" parent="1" source="YHkQXi13ai3U-iRGIfHO-8" style="endArrow=none;html=1;edgeStyle=orthogonalEdgeStyle;rounded=0;entryX=1.012;entryY=0.357;entryDx=0;entryDy=0;exitX=-0.015;exitY=0.448;exitDx=0;exitDy=0;exitPerimeter=0;entryPerimeter=0;" target="YHkQXi13ai3U-iRGIfHO-18" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="440" y="380" as="sourcePoint" />
+            <mxPoint x="750" y="370" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-30" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-29" style="edgeLabel;resizable=0;html=1;align=left;verticalAlign=bottom;" value="1" vertex="1">
+          <mxGeometry relative="1" x="-1" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-31" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-29" style="edgeLabel;resizable=0;html=1;align=right;verticalAlign=bottom;" value="&amp;nbsp; &amp;nbsp; &amp;nbsp; &amp;nbsp;1" vertex="1">
+          <mxGeometry relative="1" x="1" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-32" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-29" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="Possede" vertex="1">
+          <mxGeometry relative="1" x="-0.0113" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-34" parent="1" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=26;fillColor=none;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;" value="&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 14px;&quot;&gt;&lt;b&gt;Document&lt;/b&gt;&lt;/span&gt;&lt;/font&gt;" vertex="1">
+          <mxGeometry height="260" width="170" x="500" y="670" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-35" parent="YHkQXi13ai3U-iRGIfHO-34" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 13px;&quot; face=&quot;Times New Roman&quot;&gt;id : UUID&lt;/font&gt;&lt;div&gt;&lt;font style=&quot;font-size: 13px;&quot; face=&quot;Times New Roman&quot;&gt;titre: String&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 13px;&quot; face=&quot;Times New Roman&quot;&gt;userId: UUID&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 13px;&quot; face=&quot;Times New Roman&quot;&gt;acces: TypeAccess&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 13px;&quot; face=&quot;Times New Roman&quot;&gt;sha256Hash: String&lt;br&gt;&lt;/font&gt;&lt;div&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;blockchainTxId&lt;/span&gt;&lt;font style=&quot;font-size: 13px;&quot; face=&quot;Times New Roman&quot;&gt;: String&lt;/font&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;retentionUntil&lt;/span&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;&lt;font face=&quot;Times New Roman&quot;&gt;: LocalDate&lt;/font&gt;&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 13px;&quot; face=&quot;Times New Roman&quot;&gt;createdAt: LocalDate&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 13px;&quot; face=&quot;Times New Roman&quot;&gt;version : Integer&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 13px;&quot; face=&quot;Times New Roman&quot;&gt;minIOkey: String&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 13px;&quot; face=&quot;Times New Roman&quot;&gt;type: TypeDocument&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 13px;&quot; face=&quot;Times New Roman&quot;&gt;metadataValue: List&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;status : DocumentStatus&lt;font style=&quot;font-size: 13px;&quot;&gt;&lt;/font&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;integrityLevel : IntegrityLevel&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="234" width="170" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-36" parent="1" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=26;fillColor=none;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;" value="&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 14px;&quot;&gt;&lt;b&gt;TypeDocument&lt;/b&gt;&lt;/span&gt;&lt;/font&gt;" vertex="1">
+          <mxGeometry height="110" width="170" x="650" y="400" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-37" parent="YHkQXi13ai3U-iRGIfHO-36" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;whiteSpace=wrap;html=1;" value="&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;id : Long&lt;/font&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;titre: String&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;retention: Retention&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;metaData: List&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;&lt;br&gt;&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="84" width="170" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-40" parent="1" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=26;fillColor=none;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;" value="&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 14px;&quot;&gt;&lt;b&gt;Metadata&lt;/b&gt;&lt;/span&gt;&lt;/font&gt;" vertex="1">
+          <mxGeometry height="120" width="190" x="880" y="250" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-41" parent="YHkQXi13ai3U-iRGIfHO-40" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;whiteSpace=wrap;html=1;" value="&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;id : Long&lt;/font&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;nom: String&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;type: MetadaType&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;obligatoire: Boolean&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;typeDocument: typeDocuement&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;&lt;br&gt;&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="94" width="190" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-42" parent="1" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=40;fillColor=none;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;" value="&lt;div&gt;&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 10px;&quot;&gt;&amp;lt;&amp;lt;ENUM&amp;gt;&amp;gt;&lt;/font&gt;&lt;/div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 14px;&quot;&gt;&lt;b&gt;MetadataType&lt;/b&gt;&lt;/span&gt;&lt;/font&gt;" vertex="1">
+          <mxGeometry height="184" width="110" x="1090" y="250" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-43" parent="YHkQXi13ai3U-iRGIfHO-42" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;whiteSpace=wrap;html=1;" value="&lt;div&gt;&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;STRING&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;INTEGER&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;CHAR&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;DOUBLE&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;FLOAT&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;BOOLEAN&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;DATE&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;TEXT&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;&lt;br&gt;&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;&lt;br&gt;&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="144" width="110" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-47" parent="1" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=26;fillColor=none;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;" value="&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 14px;&quot;&gt;&lt;b&gt;MetadataValue&lt;/b&gt;&lt;/span&gt;&lt;/font&gt;" vertex="1">
+          <mxGeometry height="100" width="170" x="420" y="400" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-48" parent="YHkQXi13ai3U-iRGIfHO-47" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;whiteSpace=wrap;html=1;" value="&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;id : Long&lt;/font&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;nom: String (TEXT)&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;document: Document&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;metadata : Metadata&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;&lt;br&gt;&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="74" width="170" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-49" edge="1" parent="1" source="YHkQXi13ai3U-iRGIfHO-7" style="endArrow=none;html=1;edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=0.25;exitY=0;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="YHkQXi13ai3U-iRGIfHO-35" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="540" y="330" as="sourcePoint" />
+            <mxPoint x="480" y="-130" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-50" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-49" style="edgeLabel;resizable=0;html=1;align=left;verticalAlign=bottom;" value="1" vertex="1">
+          <mxGeometry relative="1" x="-1" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-51" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-49" style="edgeLabel;resizable=0;html=1;align=right;verticalAlign=bottom;" value="&lt;font style=&quot;font-size: 18px;&quot;&gt;*&lt;/font&gt;" vertex="1">
+          <mxGeometry relative="1" x="1" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-52" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-49" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="uploade" vertex="1">
+          <mxGeometry relative="1" x="-0.0113" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-53" edge="1" parent="1" source="YHkQXi13ai3U-iRGIfHO-37" style="endArrow=none;html=1;edgeStyle=orthogonalEdgeStyle;rounded=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;exitX=0;exitY=0.5;exitDx=0;exitDy=0;" target="YHkQXi13ai3U-iRGIfHO-35" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="926" y="57" as="sourcePoint" />
+            <mxPoint x="800" y="20" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-54" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-53" style="edgeLabel;resizable=0;html=1;align=left;verticalAlign=bottom;" value="1" vertex="1">
+          <mxGeometry relative="1" x="-1" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-55" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-53" style="edgeLabel;resizable=0;html=1;align=right;verticalAlign=bottom;" value="&amp;nbsp; &amp;nbsp; &amp;nbsp; &amp;nbsp;1" vertex="1">
+          <mxGeometry relative="1" x="1" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-56" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-53" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="Possede" vertex="1">
+          <mxGeometry relative="1" x="-0.0113" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-61" edge="1" parent="1" source="YHkQXi13ai3U-iRGIfHO-37" style="endArrow=none;html=1;edgeStyle=orthogonalEdgeStyle;rounded=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" target="YHkQXi13ai3U-iRGIfHO-41" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1040" y="-130" as="sourcePoint" />
+            <mxPoint x="1072" y="10" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-62" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-61" style="edgeLabel;resizable=0;html=1;align=left;verticalAlign=bottom;" value="1" vertex="1">
+          <mxGeometry relative="1" x="-1" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-63" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-61" style="edgeLabel;resizable=0;html=1;align=right;verticalAlign=bottom;" value="&lt;font style=&quot;font-size: 18px;&quot;&gt;*&lt;/font&gt;" vertex="1">
+          <mxGeometry relative="1" x="1" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-64" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-61" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="Possede" vertex="1">
+          <mxGeometry relative="1" x="-0.0113" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-67" edge="1" parent="1" source="YHkQXi13ai3U-iRGIfHO-34" style="endArrow=none;html=1;edgeStyle=orthogonalEdgeStyle;rounded=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;exitX=0.452;exitY=-0.004;exitDx=0;exitDy=0;exitPerimeter=0;" target="YHkQXi13ai3U-iRGIfHO-48" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="690" y="-330" as="sourcePoint" />
+            <mxPoint x="811" y="-325" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-68" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-67" style="edgeLabel;resizable=0;html=1;align=left;verticalAlign=bottom;" value="1" vertex="1">
+          <mxGeometry relative="1" x="-1" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-69" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-67" style="edgeLabel;resizable=0;html=1;align=right;verticalAlign=bottom;" value="&lt;font style=&quot;font-size: 18px;&quot;&gt;*&lt;/font&gt;" vertex="1">
+          <mxGeometry relative="1" x="1" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-70" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-67" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="Possede" vertex="1">
+          <mxGeometry relative="1" x="-0.0113" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-73" parent="1" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=26;fillColor=none;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;" value="&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 14px;&quot;&gt;&lt;b&gt;Retention&lt;/b&gt;&lt;/span&gt;&lt;/font&gt;" vertex="1">
+          <mxGeometry height="110" width="170" x="530" y="164" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-74" parent="YHkQXi13ai3U-iRGIfHO-73" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;whiteSpace=wrap;html=1;" value="&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;id : Long&lt;/font&gt;&lt;div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;RetentionYears: Integer&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;periodGrace: Integer&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;createAt: LocalDate&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;&lt;br&gt;&lt;/font&gt;&lt;/div&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="84" width="170" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-79" edge="1" parent="1" source="YHkQXi13ai3U-iRGIfHO-74" style="endArrow=none;html=1;edgeStyle=orthogonalEdgeStyle;rounded=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0;exitY=0.5;exitDx=0;exitDy=0;" target="YHkQXi13ai3U-iRGIfHO-36" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="990" y="-280" as="sourcePoint" />
+            <mxPoint x="1111" y="-275" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-80" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-79" style="edgeLabel;resizable=0;html=1;align=left;verticalAlign=bottom;" value="1" vertex="1">
+          <mxGeometry relative="1" x="-1" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-81" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-79" style="edgeLabel;resizable=0;html=1;align=right;verticalAlign=bottom;" value="&lt;font style=&quot;font-size: 18px;&quot;&gt;*&lt;/font&gt;" vertex="1">
+          <mxGeometry relative="1" x="1" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-82" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-79" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="Est lier" vertex="1">
+          <mxGeometry relative="1" x="-0.0113" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-97" edge="1" parent="1" source="YHkQXi13ai3U-iRGIfHO-7" style="endArrow=none;html=1;edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=0.75;exitY=0;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="YHkQXi13ai3U-iRGIfHO-102" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="790" y="895" as="sourcePoint" />
+            <mxPoint x="729.44" y="909.5439999999999" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-98" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-97" style="edgeLabel;resizable=0;html=1;align=left;verticalAlign=bottom;" value="1" vertex="1">
+          <mxGeometry relative="1" x="-1" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-99" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-97" style="edgeLabel;resizable=0;html=1;align=right;verticalAlign=bottom;" value="&lt;font style=&quot;font-size: 14px;&quot;&gt;1&lt;/font&gt;" vertex="1">
+          <mxGeometry relative="1" x="1" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-100" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-97" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="&lt;font face=&quot;Times New Roman&quot;&gt;Autorise&lt;/font&gt;" vertex="1">
+          <mxGeometry relative="1" x="0.0261" y="-1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-101" parent="1" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=26;fillColor=none;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;" value="&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 14px;&quot;&gt;&lt;b&gt;GroupeAccess&lt;/b&gt;&lt;/span&gt;&lt;/font&gt;" vertex="1">
+          <mxGeometry height="110" width="130" x="860" y="910" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-102" parent="YHkQXi13ai3U-iRGIfHO-101" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;whiteSpace=wrap;html=1;" value="&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;id : UUID&lt;/font&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;groupeMembre: List&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;document: Document&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;createAt: LocalDate&lt;/font&gt;&lt;/div&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="84" width="130" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-103" parent="1" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=26;fillColor=none;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;" value="&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 14px;&quot;&gt;&lt;b&gt;GroupeMembre&lt;/b&gt;&lt;/span&gt;&lt;/font&gt;" vertex="1">
+          <mxGeometry height="80" width="130" x="1100" y="920" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-104" parent="YHkQXi13ai3U-iRGIfHO-103" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;whiteSpace=wrap;html=1;" value="&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;id : UUID&lt;/font&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;user: List&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="54" width="130" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-105" edge="1" parent="1" source="YHkQXi13ai3U-iRGIfHO-102" style="endArrow=none;html=1;edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="YHkQXi13ai3U-iRGIfHO-104" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1160" y="945" as="sourcePoint" />
+            <mxPoint x="1260" y="900" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-106" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-105" style="edgeLabel;resizable=0;html=1;align=left;verticalAlign=bottom;" value="1" vertex="1">
+          <mxGeometry relative="1" x="-1" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-107" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-105" style="edgeLabel;resizable=0;html=1;align=right;verticalAlign=bottom;" value="&lt;font style=&quot;font-size: 12px;&quot;&gt;1..&lt;/font&gt;&lt;span style=&quot;font-size: 18px;&quot;&gt;*&lt;/span&gt;" vertex="1">
+          <mxGeometry relative="1" x="1" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-108" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-105" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="&lt;font face=&quot;Times New Roman&quot;&gt;Contient&lt;/font&gt;" vertex="1">
+          <mxGeometry relative="1" x="0.0261" y="-1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-112" parent="1" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=40;fillColor=none;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;" value="&lt;div&gt;&lt;span style=&quot;font-family: &amp;quot;Times New Roman&amp;quot;; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&lt;font&gt;&amp;lt;&amp;lt;ENUM&amp;gt;&amp;gt;&lt;/font&gt;&lt;/span&gt;&lt;/div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 14px;&quot;&gt;&lt;b&gt;TypeAccess&lt;/b&gt;&lt;/span&gt;&lt;/font&gt;" vertex="1">
+          <mxGeometry height="80" width="90" x="380" y="716" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-113" parent="YHkQXi13ai3U-iRGIfHO-112" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;whiteSpace=wrap;html=1;" value="&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;PUBLIC&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;PRIVE&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="40" width="90" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-114" parent="1" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=26;fillColor=none;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;" value="&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 14px;&quot;&gt;&lt;b&gt;Incident&lt;/b&gt;&lt;/span&gt;&lt;/font&gt;" vertex="1">
+          <mxGeometry height="160" width="170" x="880" y="725" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-115" parent="YHkQXi13ai3U-iRGIfHO-114" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;whiteSpace=wrap;html=1;" value="&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;id : Long&lt;/font&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;userId: UUID&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;documentId: UUID&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;nomDocument: String&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;statut : IncidentStatus&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;resolutpar: UUID&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;createAt : LocalDate&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="134" width="170" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-116" parent="1" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=40;fillColor=none;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;" value="&lt;div&gt;&lt;span style=&quot;font-family: &amp;quot;Times New Roman&amp;quot;; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&lt;font&gt;&amp;lt;&amp;lt;ENUM&amp;gt;&amp;gt;&lt;/font&gt;&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-family: &amp;quot;Times New Roman&amp;quot;; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255)); font-size: 14px;&quot;&gt;&lt;font&gt;&lt;b&gt;StatusIncident&lt;/b&gt;&lt;/font&gt;&lt;/span&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="90" width="110" x="1070" y="750" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-117" parent="YHkQXi13ai3U-iRGIfHO-116" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;whiteSpace=wrap;html=1;" value="&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;RESOLUT&lt;/span&gt;&lt;/font&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;EnATTENTE&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="50" width="110" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-118" edge="1" parent="1" source="YHkQXi13ai3U-iRGIfHO-7" style="endArrow=none;html=1;edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=0.692;exitY=0.003;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;exitPerimeter=0;" target="YHkQXi13ai3U-iRGIfHO-115" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="750" y="755" as="sourcePoint" />
+            <mxPoint x="830" y="740" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-119" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-118" style="edgeLabel;resizable=0;html=1;align=left;verticalAlign=bottom;" value="1" vertex="1">
+          <mxGeometry relative="1" x="-1" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-120" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-118" style="edgeLabel;resizable=0;html=1;align=right;verticalAlign=bottom;" value="&lt;font style=&quot;font-size: 12px;&quot;&gt;1..&lt;/font&gt;&lt;span style=&quot;font-size: 18px;&quot;&gt;*&lt;/span&gt;" vertex="1">
+          <mxGeometry relative="1" x="1" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-121" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-118" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="&lt;font face=&quot;Times New Roman&quot;&gt;Genere&lt;/font&gt;" vertex="1">
+          <mxGeometry relative="1" x="0.0261" y="-1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-132" parent="1" style="text;align=center;fontStyle=1;verticalAlign=middle;spacingLeft=3;spacingRight=3;strokeColor=none;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;fontSize=24;" value="&lt;font face=&quot;Times New Roman&quot;&gt;Diagramme de classe MadeArchive (DC1)&lt;/font&gt;" vertex="1">
+          <mxGeometry height="50" width="640" x="450" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-134" parent="1" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=40;fillColor=none;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;" value="&lt;div&gt;&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 10px;&quot;&gt;&amp;lt;&amp;lt;ENUM&amp;gt;&amp;gt;&lt;/font&gt;&lt;/div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 14px;&quot;&gt;&lt;b&gt;DocumetStatus&lt;/b&gt;&lt;/span&gt;&lt;/font&gt;" vertex="1">
+          <mxGeometry height="120" width="110" x="730" y="576" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-135" parent="YHkQXi13ai3U-iRGIfHO-134" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;whiteSpace=wrap;html=1;" value="&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;PENDING&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;ACTIVE&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;WARNING&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;CORRUPTED DELETED&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="80" width="110" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-137" parent="1" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=40;fillColor=none;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;" value="&lt;div&gt;&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 10px;&quot;&gt;&amp;lt;&amp;lt;ENUM&amp;gt;&amp;gt;&lt;/font&gt;&lt;/div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 14px;&quot;&gt;&lt;b&gt;IntegrityLesvel&lt;/b&gt;&lt;/span&gt;&lt;/font&gt;" vertex="1">
+          <mxGeometry height="140" width="110" x="860" y="576" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-138" parent="YHkQXi13ai3U-iRGIfHO-137" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;whiteSpace=wrap;html=1;" value="&lt;font face=&quot;Times New Roman&quot;&gt;STANDARD&lt;/font&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;BLOCKCHAIN&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="100" width="110" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-139" parent="1" style="text;align=center;fontStyle=1;verticalAlign=middle;spacingLeft=3;spacingRight=3;strokeColor=none;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;html=1;" value="&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 24px;&quot;&gt;Journalisation, Sécurité &amp;amp; Opérations (DC2)&lt;/font&gt;" vertex="1">
+          <mxGeometry height="26" width="450" x="690" y="1340" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-142" parent="1" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=26;fillColor=none;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;" value="&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 14px;&quot;&gt;&lt;b&gt;AccessDocLog&lt;/b&gt;&lt;/span&gt;&lt;/font&gt;" vertex="1">
+          <mxGeometry height="140" width="170" x="450" y="1450" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-143" parent="YHkQXi13ai3U-iRGIfHO-142" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 13px;&quot; face=&quot;Times New Roman&quot;&gt;id : UUID&lt;/font&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;font style=&quot;font-size: 13px;&quot;&gt;documentId: UUID&amp;nbsp;&amp;nbsp;&lt;/font&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;→ DC1&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;userId : UUID&amp;nbsp;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;→ DC1&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&lt;font face=&quot;Times New Roman&quot;&gt;action: AccesAction&lt;/font&gt;&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&lt;font face=&quot;Times New Roman&quot;&gt;ipAdress : String&lt;/font&gt;&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&lt;font face=&quot;Times New Roman&quot;&gt;accessAt : LocalDateTime&lt;/font&gt;&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="114" width="170" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-149" parent="1" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=40;fillColor=none;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;" value="&lt;div&gt;&lt;span style=&quot;font-family: &amp;quot;Times New Roman&amp;quot;; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&lt;font&gt;&amp;lt;&amp;lt;ENUM&amp;gt;&amp;gt;&lt;/font&gt;&lt;/span&gt;&lt;/div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 14px;&quot;&gt;&lt;b&gt;AccessAction&lt;/b&gt;&lt;/span&gt;&lt;/font&gt;" vertex="1">
+          <mxGeometry height="104" width="130" x="460" y="1610" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-150" parent="YHkQXi13ai3U-iRGIfHO-149" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;whiteSpace=wrap;html=1;" value="&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;LECTURE&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;&lt;br&gt;&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;TELECHARGEMENT&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="64" width="130" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-151" parent="1" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=26;fillColor=none;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;" value="&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 14px;&quot;&gt;&lt;b&gt;Notification&lt;/b&gt;&lt;/span&gt;&lt;/font&gt;" vertex="1">
+          <mxGeometry height="110" width="170" x="774" y="1900" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-152" parent="YHkQXi13ai3U-iRGIfHO-151" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 13px;&quot; face=&quot;Times New Roman&quot;&gt;id : UUID&lt;/font&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;userId : UUID&amp;nbsp;&lt;/span&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;→ DC1&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;message: String&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&lt;font face=&quot;Times New Roman&quot;&gt;isRead: Boolean&lt;/font&gt;&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&lt;font face=&quot;Times New Roman&quot;&gt;createAt : LocalDateTime&lt;/font&gt;&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="84" width="170" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-157" parent="1" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=26;fillColor=none;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;" value="&lt;b&gt;&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 14px;&quot;&gt;FixityCheckResult&lt;/font&gt;&lt;/b&gt;" vertex="1">
+          <mxGeometry height="110" width="170" x="1010" y="1450" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-158" parent="YHkQXi13ai3U-iRGIfHO-157" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 13px;&quot; face=&quot;Times New Roman&quot;&gt;id : UUID&lt;/font&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;font style=&quot;font-size: 13px;&quot;&gt;documentId: UUID&amp;nbsp;&amp;nbsp;&lt;/font&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;→ DC1&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;checkedAt :LocalDateTime&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;result: statutDocument&amp;nbsp;&lt;/font&gt;&lt;span style=&quot;font-family: &amp;quot;Times New Roman&amp;quot;; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;→ DC1&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="84" width="170" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-163" parent="1" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=26;fillColor=none;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;" value="&lt;b&gt;&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 14px;&quot;&gt;ApiKey&lt;/font&gt;&lt;/b&gt;" vertex="1">
+          <mxGeometry height="130" width="170" x="540" y="1840" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-164" parent="YHkQXi13ai3U-iRGIfHO-163" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 13px;&quot; face=&quot;Times New Roman&quot;&gt;id : UUID&lt;/font&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;key: string&lt;/span&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;isActive : Boolean&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;role: Role&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;createAt : LocalDateTime&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&lt;font face=&quot;Times New Roman&quot;&gt;expirateAt : LocalDateTime&lt;/font&gt;&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="104" width="170" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-168" parent="1" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=26;fillColor=none;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;" value="&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 14px;&quot;&gt;&lt;b&gt;Document&lt;/b&gt;&lt;/span&gt;&lt;/font&gt;" vertex="1">
+          <mxGeometry height="260" width="170" x="780" y="1570" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-169" parent="YHkQXi13ai3U-iRGIfHO-168" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;whiteSpace=wrap;html=1;" value="&lt;font style=&quot;font-size: 13px;&quot; face=&quot;Times New Roman&quot;&gt;id : UUID&lt;/font&gt;&lt;div&gt;&lt;font style=&quot;font-size: 13px;&quot; face=&quot;Times New Roman&quot;&gt;titre: String&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 13px;&quot; face=&quot;Times New Roman&quot;&gt;userId: UUID&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 13px;&quot; face=&quot;Times New Roman&quot;&gt;acces: TypeAccess&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 13px;&quot; face=&quot;Times New Roman&quot;&gt;sha256Hash: String&lt;br&gt;&lt;/font&gt;&lt;div&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;blockchainTxId&lt;/span&gt;&lt;font style=&quot;font-size: 13px;&quot; face=&quot;Times New Roman&quot;&gt;: String&lt;/font&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-size: 13px;&quot;&gt;&lt;font face=&quot;Times New Roman&quot;&gt;retentionUtil : LocalDate&lt;/font&gt;&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 13px;&quot; face=&quot;Times New Roman&quot;&gt;createdAt: LocalDate&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 13px;&quot; face=&quot;Times New Roman&quot;&gt;version : Integer&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-family: &amp;quot;Times New Roman&amp;quot;; font-size: 13px; background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;minIOkey&lt;/span&gt;&lt;font style=&quot;font-size: 13px;&quot; face=&quot;Times New Roman&quot;&gt;: String&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 13px;&quot; face=&quot;Times New Roman&quot;&gt;type: TypeDocument&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font style=&quot;font-size: 13px;&quot; face=&quot;Times New Roman&quot;&gt;metadataValue: List&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;status : DocumentStatus&lt;font style=&quot;font-size: 13px;&quot;&gt;&lt;/font&gt;&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot;&gt;integrityLevel : IntegrityLevel&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="234" width="170" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-170" edge="1" parent="1" source="YHkQXi13ai3U-iRGIfHO-163" style="endArrow=none;html=1;edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=0.5;exitY=0;exitDx=0;exitDy=0;" target="YHkQXi13ai3U-iRGIfHO-169" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1050" y="1972" as="sourcePoint" />
+            <mxPoint x="790" y="1760" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-171" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-170" style="edgeLabel;resizable=0;html=1;align=left;verticalAlign=bottom;" value="1" vertex="1">
+          <mxGeometry relative="1" x="-1" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-172" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-170" style="edgeLabel;resizable=0;html=1;align=right;verticalAlign=bottom;" value="&lt;font style=&quot;font-size: 12px;&quot;&gt;1..&lt;/font&gt;&lt;span style=&quot;font-size: 18px;&quot;&gt;*&lt;/span&gt;" vertex="1">
+          <mxGeometry relative="1" x="1" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-173" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-170" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="&lt;font face=&quot;Times New Roman&quot;&gt;Creer&lt;/font&gt;" vertex="1">
+          <mxGeometry relative="1" x="0.0261" y="-1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-174" edge="1" parent="1" source="YHkQXi13ai3U-iRGIfHO-168" style="endArrow=none;html=1;edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=0.25;exitY=0;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="YHkQXi13ai3U-iRGIfHO-143" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="720" y="1742" as="sourcePoint" />
+            <mxPoint x="906" y="1580" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-175" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-174" style="edgeLabel;resizable=0;html=1;align=left;verticalAlign=bottom;" value="1..*" vertex="1">
+          <mxGeometry relative="1" x="-1" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-176" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-174" style="edgeLabel;resizable=0;html=1;align=right;verticalAlign=bottom;" value="&lt;font style=&quot;font-size: 12px;&quot;&gt;1..&lt;/font&gt;&lt;span style=&quot;font-size: 18px;&quot;&gt;*&lt;/span&gt;" vertex="1">
+          <mxGeometry relative="1" x="1" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-177" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-174" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="&lt;font face=&quot;Times New Roman&quot;&gt;LogAcces&lt;/font&gt;" vertex="1">
+          <mxGeometry relative="1" x="0.0261" y="-1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-179" edge="1" parent="1" source="YHkQXi13ai3U-iRGIfHO-169" style="endArrow=none;html=1;edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=1.001;exitY=0.408;exitDx=0;exitDy=0;exitPerimeter=0;entryX=-0.028;entryY=0.452;entryDx=0;entryDy=0;entryPerimeter=0;" target="YHkQXi13ai3U-iRGIfHO-158" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1323" y="1727" as="sourcePoint" />
+            <mxPoint x="1140" y="1670" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-180" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-179" style="edgeLabel;resizable=0;html=1;align=left;verticalAlign=bottom;" value="1..*" vertex="1">
+          <mxGeometry relative="1" x="-1" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-181" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-179" style="edgeLabel;resizable=0;html=1;align=right;verticalAlign=bottom;" value="&lt;font style=&quot;font-size: 12px;&quot;&gt;1..&lt;/font&gt;&lt;span style=&quot;font-size: 18px;&quot;&gt;*&lt;/span&gt;" vertex="1">
+          <mxGeometry relative="1" x="1" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-182" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-179" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 10px;&quot;&gt;ResultCheick&lt;/font&gt;" vertex="1">
+          <mxGeometry relative="1" x="0.0261" y="-1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-185" parent="1" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=26;fillColor=none;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;" value="&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 14px;&quot;&gt;&lt;b style=&quot;&quot;&gt;User&lt;/b&gt;&lt;/font&gt;" vertex="1">
+          <mxGeometry height="160" width="150" x="1030" y="1875" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-186" parent="YHkQXi13ai3U-iRGIfHO-185" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;whiteSpace=wrap;html=1;" value="&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;id : UUID&lt;/font&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;nom: String&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;prenom: String&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;email: String&lt;br&gt;&lt;/font&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;password: String&lt;/font&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;telephone : String&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;isActif : Boolean&lt;/font&gt;&lt;/div&gt;&lt;div&gt;&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;createdAt: LocalDateTime&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="134" width="150" y="26" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-187" edge="1" parent="1" source="YHkQXi13ai3U-iRGIfHO-152" style="endArrow=none;html=1;edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="YHkQXi13ai3U-iRGIfHO-186" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1000" y="2053" as="sourcePoint" />
+            <mxPoint x="1055" y="1890" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-188" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-187" style="edgeLabel;resizable=0;html=1;align=left;verticalAlign=bottom;" value="*" vertex="1">
+          <mxGeometry relative="1" x="-1" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-189" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-187" style="edgeLabel;resizable=0;html=1;align=right;verticalAlign=bottom;" value="&lt;font style=&quot;font-size: 12px;&quot;&gt;1..&lt;/font&gt;&lt;span style=&quot;font-size: 18px;&quot;&gt;*&lt;/span&gt;" vertex="1">
+          <mxGeometry relative="1" x="1" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-190" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-187" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 10px;&quot;&gt;Recoit&lt;/font&gt;" vertex="1">
+          <mxGeometry relative="1" x="0.0261" y="-1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-192" edge="1" parent="1" source="YHkQXi13ai3U-iRGIfHO-169" style="endArrow=none;html=1;edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="YHkQXi13ai3U-iRGIfHO-185" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1050" y="1690" as="sourcePoint" />
+            <mxPoint x="1136" y="1690" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-193" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-192" style="edgeLabel;resizable=0;html=1;align=left;verticalAlign=bottom;" value="*" vertex="1">
+          <mxGeometry relative="1" x="-1" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-194" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-192" style="edgeLabel;resizable=0;html=1;align=right;verticalAlign=bottom;" value="&lt;font style=&quot;font-size: 12px;&quot;&gt;1..&lt;/font&gt;&lt;span style=&quot;font-size: 18px;&quot;&gt;*&lt;/span&gt;" vertex="1">
+          <mxGeometry relative="1" x="1" as="geometry" />
+        </mxCell>
+        <mxCell id="YHkQXi13ai3U-iRGIfHO-195" connectable="0" parent="YHkQXi13ai3U-iRGIfHO-192" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="&lt;font face=&quot;Times New Roman&quot;&gt;&lt;span style=&quot;font-size: 10px;&quot;&gt;uploade&lt;/span&gt;&lt;/font&gt;" vertex="1">
+          <mxGeometry relative="1" x="0.0261" y="-1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -1,0 +1,210 @@
+/* ─── Profil ─── */
+.profile-view-container {
+    max-width: 580px;
+    margin: 2rem auto;
+    padding: 0 1rem;
+}
+
+.profile-title {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--dark-choc);
+    margin-bottom: 1.25rem;
+    letter-spacing: 0.2px;
+}
+
+.profile-alert {
+    padding: 0.7rem 1rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.88rem;
+    font-weight: 500;
+    margin-bottom: 1rem;
+}
+
+.profile-alert-error {
+    background: rgba(155,58,58,0.1);
+    color: var(--error);
+    border: 1px solid rgba(155,58,58,0.2);
+}
+
+.profile-alert-success {
+    background: rgba(74,124,89,0.1);
+    color: var(--success);
+    border: 1px solid rgba(74,124,89,0.2);
+}
+
+.profile-card {
+    background: var(--white-choc);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.75rem;
+    box-shadow: var(--shadow-sm);
+}
+
+/* Rows */
+.details-row {
+    display: flex;
+    gap: 0.6rem;
+    padding: 0.65rem 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.9rem;
+    color: var(--dark-choc);
+    align-items: flex-start;
+    flex-wrap: wrap;
+}
+
+.details-row:last-of-type { border-bottom: none; }
+
+.details-row strong {
+    color: var(--text-light);
+    font-weight: 500;
+    min-width: 90px;
+    flex-shrink: 0;
+}
+
+/* Edit button */
+.profile-edit-btn {
+    margin-top: 1.25rem;
+    padding: 0.6rem 1.4rem;
+    background: var(--dark-choc);
+    color: var(--white-choc);
+    border: none;
+    border-radius: var(--radius-sm);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.88rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background var(--transition), box-shadow var(--transition);
+}
+
+.profile-edit-btn:hover {
+    background: var(--dark-mid);
+    box-shadow: 0 0 0 3px rgba(44,26,14,0.12);
+}
+
+/* Form grid */
+.form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.form-field {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+.form-field-input {
+    width: 100%;
+    padding: 0.7rem 0.85rem;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--cream);
+    color: var(--dark-choc);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.form-field-input::placeholder {
+    color: var(--text-light);
+    opacity: 1;
+}
+
+.form-field-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(139,94,60,0.12);
+    background: var(--white-choc);
+}
+
+/* Password field */
+.form-field-password { position: relative; }
+
+.form-field-password .form-field-input {
+    padding-right: 2.8rem;
+}
+
+.password-toggle-btn {
+    position: absolute;
+    right: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: var(--text-light);
+    cursor: pointer;
+    font-size: 0.95rem;
+    padding: 0.2rem;
+    transition: color var(--transition);
+}
+
+.password-toggle-btn:hover { color: var(--dark-choc); }
+
+/* Full width */
+.profile-field-fullwidth {
+    grid-column: 1 / -1;
+}
+
+/* Form actions */
+.profile-form-actions {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+}
+
+.form-submit-btn {
+    padding: 0.6rem 1.4rem;
+    background: var(--dark-choc);
+    color: var(--white-choc);
+    border: none;
+    border-radius: var(--radius-sm);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.88rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background var(--transition), box-shadow var(--transition);
+}
+
+.form-submit-btn:hover {
+    background: var(--dark-mid);
+    box-shadow: 0 0 0 3px rgba(44,26,14,0.12);
+}
+
+.details-close-btn {
+    padding: 0.6rem 1.2rem;
+    background: var(--white-choc);
+    color: var(--dark-soft);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.88rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background var(--transition), border-color var(--transition);
+}
+
+.details-close-btn:hover {
+    background: var(--cream);
+    border-color: var(--accent);
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+    .form-grid { grid-template-columns: 1fr; }
+    .profile-field-fullwidth { grid-column: 1; }
+}
+
+/* Fix autofill navigateur */
+.form-field-input:-webkit-autofill,
+.form-field-input:-webkit-autofill:hover,
+.form-field-input:-webkit-autofill:focus {
+    -webkit-box-shadow: 0 0 0px 1000px var(--cream) inset;
+    -webkit-text-fill-color: var(--dark-choc);
+    transition: background-color 5000s ease-in-out 0s;
+}
+
+/* Fix label flottant quand autofill */

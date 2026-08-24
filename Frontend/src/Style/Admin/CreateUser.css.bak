@@ -1,0 +1,193 @@
+/* ─── CreateUser ─── */
+.form-error {
+    padding: 0.65rem 1rem;
+    background: rgba(155,58,58,0.1);
+    color: var(--error);
+    border: 1px solid rgba(155,58,58,0.2);
+    border-radius: var(--radius-sm);
+    font-size: 0.85rem;
+    font-weight: 500;
+    margin-bottom: 1rem;
+}
+
+.form-success {
+    padding: 0.65rem 1rem;
+    background: rgba(74,124,89,0.1);
+    color: var(--success);
+    border: 1px solid rgba(74,124,89,0.2);
+    border-radius: var(--radius-sm);
+    font-size: 0.85rem;
+    font-weight: 500;
+    margin-bottom: 1rem;
+}
+
+.form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+/* Champ flottant */
+.form-field {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+.form-field-input {
+    width: 100%;
+    padding: 1.1rem 0.85rem 0.35rem;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--cream);
+    color: var(--dark-choc);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
+}
+
+.form-field-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(139,94,60,0.12);
+    background: var(--white-choc);
+}
+
+.form-field label {
+    position: absolute;
+    left: 0.85rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.88rem;
+    color: var(--text-light);
+    pointer-events: none;
+    transition: all 0.15s ease;
+    background: transparent;
+}
+
+.form-field-input:focus ~ label,
+.form-field-input:not(:placeholder-shown) ~ label {
+    top: 0.38rem;
+    font-size: 0.72rem;
+    color: var(--accent);
+    transform: none;
+}
+
+/* Password */
+.form-field-password {
+    position: relative;
+    grid-column: 1 / -1;
+}
+
+.form-field-password .form-field-input {
+    padding-right: 2.8rem;
+}
+
+.password-toggle-btn {
+    position: absolute;
+    right: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: var(--text-light);
+    cursor: pointer;
+    font-size: 0.95rem;
+    padding: 0.2rem;
+    transition: color var(--transition);
+    display: flex;
+    align-items: center;
+}
+
+.password-toggle-btn:hover { color: var(--dark-choc); }
+
+/* Rôles */
+.form-field-roles {
+    grid-column: 1 / -1;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.85rem 1rem;
+    background: var(--cream);
+}
+
+.roles-label {
+    font-size: 0.78rem;
+    color: var(--text-light);
+    font-weight: 500;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    margin-bottom: 0.6rem;
+    display: block;
+}
+
+.checkbox-group {
+    display: flex;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.88rem;
+    color: var(--dark-choc);
+    cursor: pointer;
+    font-weight: 400;
+    transition: color var(--transition);
+}
+
+.checkbox-label:hover { color: var(--accent); }
+
+.checkbox-label input[type="checkbox"] {
+    width: 15px;
+    height: 15px;
+    accent-color: var(--dark-choc);
+    cursor: pointer;
+}
+
+/* Submit */
+.form-submit-btn {
+    grid-column: 1 / -1;
+    padding: 0.7rem 1.4rem;
+    background: var(--dark-choc);
+    color: var(--white-choc);
+    border: none;
+    border-radius: var(--radius-sm);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background var(--transition), box-shadow var(--transition);
+    margin-top: 0.25rem;
+}
+
+.form-submit-btn:hover {
+    background: var(--dark-mid);
+    box-shadow: 0 0 0 3px rgba(44,26,14,0.12);
+}
+
+/* Responsive */
+@media (max-width: 500px) {
+    .form-grid { grid-template-columns: 1fr; }
+    .form-field-password { grid-column: 1; }
+    .form-field-roles { grid-column: 1; }
+    .form-submit-btn { grid-column: 1; }
+}
+
+/* Fix autofill navigateur */
+.form-field-input:-webkit-autofill,
+.form-field-input:-webkit-autofill:hover,
+.form-field-input:-webkit-autofill:focus {
+    -webkit-box-shadow: 0 0 0px 1000px var(--cream) inset;
+    -webkit-text-fill-color: var(--dark-choc);
+    transition: background-color 5000s ease-in-out 0s;
+}
+
+/* Fix label flottant quand autofill */
+.form-field-input:-webkit-autofill ~ label {
+    top: 0.38rem;
+    font-size: 0.72rem;
+    color: var(--accent);
+    transform: none;
+}

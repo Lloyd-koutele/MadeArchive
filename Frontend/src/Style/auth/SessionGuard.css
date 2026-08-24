@@ -1,0 +1,48 @@
+.session-guard-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(44, 26, 14, 0.55);
+    backdrop-filter: blur(2px);
+    animation: session-guard-fade-in 0.2s ease;
+}
+
+.session-guard-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.6rem;
+    max-width: 380px;
+    padding: 1.75rem 2rem;
+    background: var(--white-choc, #FDF8F3);
+    color: var(--dark-choc, #2C1A0E);
+    border-radius: var(--radius-sm, 6px);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+    text-align: center;
+}
+
+.session-guard-icon {
+    font-size: 2rem;
+    color: var(--error, #9B3A3A);
+    margin-bottom: 0.25rem;
+}
+
+.session-guard-message {
+    margin: 0;
+    font-weight: 600;
+    font-size: 1rem;
+}
+
+.session-guard-countdown {
+    margin: 0;
+    font-size: 0.85rem;
+    opacity: 0.75;
+}
+
+@keyframes session-guard-fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}

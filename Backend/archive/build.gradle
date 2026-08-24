@@ -1,0 +1,137 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '4.0.6'
+	id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'smart'
+version = '0.0.1-SNAPSHOT'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(17)
+	}
+}
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	// Spring Boot - Core
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	implementation 'org.springframework.boot:spring-boot-starter-security'
+	implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
+	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'org.springframework.boot:spring-boot-starter-validation'
+	implementation 'org.springframework.boot:spring-boot-starter-webflux'
+	developmentOnly 'org.springframework.boot:spring-boot-devtools'
+	
+	// Lombok
+	compileOnly 'org.projectlombok:lombok'
+	annotationProcessor 'org.projectlombok:lombok'
+	testCompileOnly 'org.projectlombok:lombok'
+	testAnnotationProcessor 'org.projectlombok:lombok'
+	
+	// Tests (scope testImplementation)
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	testImplementation 'org.springframework.security:spring-security-test'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+	
+	// JWT
+	implementation 'io.jsonwebtoken:jjwt-api:0.12.5'
+	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.5'
+	runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.5'
+
+	// PKI - génération de certificats auto-signés pour le "HSM" fichier (KeyStore PKCS12)
+	implementation 'org.bouncycastle:bcpkix-jdk18on:1.78.1'
+	
+	// Base de données
+	runtimeOnly 'org.postgresql:postgresql'
+
+	// Cache (Redis) — voir config.RedisCacheConfig
+	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+	implementation 'org.springframework.boot:spring-boot-starter-cache'
+	
+	// Stockage objet
+	implementation 'io.minio:minio:8.5.17'
+	
+	// AWS S3
+    implementation 'software.amazon.awssdk:s3:2.25.15'
+    implementation 'software.amazon.awssdk:s3-transfer-manager:2.25.15'
+
+	
+	// HTTP Client
+	implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+
+	// Web3 (si nécessaire)
+	implementation 'org.web3j:core:4.10.3'
+	
+	// Configuration d'environnement
+	implementation 'io.github.cdimascio:dotenv-java:3.0.0'
+	
+	// OCR et Traitement de documents
+	implementation 'org.apache.tika:tika-core:2.9.1'
+	implementation 'org.apache.tika:tika-parsers-standard-package:2.9.1'
+	implementation 'net.sourceforge.tess4j:tess4j:5.11.0'
+
+
+	// Tika
+    implementation 'org.apache.tika:tika-core:2.9.1'
+    implementation 'org.apache.tika:tika-parsers-standard-package:2.9.1'
+    
+    // PDFBox — version 2.x obligatoire pour compatibilité avec Tika 2.9.1
+    implementation 'org.apache.pdfbox:pdfbox:2.0.31'
+
+    // Exclure PDFBox 3.x si importé transitivement
+    configurations.all {
+        resolutionStrategy {
+            force 'org.apache.pdfbox:pdfbox:2.0.31'
+        }
+    }
+
+    // ZXing — génération du QR code de l'attestation d'archivage (voir
+    // service.document.AttestationPdfService)
+    implementation 'com.google.zxing:core:3.5.3'
+    implementation 'com.google.zxing:javase:3.5.3'
+
+	// Recherche
+	implementation 'com.meilisearch.sdk:meilisearch-java:0.11.0'
+	
+	// Excel et CSV
+	implementation 'org.apache.poi:poi:5.2.5'
+	implementation 'org.apache.poi:poi-ooxml:5.2.5'
+	implementation 'com.opencsv:opencsv:5.9'
+
+	// Import en masse depuis un serveur distant (FTP / FTPS)
+	implementation 'commons-net:commons-net:3.11.1'
+	
+	// Test
+	implementation 'org.springframework:spring-test'
+
+	// Env
+	implementation 'io.github.cdimascio:dotenv-java:3.0.0'
+
+	//Ollama
+	implementation 'org.springframework.boot:spring-boot-starter-webflux'
+
+	//JSON
+	implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
+
+	// FTP
+	implementation 'commons-net:commons-net:3.13.0'
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}
+
+// Tess4J/JNA cherche libtesseract.dylib dans les emplacements système standards
+// (/usr/lib, le dossier du JDK...) mais PAS /opt/homebrew/lib — où Homebrew installe
+// tesseract sur Apple Silicon (ARM64). Sans ce chemin explicite, tout traitement OCR
+// échoue avec UnsatisfiedLinkError dès le premier appel, quel que soit le fichier.
+// Sans effet sur Linux/Docker (le chemin n'existe simplement pas, JNA continue sa
+// recherche normale dans les emplacements standards).
+tasks.named('bootRun') {
+	jvmArgs '-Djna.library.path=/opt/homebrew/lib'
+}

@@ -1,0 +1,1 @@
+export const TYPE_DOCUMENT_DRAG_MIME = 'application/x-typedocuments';

@@ -1,0 +1,241 @@
+package made.archive.service.document;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import made.archive.entite.PkiKeyStatus;
+import made.archive.entite.TypeDocument;
+import made.archive.entite.UniteOrganisationnelle;
+import made.archive.entite.User;
+import made.archive.exception.BusinessException;
+import made.archive.exception.PdfAConversionException;
+import made.archive.repository.DocumentRepository;
+import made.archive.repository.TypeDocumentRepository;
+import made.archive.service.organisation.UniteOrganisationnelleService;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class DocumentOcrService
+{
+    private final LibreOfficeConversionService libreOfficeConversionService;
+    private final PdfAConversionService        pdfAConversionService;
+    private final OcrService                   ocrService;
+    private final HashService                  hashService;
+    private final TypeDocumentRepository       typeDocumentRepository;
+    private final DocumentRepository           documentRepository;
+    private final UniteOrganisationnelleService uniteOrganisationnelleService;
+
+    /**
+     * Point d'entrée historique — upload navigateur (multipart/form-data).
+     * Ne fait que lire le fichier puis déléguer à la surcharge sur bytes bruts.
+     */
+    public OcrSessionCache.OcrSessionData processOcrPreview(
+        MultipartFile file,
+        Long typeDocumentId,
+        User uploadedBy)
+        throws PdfAConversionException
+    {
+        try
+        {
+            return processOcrPreview(file.getOriginalFilename(), file.getBytes(), typeDocumentId, uploadedBy);
+        }
+        catch (PdfAConversionException | BusinessException e)
+        {
+            throw e;
+        }
+        catch (Exception e)
+        {
+            throw new BusinessException("Erreur OCR preview : " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Cœur de la Phase 1 OCR — indépendant du transport (upload navigateur, dossier
+     * local, import FTP…). Toute source de fichiers converge ici dès qu'elle dispose
+     * du nom original et des bytes bruts.
+     */
+    public OcrSessionCache.OcrSessionData processOcrPreview(
+        String originalFilename,
+        byte[] originalBytes,
+        Long typeDocumentId,
+        User uploadedBy)
+        throws PdfAConversionException
+    {
+        log.info("[OCR-Phase1] Démarrage pour type: {}, fichier: {}",
+                 typeDocumentId, originalFilename);
+
+        try
+        {
+            // ── 2. SHA-256 du fichier ORIGINAL ──────────────────────────────
+            String originalSha256 = hashService.calculateFromBytes(originalBytes);
+            log.info("[OCR-Phase1] Original SHA-256 : {}", originalSha256);
+
+            // ── 2b. Charger le TypeDocument (fail-fast s'il n'existe pas) ────
+            TypeDocument typeDocument = typeDocumentRepository
+                .findById(typeDocumentId)
+                .orElseThrow(() -> new BusinessException(
+                    "Type de document introuvable : " + typeDocumentId));
+
+            // ── 2c. Anti-doublon PRÉCOCE, scopé par UO ───────────────────────
+            // Remonté ici (avant conversion PDF/A + OCR, coûteuses) pour
+            // prévenir l'utilisateur immédiatement, plutôt qu'à la Phase 2
+            // après qu'il ait rempli toutes les métadonnées.
+            UniteOrganisationnelle uo =
+                uniteOrganisationnelleService.getUOActuelleEntite(uploadedBy.getId());
+            if (documentRepository.existsByOriginalSha256AndUniteOrganisationnelle_Id(
+                    originalSha256, uo.getId()))
+            {
+                throw new BusinessException(
+                    "Ce document existe déjà en archive pour votre unité organisationnelle");
+            }
+
+            // ── 2d. Éligibilité PKI PRÉCOCE ───────────────────────────────────
+            // Même logique que l'anti-doublon ci-dessus : sans ça, un éditeur
+            // sans clé active remplissait tout le formulaire de métadonnées
+            // avant de se faire recaler seulement à la Phase 2 (finalize).
+            if (uploadedBy.getPkiKeyStatus() != PkiKeyStatus.ACTIVE
+                || uploadedBy.getPkiKeyAlias() == null || uploadedBy.getPkiKeyAlias().isBlank())
+            {
+                throw new BusinessException(
+                    "Vous ne possédez pas de clé de signature PKI active. "
+                    + "Contactez un administrateur.");
+            }
+
+            // ── 3. Conversion en PDF via LibreOffice ─────────────────────────
+            byte[] pdfBytes = libreOfficeConversionService.convertToPdf(
+                originalBytes, originalFilename);
+
+            // ── 4. Marquage PDF/A-3b ─────────────────────────────────────────
+            byte[] pdfABytes = pdfAConversionService.convertToPdfA3(pdfBytes);
+
+            // ── 5. SHA-256 du PDF/A-3b ───────────────────────────────────────
+            String pdfaSha256 = hashService.calculateFromBytes(pdfABytes);
+            log.info("[OCR-Phase1] PDF/A SHA-256 : {}", pdfaSha256);
+
+            // ── 6. OCR — guidé par le vocabulaire du type (attributs + valeurs
+            //      déjà confirmées sur des documents précédents du même type) ─
+            String extractedText = ocrService.extractTextOnly(pdfABytes, typeDocument);
+            log.info("[OCR-Phase1] Texte : {} caractères",
+                     extractedText != null ? extractedText.length() : 0);
+
+            // ── 8. Suggestions basées sur les regex DEPUIS TypeDocument ──────
+            boolean regexAlreadyGenerated = typeDocument.hasRegexGenerated();
+            Map<String, String> regexMap = typeDocument.getExtractionRegexMap();
+            Map<String, String> suggestions = calculateSuggestions(
+                regexMap, extractedText);
+
+            if (suggestions.isEmpty() && extractedText != null && !extractedText.isBlank())
+            {
+                if (regexAlreadyGenerated)
+                {
+                    log.info("[OCR-Phase1] ✅ Regex chargées depuis TypeDocument mais " +
+                             "aucune correspondance trouvée dans le texte OCR");
+                }
+                else
+                {
+                    log.info("[OCR-Phase1] Aucune suggestion — " +
+                             "première utilisation du type (regex non encore générées). " +
+                             "La génération regex aura lieu en Phase 2 après saisie des valeurs.");
+                }
+            }
+            else
+            {
+                log.info("[OCR-Phase1] ✅ {} suggestion(s) calculée(s) via regex existantes",
+                         suggestions.size());
+            }
+
+            // ── 9. Construire la session avec les deux hashes ─────────────────
+            OcrSessionCache.OcrSessionData sessionData = new OcrSessionCache.OcrSessionData();
+            sessionData.typeDocumentId        = typeDocumentId;
+            sessionData.pdfABytes             = pdfABytes;
+            sessionData.originalBytes         = originalBytes;
+            sessionData.originalFilename      = originalFilename;
+            sessionData.extractedText         = extractedText;
+            sessionData.suggestions           = suggestions;
+            sessionData.originalSha256        = originalSha256;
+            sessionData.pdfaSha256            = pdfaSha256;
+            sessionData.regexAlreadyGenerated = regexAlreadyGenerated;
+
+            return sessionData;
+        }
+        catch (BusinessException | PdfAConversionException e)
+        {
+            throw e;
+        }
+        catch (Exception e)
+        {
+            log.error("[OCR-Phase1] ❌ Erreur : {}", e.getMessage(), e);
+            throw new BusinessException(
+                "Erreur OCR preview : " + e.getMessage(), e);
+        }
+    }
+
+    
+    private Map<String, String> calculateSuggestions(
+        Map<String, String> regexMap,
+        String extractedText)
+    {
+        Map<String, String> suggestions = new LinkedHashMap<>();
+
+        if (extractedText == null || extractedText.isBlank())
+        {
+            log.debug("[OCR-Suggestions] Aucun texte extractible");
+            return suggestions;
+        }
+
+        // ✅ Itérer sur la Map de regex au lieu de List<MetaData>
+        for (Map.Entry<String, String> entry : regexMap.entrySet())
+        {
+            String fieldName = entry.getKey();
+            String regex = entry.getValue();
+
+            if (regex == null || regex.isBlank())
+            {
+                log.debug("[OCR-Suggestions] Regex vide pour '{}' → pas de suggestion",
+                         fieldName);
+                continue;
+            }
+
+            try
+            {
+                Pattern pattern = Pattern.compile(regex);
+                Matcher matcher = pattern.matcher(extractedText);
+
+                if (matcher.find())
+                {
+                    // Préférer le groupe capturant (1) si présent, sinon match complet
+                    String suggestion = matcher.groupCount() > 0
+                            ? matcher.group(1)
+                            : matcher.group();
+
+                    if (suggestion != null && !suggestion.isBlank())
+                    {
+                        suggestions.put(fieldName, suggestion);
+                        log.debug("[OCR-Suggestions] ✅ '{}' → '{}'",
+                                 fieldName, suggestion);
+                    }
+                }
+                else
+                {
+                    log.debug("[OCR-Suggestions] Regex '{}' : aucune correspondance",
+                             fieldName);
+                }
+            }
+            catch (Exception e)
+            {
+                log.warn("[OCR-Suggestions] ❌ Regex invalide pour '{}' : {} (Erreur: {})",
+                         fieldName, regex, e.getMessage());
+            }
+        }
+
+        return suggestions;
+    }
+}

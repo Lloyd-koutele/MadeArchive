@@ -1,0 +1,89 @@
+.attest-page {
+    min-height: 100vh;
+    background: var(--white-choc);
+    display: flex;
+    flex-direction: column;
+}
+
+.attest-header {
+    display: flex;
+    align-items: baseline;
+    gap: 0.9rem;
+    padding: 1.3rem 2rem;
+    background: var(--dark-choc);
+    color: var(--white-choc);
+}
+
+.attest-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: 'Cormorant Garamond', serif;
+    font-weight: 700;
+    font-size: 1.4rem;
+}
+
+.attest-brand i { color: var(--accent); }
+
+.attest-subtitle {
+    color: var(--text-light);
+    font-size: 0.9rem;
+}
+
+.attest-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1.2rem;
+    padding: 1.5rem;
+}
+
+.attest-viewer {
+    width: 100%;
+    max-width: 900px;
+    height: 78vh;
+    background: var(--cream);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-md);
+    overflow: hidden;
+}
+
+.attest-viewer iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+}
+
+.attest-download-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--accent);
+    color: var(--white-choc);
+    padding: 0.7rem 1.4rem;
+    border-radius: var(--radius-sm);
+    text-decoration: none;
+    font-weight: 500;
+    box-shadow: var(--shadow-sm);
+    transition: var(--transition);
+}
+
+.attest-download-btn:hover {
+    background: var(--dark-soft);
+}
+
+.attest-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.8rem;
+    color: var(--text-light);
+    font-size: 1.1rem;
+}
+
+.attest-state i { font-size: 1.8rem; }
+
+.attest-error i { color: var(--error); }

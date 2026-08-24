@@ -1,0 +1,361 @@
+/* ─── Admin Dashboard ─── */
+.admin-dashboard {
+    height: 100vh;
+    overflow: hidden;
+    background-color: var(--cream);
+}
+
+.admin-body {
+    display: flex;
+    height: 100%;
+}
+
+/* Main content */
+.main-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1.75rem 2rem;
+    background-color: var(--cream);
+}
+
+/* User count */
+.users-count {
+    font-size: 0.88rem;
+    color: var(--text-light);
+    margin-bottom: 0.85rem;
+    font-weight: 400;
+}
+
+.users-count span {
+    font-weight: 600;
+    color: var(--dark-choc);
+}
+
+/* User details card (modal view) */
+.user-details-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.user-details-card .details-row {
+    display: flex;
+    gap: 0.6rem;
+    padding: 0.65rem 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.9rem;
+    color: var(--dark-choc);
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.user-details-card .details-row:last-of-type {
+    border-bottom: none;
+}
+
+.user-details-card .details-row strong {
+    color: var(--text-light);
+    font-weight: 500;
+    min-width: 160px;
+    flex-shrink: 0;
+}
+
+/* Status tag */
+.status-tag {
+    display: inline-block;
+    padding: 0.2rem 0.65rem;
+    border-radius: 20px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+}
+
+.status-tag.active {
+    background: rgba(74,124,89,0.12);
+    color: var(--success);
+    border: 1px solid rgba(74,124,89,0.2);
+}
+
+.status-tag.inactive {
+    background: rgba(155,58,58,0.1);
+    color: var(--error);
+    border: 1px solid rgba(155,58,58,0.2);
+}
+
+/* Close button in modal */
+.user-details-card .details-close-btn {
+    margin-top: 1.25rem;
+    align-self: flex-end;
+    padding: 0.55rem 1.3rem;
+    background: var(--white-choc);
+    color: var(--dark-soft);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.88rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background var(--transition), border-color var(--transition);
+}
+
+.user-details-card .details-close-btn:hover {
+    background: var(--cream);
+    border-color: var(--accent);
+}
+
+/* ─── Navigation UO (AdminUoDashboard) ─── */
+.uo-nav {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.15rem;
+    font-size: 0.85rem;
+    margin-bottom: 1rem;
+}
+
+.uo-nav-crumb {
+    background: none;
+    border: none;
+    padding: 0.15rem 0.35rem;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-light);
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    transition: background var(--transition), color var(--transition);
+}
+
+.uo-nav-crumb:hover:not(:disabled) {
+    background: var(--white-choc);
+    color: var(--dark-choc);
+}
+
+.uo-nav-crumb:disabled {
+    color: var(--dark-choc);
+    font-weight: 600;
+    cursor: default;
+}
+
+/* ─── UO filles (navigation descendante) ─── */
+.uo-children-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin-bottom: 1.25rem;
+}
+
+.uo-child-card {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 1rem;
+    background: var(--white-choc);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--dark-soft);
+    cursor: pointer;
+    transition: background var(--transition), border-color var(--transition), transform var(--transition);
+}
+
+.uo-child-card:hover {
+    background: var(--cream);
+    border-color: var(--accent);
+    transform: translateY(-1px);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .uo-children-list { gap: 0.4rem; }
+    .uo-child-card { padding: 0.45rem 0.8rem; font-size: 0.8rem; }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .admin-body { flex-direction: column; }
+    .main-content { padding: 1rem; }
+}
+
+/* Label de section sidebar */
+.sidebar-section-label {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: rgba(253,248,243,0.3);
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    padding: 0.9rem 0.85rem 0.3rem;
+}
+
+/* ─── En-tête de page UO (breadcrumb + titre) ─── */
+.uo-page-path {
+    font-size: 0.82rem;
+    color: var(--text-light);
+    margin: 0 0 0.2rem;
+    font-weight: 500;
+}
+
+.uo-page-title {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--dark-choc);
+    margin: 0 0 1.25rem;
+}
+
+/* ─── Onglets de contenu UO (Utilisateurs / Documents / Projets) ─── */
+.uo-tabs {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: fit-content;
+    max-width: 100%;
+    gap: 0.35rem;
+    padding: 0.5rem 0.8rem;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.55), rgba(253, 248, 243, 0.32));
+    backdrop-filter: blur(26px) saturate(180%);
+    -webkit-backdrop-filter: blur(26px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    border-radius: 999px;
+    box-shadow:
+        0 8px 28px rgba(44, 26, 14, 0.10),
+        inset 0 1px 0 rgba(255, 255, 255, 0.8),
+        inset 0 -1px 0 rgba(232, 217, 197, 0.35);
+    margin: 0 auto 1.75rem auto;
+}
+
+.uo-tab {
+    border: none;
+    background: transparent;
+    padding: 0.62rem 1.9rem;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.86rem;
+    font-weight: 500;
+    letter-spacing: 0.1px;
+    color: var(--text-light);
+    border-radius: 999px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background var(--transition), color var(--transition), box-shadow var(--transition);
+}
+
+.uo-tab:hover:not(.active) {
+    background: rgba(255, 255, 255, 0.55);
+    color: var(--dark-choc);
+}
+
+.uo-tab.active {
+    background: linear-gradient(135deg, var(--dark-choc), var(--dark-mid));
+    color: var(--white-choc);
+    font-weight: 600;
+    box-shadow:
+        0 3px 10px rgba(44, 26, 14, 0.28),
+        inset 0 1px 0 rgba(253, 248, 243, 0.18);
+}
+
+@media (max-width: 900px) {
+    .uo-tabs { gap: 0.25rem; padding: 0.4rem 0.5rem; }
+    .uo-tab  { padding: 0.55rem 1rem; font-size: 0.8rem; }
+}
+
+/* ─── Stub "Projets" (fonctionnalité à venir) ─── */
+.uo-projets-stub {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3.5rem 1rem;
+    color: var(--text-light);
+    font-size: 0.9rem;
+    background: var(--white-choc);
+    border: 1.5px dashed var(--border);
+    border-radius: var(--radius-sm);
+}
+
+/* ─── Bouton "+" (ajouter une UO enfant) dans l'arbre ─── */
+.uo-tree-add-btn {
+    width: 1.15rem;
+    height: 1.15rem;
+    min-width: 1.15rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: auto;
+    border: none;
+    border-radius: 50%;
+    background: rgba(253,248,243,0.08);
+    color: rgba(253,248,243,0.5);
+    font-size: 0.85rem;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0;
+    transition: background var(--transition), color var(--transition), opacity var(--transition);
+}
+
+.uo-tree-node:hover .uo-tree-add-btn,
+.uo-tree-node.active .uo-tree-add-btn {
+    opacity: 1;
+}
+
+.uo-tree-add-btn:hover {
+    background: var(--accent);
+    color: var(--dark-choc);
+}
+/* ─── Boutons d'action dans le contenu (Créer un utilisateur / type de doc / projet) ───
+   .sidebar-btn est pensé pour la sidebar sombre (texte clair) : illisible sur le
+   fond crème. On le redéfinit uniquement à l'intérieur de .main-content. */
+.main-content .main-header {
+    display: flex;
+    justify-content: flex-start;
+    margin-bottom: 0.9rem;
+}
+
+.main-content .sidebar-btn {
+    width: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    padding: 0.62rem 1.5rem;
+    background: linear-gradient(135deg, rgba(44, 26, 14, 0.92), rgba(61, 37, 18, 0.85));
+    backdrop-filter: blur(16px) saturate(160%);
+    -webkit-backdrop-filter: blur(16px) saturate(160%);
+    border: 1px solid rgba(253, 248, 243, 0.18);
+    border-radius: 999px;
+    box-shadow:
+        0 4px 14px rgba(44, 26, 14, 0.22),
+        inset 0 1px 0 rgba(253, 248, 243, 0.22);
+    color: var(--white-choc);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.86rem;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    text-align: center;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background var(--transition), box-shadow var(--transition), transform var(--transition);
+}
+
+.main-content .sidebar-btn:hover {
+    background: linear-gradient(135deg, rgba(61, 37, 18, 0.96), rgba(92, 61, 46, 0.9));
+    color: var(--white-choc);
+    transform: translateY(-1px);
+    box-shadow:
+        0 6px 18px rgba(44, 26, 14, 0.28),
+        inset 0 1px 0 rgba(253, 248, 243, 0.28);
+}
+
+.main-content .sidebar-btn:active {
+    transform: translateY(0);
+    box-shadow:
+        0 2px 8px rgba(44, 26, 14, 0.24),
+        inset 0 1px 0 rgba(253, 248, 243, 0.18);
+}
+
+/* Le header du panneau Projets aligne son bouton à droite : on le ramène à gauche
+   pour rester cohérent avec les autres onglets. */
+.main-content .projets-panel-header {
+    justify-content: flex-start;
+    margin-bottom: 0.9rem;
+}

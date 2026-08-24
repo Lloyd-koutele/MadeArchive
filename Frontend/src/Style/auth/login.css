@@ -1,0 +1,208 @@
+/* ─── Login ─── */
+.login-container {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+}
+
+.login-card {
+    background: rgba(253, 248, 243, 0.92);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 2.5rem 2.25rem;
+    width: 100%;
+    max-width: 420px;
+    box-shadow: var(--shadow-lg);
+}
+
+/* Header */
+.login-header {
+    margin-bottom: 2rem;
+    text-align: center;
+}
+
+.login-title {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--dark-choc);
+    letter-spacing: 0.3px;
+    margin-bottom: 0.4rem;
+}
+
+.login-subtitle {
+    font-size: 0.875rem;
+    color: var(--text-light);
+    font-weight: 400;
+    line-height: 1.5;
+}
+
+/* Error */
+.error-message {
+    padding: 0.65rem 1rem;
+    background: rgba(155, 58, 58, 0.1);
+    color: var(--error);
+    border: 1px solid rgba(155, 58, 58, 0.2);
+    border-radius: var(--radius-sm);
+    font-size: 0.85rem;
+    font-weight: 500;
+    margin-bottom: 1.25rem;
+    text-align: center;
+}
+
+/* Form */
+.login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+/* Champ flottant */
+.field {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+.field-input {
+    width: 100%;
+    padding: 1.1rem 0.9rem 0.35rem;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--cream);
+    color: var(--dark-choc);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
+}
+
+.field-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(139, 94, 60, 0.12);
+    background: var(--white-choc);
+}
+
+.field-input:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.field label {
+    position: absolute;
+    left: 0.9rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.88rem;
+    color: var(--text-light);
+    pointer-events: none;
+    transition: all 0.15s ease;
+}
+
+.field-input:focus ~ label,
+.field-input:not(:placeholder-shown) ~ label {
+    top: 0.38rem;
+    font-size: 0.72rem;
+    color: var(--accent);
+    transform: none;
+}
+
+/* Password toggle */
+.password-toggle {
+    position: absolute;
+    right: 0.8rem;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: var(--text-light);
+    cursor: pointer;
+    font-size: 0.95rem;
+    padding: 0.2rem;
+    display: flex;
+    align-items: center;
+    transition: color var(--transition);
+}
+
+.password-toggle:hover { color: var(--dark-choc); }
+.password-toggle:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Buttons container */
+.container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    margin-top: 0.5rem;
+}
+
+.login-button {
+    width: 100%;
+    padding: 0.75rem;
+    background: var(--dark-choc);
+    color: var(--white-choc);
+    border: none;
+    border-radius: var(--radius-sm);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.92rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background var(--transition), box-shadow var(--transition);
+    letter-spacing: 0.2px;
+}
+
+.login-button:hover:not(:disabled) {
+    background: var(--dark-mid);
+    box-shadow: 0 0 0 3px rgba(44, 26, 14, 0.12);
+}
+
+.login-button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.button-retour {
+    width: 100%;
+    padding: 0.7rem;
+    background: var(--white-choc);
+    color: var(--dark-soft);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.88rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background var(--transition), border-color var(--transition);
+}
+
+.button-retour:hover {
+    background: var(--cream);
+    border-color: var(--accent);
+}
+
+/* Fix autofill navigateur */
+.field-input:-webkit-autofill,
+.field-input:-webkit-autofill:hover,
+.field-input:-webkit-autofill:focus {
+    -webkit-box-shadow: 0 0 0px 1000px var(--cream) inset;
+    -webkit-text-fill-color: var(--dark-choc);
+    transition: background-color 5000s ease-in-out 0s;
+}
+
+/* Fix label flottant quand autofill */
+.field-input:-webkit-autofill ~ label {
+    top: 0.38rem;
+    font-size: 0.72rem;
+    color: var(--accent);
+    transform: none;
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+    .login-card {
+        padding: 2rem 1.5rem;
+    }
+}

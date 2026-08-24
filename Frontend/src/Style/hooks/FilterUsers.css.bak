@@ -1,0 +1,224 @@
+/* ─── FilterUsers ─── */
+.filter-bar {
+    background: var(--white-choc);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem 1.4rem;
+    margin-bottom: 1.1rem;
+    box-shadow: var(--shadow-sm);
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+/* Ligne des inputs texte */
+.filter-inputs-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.75rem;
+}
+
+.filter-input {
+    padding: 0.6rem 0.85rem;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--cream);
+    color: var(--dark-choc);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.875rem;
+    outline: none;
+    transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
+    width: 100%;
+}
+
+.filter-input::placeholder {
+    color: var(--text-light);
+    font-size: 0.85rem;
+}
+
+.filter-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(139, 94, 60, 0.1);
+    background: var(--white-choc);
+}
+
+/* Ligne rôles + reset */
+.filter-bottom-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+/* Rôles */
+.filter-roles-container {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.filter-roles-label {
+    font-size: 0.78rem;
+    color: var(--text-light);
+    font-weight: 500;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    margin-right: 0.25rem;
+    white-space: nowrap;
+}
+
+/* Badge rôle */
+.filter-role-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.38rem 0.9rem;
+    border-radius: 20px;
+    border: 1.5px solid var(--border);
+    background: var(--cream);
+    color: var(--dark-soft);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+    transition: background var(--transition), border-color var(--transition), color var(--transition), box-shadow var(--transition);
+    white-space: nowrap;
+}
+
+.filter-role-badge:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--white-choc);
+}
+
+/* Badge sélectionné */
+.filter-role-badge.active {
+    background: var(--dark-choc);
+    border-color: var(--dark-choc);
+    color: var(--white-choc);
+    box-shadow: 0 2px 6px rgba(44, 26, 14, 0.2);
+}
+
+.filter-role-badge.active:hover {
+    background: var(--dark-mid);
+    border-color: var(--dark-mid);
+    color: var(--white-choc);
+}
+
+/* Cache la checkbox native */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0,0,0,0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* Bouton reset */
+.filter-reset-btn {
+    padding: 0.45rem 1.1rem;
+    background: var(--white-choc);
+    color: var(--dark-soft);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.83rem;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+
+.filter-reset-btn:hover {
+    background: var(--cream);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+/* ─── Pagination ─── */
+.pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    margin-top: 1.25rem;
+    padding: 0.5rem 0;
+    flex-wrap: wrap;
+}
+
+.pagination-btn {
+    min-width: 34px;
+    height: 34px;
+    padding: 0 0.55rem;
+    border-radius: var(--radius-sm);
+    border: 1.5px solid var(--border);
+    background: var(--white-choc);
+    color: var(--dark-choc);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background var(--transition), border-color var(--transition), color var(--transition), box-shadow var(--transition);
+}
+
+.pagination-btn:hover:not(:disabled) {
+    background: var(--cream);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.pagination-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.pagination-active {
+    background: var(--dark-choc);
+    color: var(--white-choc);
+    border-color: var(--dark-choc);
+    box-shadow: 0 2px 6px rgba(44, 26, 14, 0.2);
+}
+
+.pagination-active:hover {
+    background: var(--dark-mid) !important;
+    border-color: var(--dark-mid) !important;
+    color: var(--white-choc) !important;
+}
+
+.pagination-nav {
+    font-size: 1rem;
+    color: var(--text-light);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .filter-inputs-row {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media (max-width: 480px) {
+    .filter-inputs-row {
+        grid-template-columns: 1fr;
+    }
+
+    .filter-bottom-row {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .filter-reset-btn {
+        width: 100%;
+        text-align: center;
+    }
+}

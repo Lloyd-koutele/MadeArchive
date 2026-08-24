@@ -1,0 +1,72 @@
+.version-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    margin-left: 0.4rem;
+    white-space: nowrap;
+}
+
+.version-badge-final {
+    background: rgba(58, 125, 58, 0.12);
+    color: #2f6b2f;
+}
+
+.version-badge-old {
+    background: rgba(139, 94, 60, 0.12);
+    color: var(--accent, #8B5E3C);
+}
+
+.version-history {
+    margin-top: 1rem;
+    padding-top: 0.85rem;
+    border-top: 1px solid rgba(44, 26, 14, 0.1);
+}
+
+.version-history-title {
+    margin: 0 0 0.5rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.version-history-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.version-history-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.6rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    background: none;
+    border: none;
+    text-align: left;
+    cursor: pointer;
+    width: 100%;
+}
+
+.version-history-item:hover {
+    background: rgba(139, 94, 60, 0.08);
+}
+
+.version-history-item-current {
+    background: rgba(58, 125, 58, 0.06);
+    font-weight: 600;
+}
+
+.version-history-meta {
+    color: rgba(44, 26, 14, 0.55);
+    font-size: 0.72rem;
+}

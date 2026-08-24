@@ -1,0 +1,29 @@
+/* ─── Panneau "Documents archivés" (Admin / Admin_UO) ─── */
+
+.doc-titre-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+/* Étiquette d'accès — même langage visuel que .doc-access-tag côté User/Editor */
+.doc-access-tag {
+    display: inline-block;
+    width: fit-content;
+    padding: 0.15rem 0.55rem;
+    border-radius: 12px;
+    font-size: 0.72rem;
+    font-weight: 600;
+}
+
+.doc-access-tag.prive {
+    background: rgba(139, 94, 60, 0.1);
+    color: var(--accent);
+    border: 1px solid rgba(139, 94, 60, 0.2);
+}
+
+.doc-access-tag.public {
+    background: rgba(74, 124, 89, 0.1);
+    color: var(--success);
+    border: 1px solid rgba(74, 124, 89, 0.2);
+}
