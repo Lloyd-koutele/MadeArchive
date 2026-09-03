@@ -1,5 +1,6 @@
 package made.archive.integration;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
@@ -206,6 +207,12 @@ class DocumentExportIntegrationTest
     {
         GroupeAccess groupe = new GroupeAccess();
         groupe.setMembres(membres);
+        // NOT NULL en base mais sans annotation Bean Validation (@NotNull) —
+        // ne remonte donc pas en ConstraintViolationException comme les
+        // autres oublis (User.telephone, TypeDocument.user) mais directement
+        // en DataIntegrityViolationException au flush SQL. Repéré via ce
+        // deuxième run CI (voir 5.10.3).
+        groupe.setCreateAt(LocalDate.now());
         return groupe;
     }
 
