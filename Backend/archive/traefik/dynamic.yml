@@ -1,24 +1,45 @@
-# Configuration statique du routage Traefik → "app" (fournisseur "file", pas
+# Configuration statique du routage Traefik (fournisseur "file", pas
 # "docker") — voir docker-compose.yml pour le pourquoi : le fournisseur Docker
 # de Traefik s'est avéré incompatible avec cette version de Docker Desktop
 # (400 Bad Request au démarrage, constaté en le testant directement), et un
-# seul service statique n'a de toute façon pas besoin de découverte
-# dynamique. Bénéfice en plus : Traefik n'a plus besoin d'accéder au socket
-# Docker du tout.
+# nombre de services statique et connu à l'avance n'a de toute façon pas
+# besoin de découverte dynamique. Bénéfice en plus : Traefik n'a plus besoin
+# d'accéder au socket Docker du tout.
 #
-# ⚠️ Remplacez CHANGEME.votredomaine.com par votre vrai domaine avant tout
+# Routage par CHEMIN, un seul domaine public pour le frontend et l'API :
+# /api/*  -> backend  ("app")
+# tout le reste -> frontend (React, servi par Nginx — voir Frontend/Dockerfile)
+# Le frontend est buildé avec VITE_API_URL=/api (relatif) précisément pour
+# que ce découpage fonctionne sans connaître le domaine à l'avance.
+#
+# ⚠️ Remplacez madearchive.sn par votre vrai domaine avant tout
 # déploiement — Traefik ne peut pas lire les variables de docker-compose.yml
 # (${DOMAIN}) à l'intérieur de ce fichier, c'est une limite du fournisseur
-# "file" : ce nom doit être écrit en clair ici.
+# "file" : ce nom doit être écrit en clair ici, dans LES DEUX routeurs.
 http:
   routers:
-    app:
-      rule: "Host(`CHANGEME.votredomaine.com`)"
+    api:
+      rule: "Host(`madearchive.sn`) && PathPrefix(`/api`)"
+      # Priorité explicite : Traefik calcule normalement une priorité à
+      # partir de la longueur de la règle (donc ce routeur, plus spécifique,
+      # gagnerait déjà naturellement face à "frontend" ci-dessous) — explicite
+      # ici pour ne jamais dépendre de ce calcul implicite si l'un des deux
+      # routeurs change plus tard.
+      priority: 10
       entryPoints:
         - websecure
       tls:
         certResolver: letsencrypt
       service: app
+
+    frontend:
+      rule: "Host(`madearchive.sn`)"
+      priority: 1
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      service: frontend
 
   services:
     app:
@@ -27,3 +48,11 @@ http:
           # "app" = nom du service dans docker-compose.yml, résolu via le
           # réseau Docker interne (pas besoin de connaître son IP).
           - url: "http://app:8080"
+
+    frontend:
+      loadBalancer:
+        servers:
+          # "frontend" = service Nginx (voir docker-compose.yml et
+          # Frontend/Dockerfile), écoute sur le port 80 à l'intérieur du
+          # conteneur.
+          - url: "http://frontend:80"

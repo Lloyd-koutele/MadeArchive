@@ -1,6 +1,8 @@
 // App.tsx
+import { useEffect, useState } from 'react';
 import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom';
 import Login from './auth/Login.tsx';
+import SetupWizard from './auth/SetupWizard.tsx';
 import Home from './Page/Home.tsx';
 import AdminDashboard from './Admin/AdminDahboard.tsx';
 import EditorDashboard from './Editor/EditorDasboard.tsx';
@@ -14,6 +16,7 @@ import AttestationPublique from './Page/AttestationPublique.tsx';
 import { NotificationProvider } from './notifications/NotificationProvider.tsx';
 import NotificationStack from './notifications/NotificationStack.tsx';
 import { ConfirmProvider } from './notifications/ConfirmProvider.tsx';
+import api from './services/api';
 
 // requiredRole accepte désormais un seul rôle ou une liste (any-of)
 const PrivateRoute = ({ children, requiredRole = null }) => {
@@ -82,11 +85,28 @@ const router = createBrowserRouter([
 // App principal — NotificationProvider/ConfirmProvider montés une seule fois
 // ici : une seule fenêtre de notifications et une seule modale de
 // confirmation pour toute l'application, quel que soit l'écran affiché.
+//
+// setupStatus décide QUOI afficher à l'intérieur (assistant de première
+// configuration vs application normale) — vérifié une seule fois au chargement,
+// voir controller.SetupController côté backend. Échec réseau → 'ready' plutôt
+// que de rester bloqué : mieux vaut montrer l'écran de connexion normal (qui
+// donnera sa propre erreur explicite) qu'un assistant qui ne pourrait de
+// toute façon pas non plus contacter le serveur.
 function App() {
+  const [setupStatus, setSetupStatus] = useState<'loading' | 'needs-setup' | 'ready'>('loading');
+
+  useEffect(() => {
+    api.get('/public/setup/status')
+      .then(({ data }) => setSetupStatus(data.needsSetup ? 'needs-setup' : 'ready'))
+      .catch(() => setSetupStatus('ready'));
+  }, []);
+
   return (
     <NotificationProvider>
       <ConfirmProvider>
-        <RouterProvider router={router} />
+        {setupStatus === 'loading' && <div style={{ minHeight: '100vh' }} />}
+        {setupStatus === 'needs-setup' && <SetupWizard />}
+        {setupStatus === 'ready' && <RouterProvider router={router} />}
         <NotificationStack />
       </ConfirmProvider>
     </NotificationProvider>
