@@ -1,9 +1,4 @@
 name: Tests
-
-# Voir 5.10 du mémoire — trois catégories de test, séparées par tag JUnit 5
-# (build.gradle : tasks 'test' / 'integrationTest' / 'performanceTest'), donc
-# trois jobs distincts ici avec leur propre résumé visible dans l'onglet
-# Actions et dans les checks de la pull request.
 on:
   push:
     branches: [main]
