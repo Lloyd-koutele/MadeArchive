@@ -1,0 +1,62 @@
+name: Publier les images (ghcr.io)
+
+# Déclenchement manuel uniquement (bouton "Run workflow" dans l'onglet
+# Actions) — pas à chaque push, pour garder le contrôle explicite de quand
+# une nouvelle image devient disponible pour un déploiement basé sur
+# docker-compose.yml + .env seuls (sans le code source, voir DEPLOYMENT.md).
+on:
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  # En dur, en minuscules : GHCR exige un nom d'image tout en minuscules,
+  # mais github.repository_owner reflète la casse réelle du compte
+  # ("Lloyd-koutele") — l'utiliser tel quel aurait échoué au push.
+  IMAGE_APP: ghcr.io/lloyd-koutele/madearchive-app
+  IMAGE_FRONTEND: ghcr.io/lloyd-koutele/madearchive-frontend
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Compiler le .jar backend
+        working-directory: Backend/archive
+        run: ./gradlew bootJar -x test
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build + push — backend (app)
+        uses: docker/build-push-action@v6
+        with:
+          context: Backend/archive
+          push: true
+          tags: |
+            ${{ env.IMAGE_APP }}:latest
+            ${{ env.IMAGE_APP }}:${{ github.sha }}
+
+      - name: Build + push — frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: Frontend
+          push: true
+          tags: |
+            ${{ env.IMAGE_FRONTEND }}:latest
+            ${{ env.IMAGE_FRONTEND }}:${{ github.sha }}
