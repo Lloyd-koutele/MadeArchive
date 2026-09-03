@@ -1,10 +1,34 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    ports:
+      # 5433 côté hôte (pas 5432) : le 5432 natif de la machine de dev est
+      # déjà pris par une installation PostgreSQL locale préexistante — sans
+      # impact sur l'app, qui parle à "postgres:5432" sur le réseau Docker
+      # interne, jamais via ce port publié. DBeaver/psql depuis l'hôte : 5433.
+      - "127.0.0.1:5433:5432"
+    environment:
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: madearchive
+    volumes:
+      # Volume NOMMÉ (pas anonyme, contrairement à MinIO/Meilisearch pour
+      # l'instant) : les données relationnelles doivent survivre à un
+      # "docker compose down" sans -v, aucune exception envisageable ici.
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   minio:
     image: minio/minio:latest
     container_name: minio
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
@@ -21,7 +45,7 @@ services:
     image: getmeili/meilisearch:latest
     container_name: meilisearch
     ports:
-      - "7700:7700"
+      - "127.0.0.1:7700:7700"
     environment:
       MEILI_MASTER_KEY: ${MEILI_MASTER_KEY}
     volumes:
@@ -36,7 +60,7 @@ services:
     image: ollama/ollama:latest
     container_name: ollama
     ports:
-      - "11434:11434"
+      - "127.0.0.1:11434:11434"
     volumes:
       - ollama_data:/root/.ollama # <--- VOLUME NOMMÉ : On le garde pour ne pas perdre le LLM
     entrypoint: ["/bin/sh", "-c", "ollama serve & sleep 10 && ollama pull qwen2.5-coder:7b && wait"]
@@ -55,7 +79,7 @@ services:
     image: gotenberg/gotenberg:8
     container_name: gotenberg
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
@@ -66,7 +90,7 @@ services:
     image: redis:7-alpine
     container_name: redis
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s
@@ -99,7 +123,7 @@ services:
     mem_limit: 1g
     cpus: 1.0
     ports:
-      - "3001:3000" # 3000 déjà pris par gotenberg sur l'hôte — inchangé côté conteneur/réseau interne
+      - "127.0.0.1:3001:3000" # 3000 déjà pris par gotenberg sur l'hôte — inchangé côté conteneur/réseau interne
     environment:
       # Jeton choisi par vous (pas un compte/service tiers) — protège l'accès
       # au navigateur distant. À définir dans .env, ex. CHROMIUM_TOKEN=un-secret-long-et-aleatoire
@@ -152,8 +176,22 @@ services:
       timeout: 10s
       retries: 3
 
+  frontend:
+    # Image publiée (voir .github/workflows/publish-images.yml) — ce fichier
+    # est la version "distribution" : quelqu'un qui n'a QUE docker-compose.yml
+    # + .env (pas le code source) peut faire "docker compose up -d" tel quel.
+    # docker-compose.override.yml (dev local uniquement, jamais copié seul
+    # vers un déploiement) réintroduit "build:" et prend le dessus
+    # automatiquement quand les deux fichiers sont présents côte à côte.
+    image: ghcr.io/lloyd-koutele/madearchive-frontend:latest
+    container_name: madearchive-frontend
+    # Même durcissement que "app" : pas de port publié, uniquement joignable
+    # via Traefik (routage par chemin — voir traefik/dynamic.yml : "/" vers
+    # ce service, "/api/*" vers "app", même domaine public pour les deux).
+
   app:
-    build: .
+    # Image publiée — voir le commentaire équivalent sur "frontend" ci-dessus.
+    image: ghcr.io/lloyd-koutele/madearchive-app:latest
     container_name: madearchive-app
     # Plus de port publié directement vers l'hôte : Traefik (80/443) devient
     # le seul point d'entrée public, "app" n'est joignable que sur le réseau
@@ -162,6 +200,8 @@ services:
     env_file:
       - .env
     depends_on:
+      postgres:
+        condition: service_healthy
       minio:
         condition: service_healthy
       meilisearch:
@@ -175,10 +215,27 @@ services:
       chromium:
         condition: service_healthy
     environment:
+      # Nom du service Docker "postgres" (ci-dessous), pas "localhost" — même
+      # raison que OLLAMA_BASE_URL/GOTENBERG_URL/REDIS_HOST juste en dessous :
+      # le .env garde "localhost" pour un usage natif (./gradlew bootRun hors
+      # Docker), cette surcharge ne s'applique qu'à l'intérieur du conteneur.
+      DB_URL: jdbc:postgresql://postgres:5432/madearchive
       TESSERACT_DATA_PATH: /usr/share/tessdata
       OLLAMA_BASE_URL: http://ollama:11434
       CHROMIUM_WS_ENDPOINT: ws://chromium:3000/playwright/chromium?token=${CHROMIUM_TOKEN}
-      MINIO_ENDPOINT: http://minio:9000
+      # MINIO_URL, pas MINIO_ENDPOINT : application.properties lit
+      # "minio.endpoint=${MINIO_URL}" — un mauvais nom de variable ici
+      # rendait cette surcharge totalement silencieuse (aucune erreur, juste
+      # ignorée), l'app retombait sur MINIO_URL=http://localhost:9000 du
+      # .env sans que rien ne le signale. Repéré en vérifiant chaque
+      # variable une par une contre application.properties.
+      MINIO_URL: http://minio:9000
+      # Oublié jusqu'ici — l'app utilisait encore MEILISEARCH_HOST du .env
+      # (127.0.0.1:7700, donc elle-même à l'intérieur du conteneur) : la
+      # recherche/l'indexation aurait échoué au premier document, découvert
+      # en vérifiant cette liste après coup plutôt qu'en le laissant casser
+      # au runtime.
+      MEILISEARCH_HOST: http://meilisearch:7700
       HSM_KEYSTORE_PATH: /app/hsm/editors-keystore.p12
       GOTENBERG_URL: http://gotenberg:3000
       REDIS_HOST: redis
@@ -188,6 +245,7 @@ services:
       - hsm_data:/app/hsm # <--- VOLUME NOMMÉ : le HSM fichier doit survivre aux redéploiements
 
 volumes:
+  postgres_data:
   ollama_data:
   hsm_data:
   traefik_certs:

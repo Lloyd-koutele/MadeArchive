@@ -1,0 +1,21 @@
+# Fusionné AUTOMATIQUEMENT avec docker-compose.yml quand les deux fichiers
+# sont présents dans le même dossier (comportement natif de Docker Compose,
+# aucune option supplémentaire à passer) — c'est ce qui permet de garder :
+#   - docker-compose.yml "pur" : image: ghcr.io/... (la version distribuée,
+#     utilisable par quelqu'un qui n'a QUE ce fichier + .env, sans le code
+#     source — voir DEPLOYMENT.md) ;
+#   - ce fichier : réintroduit "build:" pour un usage en développement local,
+#     où le code source est présent et où l'on veut voir ses changements
+#     sans attendre une publication d'image.
+#
+# NE PAS copier ce fichier vers un déploiement "sans code source" — son
+# seul but est le développement local sur ce dépôt.
+services:
+  frontend:
+    build:
+      context: ../../Frontend
+      args:
+        VITE_API_URL: /api
+
+  app:
+    build: .
