@@ -41,12 +41,20 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # QEMU : émule arm64 sur ce runner amd64, pour construire les DEUX
+      # architectures dans la même image publiée — nécessaire pour qu'une VM
+      # Apple Silicon (Multipass sur Mac M1/M2/M3, arm64 nativement) puisse
+      # la tirer aussi bien qu'un VPS x86 classique. Sans ça : "no matching
+      # manifest for linux/arm64/v8", constaté en testant sur une VM Multipass.
+      - uses: docker/setup-qemu-action@v3
+
       - uses: docker/setup-buildx-action@v3
 
       - name: Build + push — backend (app)
         uses: docker/build-push-action@v6
         with:
           context: Backend/archive
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: |
             ${{ env.IMAGE_APP }}:latest
@@ -56,6 +64,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: Frontend
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: |
             ${{ env.IMAGE_FRONTEND }}:latest
