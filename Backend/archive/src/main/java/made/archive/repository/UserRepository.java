@@ -32,6 +32,12 @@ public interface UserRepository extends JpaRepository<User, UUID>
     @Query("SELECT DISTINCT u FROM User u JOIN u.roles r WHERE r.name = :roleName")
     List<User> findByRoleName(@Param("roleName") Role_Name roleName);
 
+    /** Utilisé par InitialAdminCreation/SetupService pour savoir si un admin
+     *  existe déjà — sans charger les entités User complètes (roles EAGER
+     *  compris) juste pour une vérification d'existence. */
+    @Query("SELECT COUNT(u) > 0 FROM User u JOIN u.roles r WHERE r.name = :roleName")
+    boolean existsByRoleName(@Param("roleName") Role_Name roleName);
+
     // UserRepository
     @Query("SELECT u FROM User u JOIN u.membresUniteOrganisationnelles m WHERE m.uniteOrganisationnelle.id = :uoId")
     List<User> findByUniteOrganisationnelleId(@Param("uoId") Long uoId);

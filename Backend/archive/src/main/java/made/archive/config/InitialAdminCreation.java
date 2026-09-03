@@ -10,45 +10,54 @@ import java.util.HashSet;
 import java.util.Set;
 
 import made.archive.repository.UserRepository;
-import made.archive.repository.RoleRepository; // 💡 Ne pas oublier l'import
+import made.archive.repository.RoleRepository;
 import made.archive.entite.User;
 import made.archive.entite.Role;
 import made.archive.entite.Role_Name;
 
+/**
+ * S'assure que les 4 rôles existent en base (indépendant de l'admin
+ * lui-même — nécessaire dès le premier démarrage, que l'admin soit créé ici
+ * ou via l'assistant web). Voir InitialAdminProperties pour les deux voies
+ * de configuration de l'admin initial.
+ */
 @Component
-public class InitialAdminCreation implements CommandLineRunner 
+public class InitialAdminCreation implements CommandLineRunner
 {
 
     private static final Logger logger = LoggerFactory.getLogger(InitialAdminCreation.class);
 
     private final UserRepository userRepository;
-    private final RoleRepository roleRepository; // 💡 Étape 1 : Ajouter le Repository des rôles
+    private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
+    private final InitialAdminProperties initialAdminProperties;
 
-    // 💡 Étape 2 : L'ajouter au constructeur pour l'injection Spring
-    public InitialAdminCreation(UserRepository userRepository, RoleRepository roleRepository, PasswordEncoder passwordEncoder) 
+    public InitialAdminCreation(UserRepository userRepository, RoleRepository roleRepository,
+                                 PasswordEncoder passwordEncoder, InitialAdminProperties initialAdminProperties)
     {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.passwordEncoder = passwordEncoder;
+        this.initialAdminProperties = initialAdminProperties;
     }
 
     @Override
-    public void run(String... args) 
+    public void run(String... args)
     {
-        try 
+        try
         {
-            createInitialAdminIfNeeded();
+            creerRolesSiNecessaire();
+            creerAdminInitialSiConfigure();
         }
-         catch (Exception e) 
+        catch (Exception e)
         {
-            logger.error("Erreur lors de la création de l'administrateur initial", e);
+            logger.error("Erreur lors de l'initialisation des rôles/de l'administrateur initial", e);
         }
     }
 
-    private void createInitialAdminIfNeeded() 
+    private void creerRolesSiNecessaire()
     {
-        for (Role_Name roleName : Role_Name.values()) 
+        for (Role_Name roleName : Role_Name.values())
         {
             if (roleRepository.findByName(roleName).isEmpty())
             {
@@ -57,43 +66,64 @@ public class InitialAdminCreation implements CommandLineRunner
                 roleRepository.save(newRole);
                 logger.info("Rôle créé en base : " + roleName);
             }
-       }
-        String adminEmail = "koutelemarvinlloyd@gmail.com";
-
-        if (userRepository.findByEmail(adminEmail).isEmpty()) 
-        {
-            User admin = new User(); 
-            admin.setNom("Marvin");
-            admin.setPrenom("Lloyd");
-            admin.setEmail(adminEmail);
-            admin.setPassword(passwordEncoder.encode("Marvic&21"));
-            admin.setTelephone("778370157");
-            admin.setActif(true);
-
-            // 💡 Étape 3 : Récupérer le rôle existant ou le créer proprement en base s'il est absent
-            Role adminRole = roleRepository.findByName(Role_Name.ADMIN)
-                .orElseGet(() -> {
-                    Role newRole = new Role();
-                    newRole.setName(Role_Name.ADMIN);
-                    return roleRepository.save(newRole); // Sauvegardé en BDD -> il a maintenant un ID !
-                });
-            
-            Set<Role> roles = new HashSet<>();
-            roles.add(adminRole);
-            admin.setRoles(roles);
-
-            // 💡 Étape 4 : Maintenant, la sauvegarde de l'user fonctionnera parfaitement !
-            userRepository.save(admin);
-            
-            logger.info("Administrateur initial créé avec succès\n"
-                    + "Le login est : koutelemarvinlloyd@gmail.com\n"
-                    + "Le mot de passe est : Marvic&21");
-        } 
-        else 
-        {
-            logger.info("L'administrateur initial existe déjà\n"
-                    + "Le login est : koutelemarvinlloyd@gmail.com\n"
-                    + "Le mot de passe est : Marvic&21");
         }
+    }
+
+    private void creerAdminInitialSiConfigure()
+    {
+        if (userRepository.existsByRoleName(Role_Name.ADMIN))
+        {
+            // Un admin existe déjà (créé lors d'un démarrage précédent, ou via
+            // l'assistant web) — rien à faire, dans les deux voies de config.
+            return;
+        }
+
+        if (!initialAdminProperties.estConfigure())
+        {
+            // Voie interactive : aucun admin, et rien configuré via .env —
+            // l'application démarre volontairement SANS administrateur.
+            // L'assistant de première configuration (GET/POST
+            // /api/public/setup) prend le relais au premier accès au frontend.
+            logger.info("Aucun admin initial configuré (INITIAL_ADMIN_EMAIL/PASSWORD absents) — "
+                + "utilisez l'assistant de première configuration à l'accueil de l'application.");
+            return;
+        }
+
+        // Voie automatisée : email/mot de passe fournis via .env.
+        String adminEmail = initialAdminProperties.getEmail();
+
+        if (userRepository.findByEmail(adminEmail).isPresent())
+        {
+            logger.info("L'administrateur initial ({}) existe déjà.", adminEmail);
+            return;
+        }
+
+        User admin = new User();
+        admin.setNom(valeurOuDefaut(initialAdminProperties.getNom(), "Admin"));
+        admin.setPrenom(valeurOuDefaut(initialAdminProperties.getPrenom(), "Principal"));
+        admin.setEmail(adminEmail);
+        admin.setPassword(passwordEncoder.encode(initialAdminProperties.getPassword()));
+        admin.setTelephone(valeurOuDefaut(initialAdminProperties.getTelephone(), "00000000"));
+        admin.setActif(true);
+
+        Role adminRole = roleRepository.findByName(Role_Name.ADMIN)
+            .orElseGet(() -> {
+                Role newRole = new Role();
+                newRole.setName(Role_Name.ADMIN);
+                return roleRepository.save(newRole);
+            });
+
+        Set<Role> roles = new HashSet<>();
+        roles.add(adminRole);
+        admin.setRoles(roles);
+
+        userRepository.save(admin);
+
+        logger.info("Administrateur initial créé avec succès (voie automatisée, .env) : {}", adminEmail);
+    }
+
+    private String valeurOuDefaut(String valeur, String defaut)
+    {
+        return (valeur != null && !valeur.isBlank()) ? valeur : defaut;
     }
 }

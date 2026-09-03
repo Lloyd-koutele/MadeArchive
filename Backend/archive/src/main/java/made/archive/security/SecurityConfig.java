@@ -23,19 +23,22 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 
+import made.archive.config.AppProperties;
 import made.archive.repository.UserRepository;
 
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity(securedEnabled = true)
-public class SecurityConfig 
+public class SecurityConfig
 {
 
     private final JwtService jwtService;
+    private final AppProperties appProperties;
 
-    public SecurityConfig(JwtService jwtService) 
+    public SecurityConfig(JwtService jwtService, AppProperties appProperties)
     {
         this.jwtService = jwtService;
+        this.appProperties = appProperties;
     }
 
     /*
@@ -62,10 +65,23 @@ public class SecurityConfig
                 // API REST + JWT → CSRF off
                 .csrf(csrf -> csrf.disable())
 
-                // CORS
+                // CORS — seule source de vérité (voir made.archive.config.AppProperties) :
+                // une seconde configuration CORS existait en parallèle
+                // (made.archive.config.CorsConfig, supprimée), en dur sur
+                // localhost:5173 uniquement — c'est CELLE-CI, consultée par la
+                // chaîne de filtres Spring Security, qui décide réellement,
+                // pas l'autre. Un frontend servi ailleurs (Traefik, domaine
+                // réel) se faisait rejeter en 403 malgré la correction de
+                // l'autre config — bug découvert en dockerisant le frontend.
                 .cors(cors -> cors.configurationSource(request -> {
                     CorsConfiguration config = new CorsConfiguration();
-                    config.setAllowedOrigins(Arrays.asList("http://localhost:5173"));
+                    java.util.List<String> origines = new java.util.ArrayList<>(Arrays.asList(
+                            "http://localhost:5173", "http://localhost:3000"));
+                    if (appProperties.getFrontendUrl() != null && !appProperties.getFrontendUrl().isBlank())
+                    {
+                        origines.add(appProperties.getFrontendUrl());
+                    }
+                    config.setAllowedOrigins(origines);
                     config.setAllowedMethods(Arrays.asList(
                             "GET", "POST", "PUT", "DELETE", "OPTIONS"));
                     config.setAllowedHeaders(Arrays.asList("*"));
