@@ -115,7 +115,7 @@ class DocumentExportIntegrationTest
         User admin = userRepository.save(nouvelUtilisateur("admin@test.local", roleAdmin));
         User autreEditeur = userRepository.save(nouvelUtilisateur("autre@test.local", roleEditor));
 
-        TypeDocument type = typeDocumentRepository.save(nouveauTypeDocument(uo1));
+        TypeDocument type = typeDocumentRepository.save(nouveauTypeDocument(uo1, admin));
 
         GroupeAccess groupePrive = groupeAccessRepository.save(nouveauGroupe(List.of(autreEditeur)));
 
@@ -178,18 +178,27 @@ class DocumentExportIntegrationTest
         u.setEmail(email);
         u.setPassword("hash-de-test");
         u.setActif(true);
+        // @NotBlank ET unique sur User.telephone — oublié à l'écriture initiale
+        // de cette fixture, cause réelle d'un ConstraintViolationException
+        // détecté en CI (voir 5.10.3) : dérivé de l'email pour rester unique
+        // sans dépendre de l'ordre d'appel.
+        u.setTelephone("+221" + Math.abs(email.hashCode() % 100000000));
         Set<Role> roles = new HashSet<>();
         roles.add(role);
         u.setRoles(roles);
         return u;
     }
 
-    private TypeDocument nouveauTypeDocument(UniteOrganisationnelle uo)
+    private TypeDocument nouveauTypeDocument(UniteOrganisationnelle uo, User createur)
     {
         TypeDocument type = new TypeDocument();
         type.setNom("Type de test");
-        type.setRetention(new Retention(null, 10L, 0L, null));
+        // Retention.createAt est @NotNull — l'initialisateur par défaut du champ
+        // (LocalDateTime.now()) est écrasé par ce constructeur @AllArgsConstructor
+        // dès qu'on lui passe explicitement 4 arguments, null y compris.
+        type.setRetention(new Retention(null, 10L, 0L, LocalDateTime.now()));
         type.setUniteOrganisationnelle(uo);
+        type.setUser(createur); // @NotNull — oublié à l'écriture initiale, voir 5.10.3
         return type;
     }
 
