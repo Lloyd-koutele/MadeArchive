@@ -1,0 +1,29 @@
+# Configuration statique du routage Traefik → "app" (fournisseur "file", pas
+# "docker") — voir docker-compose.yml pour le pourquoi : le fournisseur Docker
+# de Traefik s'est avéré incompatible avec cette version de Docker Desktop
+# (400 Bad Request au démarrage, constaté en le testant directement), et un
+# seul service statique n'a de toute façon pas besoin de découverte
+# dynamique. Bénéfice en plus : Traefik n'a plus besoin d'accéder au socket
+# Docker du tout.
+#
+# ⚠️ Remplacez CHANGEME.votredomaine.com par votre vrai domaine avant tout
+# déploiement — Traefik ne peut pas lire les variables de docker-compose.yml
+# (${DOMAIN}) à l'intérieur de ce fichier, c'est une limite du fournisseur
+# "file" : ce nom doit être écrit en clair ici.
+http:
+  routers:
+    app:
+      rule: "Host(`CHANGEME.votredomaine.com`)"
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      service: app
+
+  services:
+    app:
+      loadBalancer:
+        servers:
+          # "app" = nom du service dans docker-compose.yml, résolu via le
+          # réseau Docker interne (pas besoin de connaître son IP).
+          - url: "http://app:8080"

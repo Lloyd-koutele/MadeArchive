@@ -4,7 +4,8 @@ import {
 } from '../services/document/GroupeService';
 
 import type { MembreDto } from '../services/document/GroupeService';
-import Confirme from '../Page/Confirme';
+import { useNotify } from '../notifications/NotificationProvider';
+import { useConfirm } from '../notifications/ConfirmProvider';
 import '../Style/Editor/Editor.css';
 
 interface GestionGroupeProps {
@@ -14,28 +15,19 @@ interface GestionGroupeProps {
 }
 
 function GestionGroupe({ documentId, documentTitre, onClose }: GestionGroupeProps) {
+    const notify = useNotify();
+    const confirm = useConfirm();
     const [membres, setMembres] = useState<MembreDto[]>([]);
     const [uploadeurId, setUploadeurId] = useState('');
     const [peutGerer, setPeutGerer] = useState(false);
     const [disponibles, setDisponibles] = useState<MembreDto[]>([]);
     const [selectedToAdd, setSelectedToAdd] = useState('');
     const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
-    const [confirmOpen, setConfirmOpen] = useState(false);
-    const [membreToRemove, setMembreToRemove] = useState<MembreDto | null>(null);
 
     useEffect(() => {
         loadAll();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [documentId]);
-
-    useEffect(() => {
-        if (error || success) {
-            const t = setTimeout(() => { setError(''); setSuccess(''); }, 3000);
-            return () => clearTimeout(t);
-        }
-    }, [error, success]);
 
     const loadAll = async () => {
         setIsLoading(true);
@@ -57,7 +49,7 @@ function GestionGroupe({ documentId, documentTitre, onClose }: GestionGroupeProp
                 setDisponibles([]);
             }
         } catch (err: any) {
-            setError(err.message || "Erreur chargement du groupe");
+            notify.error(err.message || "Erreur chargement du groupe");
         } finally {
             setIsLoading(false);
         }
@@ -67,24 +59,22 @@ function GestionGroupe({ documentId, documentTitre, onClose }: GestionGroupeProp
         if (!selectedToAdd) return;
         try {
             await ajouterMembre(documentId, selectedToAdd);
-            setSuccess("Membre ajouté avec succès");
+            notify.success("Membre ajouté avec succès");
             setSelectedToAdd('');
             await loadAll();
         } catch (err: any) {
-            setError(err.message || "Erreur lors de l'ajout");
+            notify.error(err.message || "Erreur lors de l'ajout");
         }
     };
 
-    const handleRetirer = async () => {
-        if (!membreToRemove) return;
+    const handleRetirer = async (membre: MembreDto) => {
+        if (!(await confirm(`Retirer ${membre.prenom} ${membre.nom} du groupe ?`))) return;
         try {
-            await retirerMembre(documentId, membreToRemove.id);
-            setSuccess(`${membreToRemove.prenom} ${membreToRemove.nom} retiré du groupe`);
-            setMembreToRemove(null);
-            setConfirmOpen(false);
+            await retirerMembre(documentId, membre.id);
+            notify.success(`${membre.prenom} ${membre.nom} retiré du groupe`);
             await loadAll();
         } catch (err: any) {
-            setError(err.message || "Erreur lors du retrait");
+            notify.error(err.message || "Erreur lors du retrait");
         }
     };
 
@@ -92,9 +82,6 @@ function GestionGroupe({ documentId, documentTitre, onClose }: GestionGroupeProp
 
     return (
         <div className="groupe-wrapper">
-            {error && <div className="up-alert up-alert-error">{error}</div>}
-            {success && <div className="up-alert up-alert-success">{success}</div>}
-
             <p className="groupe-doc-titre">
                 <i className="fa-solid fa-file-shield"></i> {documentTitre}
             </p>
@@ -131,7 +118,7 @@ function GestionGroupe({ documentId, documentTitre, onClose }: GestionGroupeProp
                                 {peutGerer && m.id !== uploadeurId && (
                                     <button
                                         className="td-delete-btn"
-                                        onClick={() => { setMembreToRemove(m); setConfirmOpen(true); }}
+                                        onClick={() => handleRetirer(m)}
                                     >
                                         Retirer
                                     </button>
@@ -170,13 +157,6 @@ function GestionGroupe({ documentId, documentTitre, onClose }: GestionGroupeProp
                     </div>
                 </div>
             )}
-
-            <Confirme
-                isOpen={confirmOpen}
-                message={`Retirer ${membreToRemove?.prenom} ${membreToRemove?.nom} du groupe ?`}
-                onConfirm={handleRetirer}
-                onCancel={() => { setConfirmOpen(false); setMembreToRemove(null); }}
-            />
         </div>
     );
 }

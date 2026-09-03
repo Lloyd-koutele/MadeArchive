@@ -79,13 +79,14 @@ public class DocumentUploadeService
     private final HsmKeyStoreService               hsmKeyStoreService;
     private final UniteOrganisationnelleService    uniteOrganisationnelleService;
     private final DocumentEncryptionService        documentEncryptionService;
-    private final OllamaService                    ollamaService;       // ✅ Ajouté pour Phase 2
     private final ProjetRepository                 projetRepository;
     private final NotificationService              notificationService;
     private final PlatformTransactionManager       transactionManager;
     private final AuditLogService                  auditLogService;
     private final DocumentRetentionService         documentRetentionService;
     private final made.archive.service.organisation.PhysicalLocationService physicalLocationService;
+    private final RegexGenerationService                                    regexGenerationService;
+    private final HorodatageService                                        horodatageService;
 
     private TransactionTemplate transactionTemplate;
 
@@ -327,15 +328,11 @@ public class DocumentUploadeService
                         groupe = null;
                         if (accessFinal == TypeAccess.PRIVE)
                         {
-                            String groupeNom = request.getDocumentUploadDto().getGroupeNom();
-                            if (groupeNom == null || groupeNom.isBlank())
-                            {
-                                throw new BusinessException(
-                                    "Le nom du groupe est obligatoire pour un document privé");
-                            }
-
+                            // Pas de nom — un GroupeAccess n'est identifié que
+                            // par son id, jamais affiché ni utilisé nulle part
+                            // (voir GestionGroupe.tsx : seuls les MEMBRES sont
+                            // montrés, jamais un nom de groupe).
                             GroupeAccess g = new GroupeAccess();
-                            g.setNom(groupeNom);
                             g.setCreateAt(LocalDate.now());
 
                             List<User> membres = new ArrayList<>();
@@ -364,6 +361,10 @@ public class DocumentUploadeService
                     document.setOriginalSha256(sessionData.originalSha256);
                     document.setStorageKey(pdfAStorageKey);
                     document.setPkiSignature(signature);
+                    // horodatageToken/-Date restent null ici — l'horodatage se
+                    // fait APRÈS l'enregistrement, en tâche de fond (voir
+                    // l'appel à horodatageService.horodaterApresUpload plus
+                    // bas, même principe que la génération de regex).
                     document.setRetentionUntil(retentionUntil);
                     document.setCreateAt(LocalDateTime.now());
                     document.setVersion(nouvelleVersion);
@@ -463,24 +464,73 @@ public class DocumentUploadeService
                     savedDocument.getId(), e.getMessage());
             }
 
-            // ── 11. GÉNÉRATION REGEX si premier document du type ────────────────
-            // Hors transaction (appel Ollama, potentiellement lent) et
-            // best-effort : un échec ici ne doit jamais faire perdre le
-            // document déjà archivé et signé avec succès juste au-dessus.
+            // ── 11. GÉNÉRATION ou CORRECTION des regex ──────────────────────────
+            // Asynchrone (voir RegexGenerationService) : hors transaction, hors
+            // requête HTTP — le document est déjà archivé et signé juste
+            // au-dessus, cet appel Ollama (jusqu'à ~1 minute) ne doit plus
+            // jamais faire attendre le client, qui n'en a de toute façon pas
+            // besoin pour CE document (seulement pour les FUTURS documents du
+            // même type). Le déclenchement lui-même reste rapide (pas d'appel
+            // réseau ici) ; toute erreur pendant la génération elle-même est
+            // gérée à l'intérieur de RegexGenerationService.
             //
             // La combinaison "texte OCR + valeur connue" permet à Qwen de localiser
             // précisément le pattern au lieu d'inférer un pattern générique.
+            //
+            // Premier document du type → génération complète. Documents suivants
+            // → correction ciblée uniquement des champs dont la suggestion
+            // affichée divergeait de la valeur que l'utilisateur vient de
+            // confirmer (voir RegexGenerationService.corrigerSiDivergence) : la
+            // regex s'améliore avec l'usage au lieu de rester figée sur le tout
+            // premier document, sans jamais retoucher un champ qui marche déjà.
             try
             {
-                generateRegexIfFirstDocument(
-                    savedDocument,
-                    sessionData,
-                    request.getMetaDataValidated());
+                String extractedTextPourRegex = sessionData.extractedText;
+                if (extractedTextPourRegex != null && !extractedTextPourRegex.isBlank()
+                    && typeDocument.getMetaData() != null && !typeDocument.getMetaData().isEmpty())
+                {
+                    Map<String, String> fieldValues = request.getMetaDataValidated().stream()
+                        .filter(dto -> dto.getValeur() != null && !dto.getValeur().isBlank())
+                        .collect(Collectors.toMap(
+                            FinalizeUploadRequestDto.MetaDataValueDto::getNom,
+                            FinalizeUploadRequestDto.MetaDataValueDto::getValeur,
+                            (existing, replacement) -> existing));
+
+                    if (!typeDocument.hasRegexGenerated())
+                    {
+                        regexGenerationService.genererSiPremierUsage(
+                            typeDocument.getId(), extractedTextPourRegex, fieldValues);
+                    }
+                    else
+                    {
+                        regexGenerationService.corrigerSiDivergence(
+                            typeDocument.getId(), extractedTextPourRegex,
+                            sessionData.suggestions, fieldValues);
+                    }
+                }
             }
             catch (Exception e)
             {
-                log.warn("[Upload-Phase2] Génération regex (best-effort) échouée pour le type {} : {}",
+                log.warn("[Upload-Phase2] Déclenchement génération/correction regex échoué pour le type {} : {}",
                     typeDocument.getId(), e.getMessage());
+            }
+
+            // ── 11b. Horodatage RFC 3161 (TSA) ───────────────────────────────────
+            // Même principe que la génération de regex juste au-dessus :
+            // le document est déjà entièrement archivé et signé, un TSA lent
+            // ou injoignable ne doit plus jamais faire attendre le client —
+            // voir HorodatageService.horodaterApresUpload (bean séparé, @Async,
+            // recharge le document par id plutôt que de réutiliser savedDocument,
+            // même raison que RegexGenerationService : un appel this.xxx()
+            // contournerait silencieusement le proxy @Async).
+            try
+            {
+                horodatageService.horodaterApresUpload(savedDocument.getId());
+            }
+            catch (Exception e)
+            {
+                log.warn("[Upload-Phase2] Déclenchement horodatage échoué pour {} : {}",
+                    savedDocument.getId(), e.getMessage());
             }
 
             // ── 12. Enregistrement OCR + Meilisearch ────────────────────────────
@@ -632,95 +682,9 @@ public class DocumentUploadeService
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Génération regex — Phase 2
-    // ─────────────────────────────────────────────────────────────────────────
-
-    /**
-     * ✅ Déclenche la génération des regex si c'est le PREMIER document du type.
-     *
-     * Appelé après la sauvegarde des DataTypes (étape 12), ce qui garantit que
-     * les valeurs saisies par l'utilisateur sont disponibles pour enrichir le prompt.
-     *
-     * Logique :
-     *   1. Vérifier si c'est le premier document avec succès OCR pour ce type
-     *      (countSuccess == 0 car l'OcrResult n'est pas encore créé à ce stade,
-     *       il le sera à l'étape 13 via ocrService.processDocument)
-     *   2. Récupérer les MetaData sans regex
-     *   3. Construire la map nom → valeur saisie
-     *   4. Appeler OllamaService avec texte OCR + valeurs saisies
-     *   5. Persister les regex générées
-     *
-     * @param savedDocument      Document nouvellement créé
-     * @param sessionData        Données de session Phase 1 (contient extractedText)
-     * @param metaDataValidated  Valeurs saisies par l'utilisateur en Phase 2
-     */
-    // ================================================================================
-    // DocumentUploadeService.generateRegexIfFirstDocument() - UTILISER la Map
-    // ================================================================================
-    
-    /**
-     * ✅ Déclenche la génération des regex si c'est le PREMIER usage du type.
-     * 
-     * CHANGEMENT : Récupère la Map retournée par generateRegexForMetaData()
-     * et la stocke dans TypeDocument.extractionRegexJson
-     */
-    private void generateRegexIfFirstDocument(
-        Document savedDocument,
-        OcrSessionCache.OcrSessionData sessionData,
-        List<FinalizeUploadRequestDto.MetaDataValueDto> metaDataValidated)
-    {
-        String extractedText = sessionData.extractedText;
-        if (extractedText == null || extractedText.isBlank())
-        {
-            log.debug("[Regex-Phase2] Pas de texte OCR disponible → génération regex ignorée");
-            return;
-        }
-    
-        TypeDocument typeDocument = savedDocument.getTypeDocument();
-        
-        // ── NOUVELLE LOGIQUE : Vérifier le flag regexGenerated ────────────────
-        if (typeDocument.hasRegexGenerated())
-        {
-            log.debug("[Regex-Phase2] Type {} : regex déjà générées, réutilisation",
-                      typeDocument.getId());
-            return;
-        }
-    
-        List<MetaData> metaDataList = typeDocument.getMetaData();
-        if (metaDataList == null || metaDataList.isEmpty())
-        {
-            log.debug("[Regex-Phase2] Aucune métadonnée définie pour le type");
-            return;
-        }
-    
-        // ── Construire la map de TOUTES les valeurs saisies ────────────────
-        Map<String, String> fieldValues = metaDataValidated.stream()
-            .filter(dto -> dto.getValeur() != null && !dto.getValeur().isBlank())
-            .collect(Collectors.toMap(
-                FinalizeUploadRequestDto.MetaDataValueDto::getNom,
-                FinalizeUploadRequestDto.MetaDataValueDto::getValeur,
-                (existing, replacement) -> existing
-            ));
-    
-        log.info("[Regex-Phase2] PREMIÈRE UTILISATION du type {} → génération regex " +
-                 "pour {} champ(s) avec {} valeur(s) de contexte",
-                 typeDocument.getId(), metaDataList.size(), fieldValues.size());
-    
-        // ── NOUVEAU : Appeler Ollama et récupérer la Map ────────────────────
-        Map<String, String> generatedRegex = ollamaService.generateRegexForMetaData(
-            metaDataList,
-            extractedText,
-            fieldValues);  // ← Retourne une Map au lieu de modifier MetaData
-    
-        // ── Stocker les regex dans TypeDocument ──────────────────────────────
-        typeDocument.setExtractionRegexMap(generatedRegex);
-        typeDocument.setRegexGenerated(true);
-        typeDocumentRepository.save(typeDocument);
-    
-        log.info("[Regex-Phase2] ✅ {} regex générées et stockées dans TypeDocument {}",
-                 generatedRegex.size(), typeDocument.getId());
-    }
-    
+    // Génération regex — Phase 2 — voir RegexGenerationService (asynchrone,
+    // extrait de cette classe pour permettre @Async, qui repose sur un proxy
+    // AOP contourné par un auto-appel — voir sa Javadoc).
     // ─────────────────────────────────────────────────────────────────────────
     // Helpers
     // ─────────────────────────────────────────────────────────────────────────

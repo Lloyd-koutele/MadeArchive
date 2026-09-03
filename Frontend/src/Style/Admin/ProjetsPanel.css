@@ -73,6 +73,55 @@
     cursor: pointer;
 }
 
+/* ── Sélecteur de types de documents (modal création/modification) ──
+   Liste verticale filtrable plutôt que des pastilles en vrac — plus lisible
+   dès qu'une UO a plus de quelques types de document. */
+.projets-type-search {
+    width: 100%;
+    padding: 0.45rem 0.7rem;
+    margin-bottom: 0.4rem;
+    border: 1px solid rgba(44, 26, 14, 0.15);
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: 0.82rem;
+}
+
+.projets-types-list-vertical {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    max-height: 190px;
+    overflow-y: auto;
+    border: 1px solid rgba(44, 26, 14, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 0.35rem;
+}
+
+.projets-type-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.5rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background var(--transition);
+}
+
+.projets-type-row:hover { background: rgba(139, 94, 60, 0.06); }
+
+.projets-type-row input[type="checkbox"]:disabled {
+    cursor: not-allowed;
+}
+
+.projets-types-list-empty {
+    margin: 0;
+    padding: 0.5rem;
+    font-size: 0.8rem;
+    color: rgba(44, 26, 14, 0.5);
+    text-align: center;
+}
+
 .projets-create-actions {
     display: flex;
     gap: 0.6rem;
@@ -87,128 +136,11 @@
     font-size: 0.85rem;
 }
 
-/* Liste des projets */
-.projets-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-}
-
-.projets-list-item {
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-    padding: 0.75rem 1rem;
-    border: 1px solid rgba(44, 26, 14, 0.1);
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition: background var(--transition), border-color var(--transition);
-}
-
-.projets-list-item:hover {
-    background: rgba(139, 94, 60, 0.06);
-    border-color: var(--accent);
-}
-
-.projets-list-item-main {
-    display: flex;
-    flex-direction: column;
-}
-
-.projets-list-item-nom {
-    font-weight: 600;
-}
-
-.projets-list-item-desc {
-    font-size: 0.82rem;
-    color: rgba(44, 26, 14, 0.6);
-}
-
-.projets-list-item-meta {
-    font-size: 0.75rem;
-    color: rgba(44, 26, 14, 0.5);
-}
-
-/* Détail (overlay) */
-.projets-detail-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(44, 26, 14, 0.45);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 300;
-}
-
-.projets-detail-panel {
-    background: var(--white-choc);
-    color: var(--dark-choc);
-    border-radius: var(--radius-sm);
-    padding: 1.25rem;
-    width: min(480px, 90vw);
-    max-height: 85vh;
-    overflow-y: auto;
-}
-
-.projets-detail-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 0.5rem;
-}
-
-.projets-detail-header button {
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 1rem;
-    color: rgba(44, 26, 14, 0.5);
-}
-
+/* Métadonnée sous le fil d'ariane (vue "types") — description + créateur/date. */
 .projets-detail-meta {
     font-size: 0.78rem;
     color: rgba(44, 26, 14, 0.55);
 }
-
-.projets-checklist {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-}
-
-.projets-checklist li {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    font-size: 0.88rem;
-}
-
-.projets-checklist li > span:first-child {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.checklist-ok i { color: #3a7d3a; }
-.checklist-manquant i { color: rgba(44, 26, 14, 0.35); }
-
-.projets-retirer-type-btn {
-    background: none;
-    border: none;
-    color: var(--text-light);
-    cursor: pointer;
-    font-size: 0.8rem;
-    padding: 0.15rem 0.35rem;
-}
-
-.projets-retirer-type-btn:hover { color: var(--error); }
 
 /* ─── Confidentialité ─── */
 .projets-access-picker {
@@ -248,38 +180,3 @@
     border: 1px solid rgba(139, 94, 60, 0.2);
 }
 
-.projets-add-type {
-    margin-top: 0.75rem;
-}
-
-.projets-add-type p {
-    margin: 0 0 0.4rem;
-    font-size: 0.8rem;
-    color: rgba(44, 26, 14, 0.6);
-}
-
-.projets-add-type-btn {
-    background: none;
-    border: 1px dashed var(--accent);
-    color: var(--accent);
-    border-radius: 999px;
-    padding: 0.25rem 0.65rem;
-    font-size: 0.78rem;
-    cursor: pointer;
-    margin: 0 0.35rem 0.35rem 0;
-}
-
-.projets-delete-btn {
-    margin-top: 1rem;
-    background: none;
-    border: 1px solid var(--error);
-    color: var(--error);
-    border-radius: var(--radius-sm);
-    padding: 0.5rem 0.9rem;
-    font-size: 0.85rem;
-    cursor: pointer;
-}
-
-.projets-delete-btn:hover {
-    background: rgba(155, 58, 58, 0.08);
-}

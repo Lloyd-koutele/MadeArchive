@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}-meilisearch
+  namespace: {{ .Release.Namespace }}
+spec:
+  serviceName: {{ .Release.Name }}-meilisearch
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-meilisearch
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-meilisearch
+    spec:
+      containers:
+        - name: meilisearch
+          image: {{ .Values.meilisearch.image }}
+          ports:
+            - containerPort: 7700
+          env:
+            - name: MEILI_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secrets
+                  key: MEILI_MASTER_KEY
+          volumeMounts:
+            - name: data
+              mountPath: /meili_data
+          resources:
+            {{- toYaml .Values.meilisearch.resources | nindent 12 }}
+          readinessProbe:
+            httpGet: { path: /health, port: 7700 }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- if .Values.meilisearch.storageClassName }}
+        storageClassName: {{ .Values.meilisearch.storageClassName }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.meilisearch.storageSize }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-meilisearch
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    app: {{ .Release.Name }}-meilisearch
+  ports:
+    - port: 7700
+      targetPort: 7700

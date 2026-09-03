@@ -12,7 +12,6 @@ import lombok.Data;
 @Data
 public class PhysicalLocationCreateDto
 {
-    private String code;
     private String name;
     private String description;
     private boolean storagePoint;

@@ -19,6 +19,7 @@ import { getMyUO } from '../services/organisation/UOService';
 import { getEmplacementsDisponibles } from '../services/organisation/PhysicalLocationService';
 import type { PhysicalLocationDto } from '../services/organisation/PhysicalLocationService';
 import MetaDataField from './MetadaField';
+import { useNotify } from '../notifications/NotificationProvider';
 import '../Style/Editor/Editor.css';
 
 interface PrecedentDocumentInfo {
@@ -48,6 +49,7 @@ interface UploadSimpleProps {
  * → crée le Document + PKI + Meilisearch
  */
 function UploadSimple({ onsuccess, preselectedTypeId, precedentDocument }: UploadSimpleProps) { // <-- 2. Récupération de la prop
+    const notify = useNotify();
 
     // ── Données de référence ─────────────────────────────────────────────────
     const [typeDocuments, setTypeDocuments] = useState<TypeDocumentDto[]>([]);
@@ -59,7 +61,6 @@ function UploadSimple({ onsuccess, preselectedTypeId, precedentDocument }: Uploa
     const [selectedType, setSelectedType]     = useState<TypeDocumentDto | null>(null);
     const [access, setAccess]                 = useState<'PUBLIC' | 'PRIVE'>('PUBLIC');
     const [integrityLevel, setIntegrityLevel] = useState<'STANDARD' | 'BLOCKCHAIN'>('STANDARD');
-    const [groupeNom, setGroupeNom]           = useState('');
     const [selectedMembres, setSelectedMembres] = useState<string[]>([]);
     const [emplacements, setEmplacements]     = useState<PhysicalLocationDto[]>([]);
     const [physicalLocationId, setPhysicalLocationId] = useState('');
@@ -73,8 +74,6 @@ function UploadSimple({ onsuccess, preselectedTypeId, precedentDocument }: Uploa
     // ── États UI ──────────────────────────────────────────────────────────────
     const [isProcessing, setIsProcessing] = useState(false); // Phase 1 en cours
     const [isSaving, setIsSaving]         = useState(false); // Phase 2 en cours
-    const [error, setError]               = useState('');
-    const [success, setSuccess]           = useState('');
 
     // Ref pour déclencher Phase 1 sans boucle infinie dans useEffect
     const lastOcrKey = useRef<string>('');
@@ -83,7 +82,7 @@ function UploadSimple({ onsuccess, preselectedTypeId, precedentDocument }: Uploa
     useEffect(() => {
         getAllTypeDocuments()
             .then(setTypeDocuments)
-            .catch(() => setError('Impossible de charger les types de documents'));
+            .catch(() => notify.error('Impossible de charger les types de documents'));
         // getAllUsers a besoin de l'UO de l'éditeur (l'endpoint liste les utilisateurs
         // d'une UO donnée, pas "tout le monde") — on la récupère d'abord.
         getMyUO()
@@ -124,14 +123,10 @@ function UploadSimple({ onsuccess, preselectedTypeId, precedentDocument }: Uploa
     // ── Phase 1 : OCR Preview ─────────────────────────────────────────────────
     const lancerOcrPreview = async () => {
         if (!file || !typeDocumentId) return;
-        // Pour accès privé, attendre que le nom de groupe soit rempli
-        if (access === 'PRIVE' && !groupeNom.trim()) return;
 
         const userInfo = getCurrentUserInfo();
-        if (!userInfo?.id) { setError('Session expirée'); return; }
+        if (!userInfo?.id) { notify.error('Session expirée'); return; }
 
-        setError('');
-        setSuccess('');
         setSessionId(null);
         setMetaValues({});
         setPrefilledKeys(new Set());
@@ -170,7 +165,7 @@ function UploadSimple({ onsuccess, preselectedTypeId, precedentDocument }: Uploa
             setPrefilledKeys(prefilled);
 
         } catch (err: any) {
-            setError(err.message ?? "Erreur lors de l'analyse OCR");
+            notify.error(err.message ?? "Erreur lors de l'analyse OCR");
             setSessionId(null);
             lastOcrKey.current = ''; // Permettre une relance
         } finally {
@@ -184,15 +179,8 @@ function UploadSimple({ onsuccess, preselectedTypeId, precedentDocument }: Uploa
         if (!sessionId || !selectedType) return;
 
         const userInfo = getCurrentUserInfo();
-        if (!userInfo?.id) { setError('Session expirée'); return; }
+        if (!userInfo?.id) { notify.error('Session expirée'); return; }
 
-        // Validation accès privé
-        if (access === 'PRIVE' && !groupeNom.trim()) {
-            setError('Le nom du groupe est obligatoire pour un document privé');
-            return;
-        }
-
-        setError('');
         setIsSaving(true);
 
         try {
@@ -203,7 +191,6 @@ function UploadSimple({ onsuccess, preselectedTypeId, precedentDocument }: Uploa
                 uploadedById:   userInfo.id,
                 integrityLevel,
                 ...(access === 'PRIVE' && {
-                    groupeNom,
                     groupeMembresIds: selectedMembres,
                 }),
                 ...(precedentDocument && {
@@ -226,7 +213,7 @@ function UploadSimple({ onsuccess, preselectedTypeId, precedentDocument }: Uploa
 
             const result: DocumentUploadResultDto = await finalizeUploadDocument(request);
 
-            setSuccess('Document archivé avec succès');
+            notify.success('Document archivé avec succès');
             onsuccess?.(result);
 
             // Reset pour un nouvel upload
@@ -234,12 +221,12 @@ function UploadSimple({ onsuccess, preselectedTypeId, precedentDocument }: Uploa
 
         } catch (err: any) {
             if (err.isSessionExpired) {
-                setError('Session expirée — veuillez re-déposer le fichier.');
+                notify.error('Session expirée — veuillez re-déposer le fichier.');
                 resetOcr();
             } else if (err.isValidationError) {
-                setError('Erreur de validation : ' + err.message);
+                notify.error('Erreur de validation : ' + err.message);
             } else {
-                setError(err.message ?? "Erreur lors de l'archivage");
+                notify.error(err.message ?? "Erreur lors de l'archivage");
             }
         } finally {
             setIsSaving(false);
@@ -284,7 +271,6 @@ function UploadSimple({ onsuccess, preselectedTypeId, precedentDocument }: Uploa
         setFile(null);
         setTypeDocumentId('');
         setSelectedType(null);
-        setGroupeNom('');
         setSelectedMembres([]);
         resetOcr();
     };
@@ -302,9 +288,6 @@ function UploadSimple({ onsuccess, preselectedTypeId, precedentDocument }: Uploa
                     {' '}Nouvelle version de « {precedentDocument.titre} » — le type de document est verrouillé.
                 </div>
             )}
-            {error   && <div className="up-alert up-alert-error">{error}</div>}
-            {success && <div className="up-alert up-alert-success">{success}</div>}
-
             {/* ── Zone de dépôt ── */}
             <div
                 className={`drop-zone ${isDragging ? 'dragging' : ''} ${file ? 'has-file' : ''}`}
@@ -422,18 +405,6 @@ function UploadSimple({ onsuccess, preselectedTypeId, precedentDocument }: Uploa
                 {/* Groupe si PRIVE */}
                 {access === 'PRIVE' && (
                     <div className="groupe-section">
-                        <div className="form-field">
-                            <input
-                                id="groupe-nom"
-                                type="text"
-                                className="form-field-input"
-                                placeholder="Nom du groupe d'accès *" aria-label="Nom du groupe d'accès *"
-                                value={groupeNom}
-                                onChange={e => setGroupeNom(e.target.value)}
-                                disabled={isProcessing}
-                            />
-                        </div>
-
                         {users.length > 0 && (
                             <div className="membres-section">
                                 <p className="membres-label">

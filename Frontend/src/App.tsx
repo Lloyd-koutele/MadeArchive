@@ -11,6 +11,9 @@ import { getUserRole, hasRole, ROUTES } from './auth/authService';
 import AdminUoDashboard from './Admin/AdminUoDashboard.tsx';
 import SessionGuard from './auth/SessionGuard.tsx';
 import AttestationPublique from './Page/AttestationPublique.tsx';
+import { NotificationProvider } from './notifications/NotificationProvider.tsx';
+import NotificationStack from './notifications/NotificationStack.tsx';
+import { ConfirmProvider } from './notifications/ConfirmProvider.tsx';
 
 // requiredRole accepte désormais un seul rôle ou une liste (any-of)
 const PrivateRoute = ({ children, requiredRole = null }) => {
@@ -76,9 +79,18 @@ const router = createBrowserRouter([
   },
 ]);
 
-// App principal
+// App principal — NotificationProvider/ConfirmProvider montés une seule fois
+// ici : une seule fenêtre de notifications et une seule modale de
+// confirmation pour toute l'application, quel que soit l'écran affiché.
 function App() {
-  return <RouterProvider router={router} />;
+  return (
+    <NotificationProvider>
+      <ConfirmProvider>
+        <RouterProvider router={router} />
+        <NotificationStack />
+      </ConfirmProvider>
+    </NotificationProvider>
+  );
 }
 
 export default App;

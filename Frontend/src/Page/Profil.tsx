@@ -5,6 +5,7 @@ import { updateMe } from '../services/user/User';
 import { FaEye, FaEyeSlash } from 'react-icons/fa';
 import { getCurrentUserInfo } from "../auth/authService";
 import "../Style/Page/Profil.css"
+import { useNotify } from "../notifications/NotificationProvider";
 
 interface RoleField {
     name: "ADMIN" | "ADMIN_UO" | "EDITOR" | "USER";
@@ -24,6 +25,7 @@ interface ProfileProps {
 }
 
 function Profile({ userId: propUserId }: ProfileProps) {
+    const notify = useNotify();
     const [profile, setProfile] = useState<UserProfile | null>(null);
     const [isEditing, setIsEditing] = useState<boolean>(false);
     
@@ -33,8 +35,6 @@ function Profile({ userId: propUserId }: ProfileProps) {
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [isLoading, setIsLoading] = useState<boolean>(true);
-    const [error, setError] = useState<string>("");
-    const [success, setSuccess] = useState<string>("");
 
     useEffect(() => {
         const checkAndLoadProfile = () => {
@@ -55,7 +55,6 @@ function Profile({ userId: propUserId }: ProfileProps) {
 
     const loadProfile = async (idToLoad: string) => {
         setIsLoading(true);
-        setError("");
         try {
             const data = await getMe(idToLoad);
             setProfile(data);
@@ -63,7 +62,7 @@ function Profile({ userId: propUserId }: ProfileProps) {
             setPrenom(data.prenom || '');
             setTelephone(data.telephone || '');
         } catch (err: any) {
-            setError(err || "Erreur lors du chargement du profil");
+            notify.error(err || "Erreur lors du chargement du profil");
         } finally {
             setIsLoading(false);
         }
@@ -71,8 +70,6 @@ function Profile({ userId: propUserId }: ProfileProps) {
 
 const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
-    setSuccess("");
     setIsLoading(true);
 
     try {
@@ -80,7 +77,7 @@ const handleSubmit = async (e: React.FormEvent) => {
         const currentId = propUserId || userInfo?.id;
 
         if (!currentId) {
-            setError("ID utilisateur introuvable");
+            notify.error("ID utilisateur introuvable");
             return;
         }
 
@@ -100,20 +97,20 @@ const handleSubmit = async (e: React.FormEvent) => {
             // jamais renvoyé (voir UserService.updateMe → convertToDtoWithoutPassword).
             setPassword("");
             setShowPassword(false);
-            setSuccess("Profil mis à jour. Votre mot de passe a changé, vous allez être redirigé vers la page de connexion...");
+            notify.success("Profil mis à jour. Votre mot de passe a changé, vous allez être redirigé vers la page de connexion...");
             setTimeout(() => {
                 localStorage.clear();
                 window.location.replace('/login');
             }, 3000);
         } else {
-            setSuccess("Profil mis à jour avec succès");
+            notify.success("Profil mis à jour avec succès");
             setIsEditing(false);
             setPassword("");
             await loadProfile(currentId);
         }
 
     } catch (err: any) {
-        setError(err.message || "Erreur lors de la modification");
+        notify.error(err.message || "Erreur lors de la modification");
     } finally {
         setIsLoading(false);
     }
@@ -123,8 +120,6 @@ const handleSubmit = async (e: React.FormEvent) => {
         <div className="profile-view-container">
             <h2 className="profile-title">Mon Profil</h2>
             
-            {error && <div className="profile-alert profile-alert-error">{error}</div>}
-            {success && <div className="profile-alert profile-alert-success">{success}</div>}
 
             <div className="profile-card">
                 {!isEditing ? (

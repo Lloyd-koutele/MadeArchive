@@ -39,9 +39,14 @@ services:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama # <--- VOLUME NOMMÉ : On le garde pour ne pas perdre le LLM
-    entrypoint: ["/bin/sh", "-c", "ollama serve & sleep 10 && ollama pull qwen2.5-coder:3b && wait"]
+    entrypoint: ["/bin/sh", "-c", "ollama serve & sleep 10 && ollama pull qwen2.5-coder:7b && wait"]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      # L'image ollama/ollama ne contient pas curl/wget — on utilise le binaire
+      # ollama lui-même (toujours présent) : "ollama list" échoue si le serveur
+      # local ne répond pas, réussit sinon. Voir le run de diagnostic du
+      # 2026-08-27 : le serveur tournait très bien, seul le curl du healthcheck
+      # manquait, faisant échouer le conteneur en "unhealthy" à tort.
+      test: ["CMD", "ollama", "list"]
       interval: 60s
       timeout: 30s
       retries: 5
@@ -51,11 +56,6 @@ services:
     container_name: gotenberg
     ports:
       - "3000:3000"
-    # Conteneur persistant : convertit les documents (Office/image → PDF) via
-    # LibreOffice en interne, sans jamais redémarrer de processus par fichier.
-    # Remplace l'ancien pool LibreOffice in-process (JODConverter) — libère
-    # la RAM/CPU de LibreOffice du conteneur de l'appli, partageable par
-    # plusieurs instances de l'appli si besoin de scaler horizontalement.
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
@@ -67,19 +67,98 @@ services:
     container_name: redis
     ports:
       - "6379:6379"
-    # Pas de volume : c'est un cache, pas une source de vérité — perdre son
-    # contenu au redémarrage est acceptable et même sain (voir RedisCacheConfig).
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s
       timeout: 20s
       retries: 3
 
+  chromium:
+    # Image dédiée (pas un Dockerfile maison) : Chromium récent bloque toute
+    # connexion CDP distante en forçant l'écoute sur 127.0.0.1 quel que soit
+    # --remote-debugging-address (durcissement sécurité volontaire, constaté
+    # en le testant directement — pas contournable par un simple relais TCP,
+    # il faut aussi réécrire l'en-tête Host de chaque requête). browserless
+    # résout précisément ce problème et expose un point d'entrée pensé pour
+    # Playwright (/playwright/chromium) — voir HeadlessBrowserImportService.
+    #
+    # Version épinglée (PAS "latest") délibérément : browserless implémente le
+    # protocole de connexion interne de Playwright, qui n'est pas garanti
+    # compatible entre versions éloignées du client Java (build.gradle) et du
+    # conteneur — un décalage casse la connexion silencieusement à l'exécution
+    # (constaté : Playwright Java 1.49.0 contre ce conteneur échoue, 1.62.0
+    # fonctionne, cette paire précise a été testée en conditions réelles). Si
+    # vous mettez à jour com.microsoft.playwright:playwright dans build.gradle,
+    # vérifiez/alignez cette version en conséquence (voir /meta sur ce
+    # conteneur pour la liste des versions Playwright qu'il supporte).
+    image: ghcr.io/browserless/chromium:v2.56.0
+    container_name: madearchive-chromium
+    # Isolation délibérée : mémoire/CPU plafonnés pour ce conteneur seul — un
+    # afflux de demandes d'import via lien web ne peut jamais faire déborder
+    # au-delà de ces limites, ni affecter "app".
+    mem_limit: 1g
+    cpus: 1.0
+    ports:
+      - "3001:3000" # 3000 déjà pris par gotenberg sur l'hôte — inchangé côté conteneur/réseau interne
+    environment:
+      # Jeton choisi par vous (pas un compte/service tiers) — protège l'accès
+      # au navigateur distant. À définir dans .env, ex. CHROMIUM_TOKEN=un-secret-long-et-aleatoire
+      TOKEN: ${CHROMIUM_TOKEN}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/pressure"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  traefik:
+    image: traefik:v3.2
+    container_name: traefik
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Fournisseur "file", pas "docker" : Traefik n'a plus besoin du socket
+      # Docker du tout (ni de le lire ni d'y écrire) — testé en direct, le
+      # fournisseur Docker de Traefik s'est avéré incompatible avec cette
+      # version de Docker Desktop (400 Bad Request au démarrage). Un seul
+      # service statique ("app") n'a de toute façon pas besoin de découverte
+      # dynamique — voir traefik/dynamic.yml pour le routage réel, à adapter
+      # à votre domaine avant déploiement.
+      - ./traefik/dynamic.yml:/etc/traefik/dynamic/dynamic.yml:ro
+      # Volume nommé (pas un fichier bind-mounté) : Traefik crée lui-même
+      # acme.json avec les permissions exactes qu'il exige (600) — un fichier
+      # bind-monté depuis l'hôte doit être pré-créé avec les bons droits à
+      # la main, plus fragile.
+      - traefik_certs:/letsencrypt
+    command:
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      # Tout HTTP est redirigé vers HTTPS automatiquement — jamais de contenu
+      # servi en clair.
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      # Défi HTTP-01 : le plus simple, ne nécessite aucun accès à l'API du
+      # fournisseur DNS — juste que le port 80 soit joignable publiquement.
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--ping=true"
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   app:
     build: .
     container_name: madearchive-app
-    ports:
-      - "8080:8080"
+    # Plus de port publié directement vers l'hôte : Traefik (80/443) devient
+    # le seul point d'entrée public, "app" n'est joignable que sur le réseau
+    # Docker interne (routage statique défini dans traefik/dynamic.yml) —
+    # évite qu'un accès direct sur :8080 contourne complètement le HTTPS.
     env_file:
       - .env
     depends_on:
@@ -93,9 +172,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      chromium:
+        condition: service_healthy
     environment:
       TESSERACT_DATA_PATH: /usr/share/tessdata
       OLLAMA_BASE_URL: http://ollama:11434
+      CHROMIUM_WS_ENDPOINT: ws://chromium:3000/playwright/chromium?token=${CHROMIUM_TOKEN}
       MINIO_ENDPOINT: http://minio:9000
       HSM_KEYSTORE_PATH: /app/hsm/editors-keystore.p12
       GOTENBERG_URL: http://gotenberg:3000
@@ -108,3 +190,4 @@ services:
 volumes:
   ollama_data:
   hsm_data:
+  traefik_certs:

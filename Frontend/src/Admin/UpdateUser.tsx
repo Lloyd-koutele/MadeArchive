@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { updateUser as updateUserAPI } from "../services/admin/AdminService";
 import { getAllUOs } from "../services/organisation/UOService";
 import UOTreeSelect from "../organisation/UOTreeSelect";
+import { useNotify } from '../notifications/NotificationProvider';
 import '../Style/Admin/UpdateUser.css';
 
 interface RoleField {
@@ -32,13 +33,12 @@ interface UpdateUserProps {
 }
 
 function UpdateUser({ initialData, onsuccess, restrictToUO }: UpdateUserProps) {
+    const notify = useNotify();
     const [user, setUser] = useState<UserForm>({
         id: "", nom: "", prenom: "", email: "", password: "",
         telephone: "", roles: []
     });
 
-    const [error, setError] = useState<string>("");
-    const [success, setSuccess] = useState<string>("");
     const [showPassword, setShowPassword] = useState<boolean>(false);
 
     const [uos, setUos] = useState<UONode[]>([]);
@@ -88,22 +88,21 @@ function UpdateUser({ initialData, onsuccess, restrictToUO }: UpdateUserProps) {
 
     const validateForm = (): boolean => {
         if (user.telephone.trim().length < 8) {
-            setError('Le numéro de téléphone doit contenir au moins 8 caractères');
+            notify.error('Le numéro de téléphone doit contenir au moins 8 caractères');
             return false;
         }
         if (user.password && user.password.length < 6) {
-            setError('Le mot de passe doit contenir au moins 6 caractères');
+            notify.error('Le mot de passe doit contenir au moins 6 caractères');
             return false;
         }
         if (!/^\S+@\S+\.\S+$/.test(user.email.trim())) {
-            setError('Email invalide');
+            notify.error('Email invalide');
             return false;
         }
         if (isGlobalAdmin && selectedUO !== null) {
-            setError("Un ADMIN ne doit pas être rattaché à une unité organisationnelle");
+            notify.error("Un ADMIN ne doit pas être rattaché à une unité organisationnelle");
             return false;
         }
-        setError('');
         return true;
     };
 
@@ -114,7 +113,7 @@ function UpdateUser({ initialData, onsuccess, restrictToUO }: UpdateUserProps) {
 
         const userId = user.id;
         if (!userId) {
-            setError('ID utilisateur manquant');
+            notify.error('ID utilisateur manquant');
             return;
         }
 
@@ -131,26 +130,20 @@ function UpdateUser({ initialData, onsuccess, restrictToUO }: UpdateUserProps) {
             userToSend.password = user.password;
         }
 
-        setError('');
-        setSuccess('');
-
         try {
             await updateUserAPI(userId, userToSend, selectedUO ?? undefined);
 
-            setSuccess('Utilisateur mis à jour avec succès');
+            notify.success('Utilisateur mis à jour avec succès');
             setUser({ id: '', nom: '', prenom: '', password: '', email: '', roles: [], telephone: '' });
             setSelectedUO(null);
-            setTimeout(() => onsuccess?.(), 2000);
+            setTimeout(() => onsuccess?.(), 1500);
         } catch (err: any) {
-            setError(err.response?.data?.message || err.message || "Erreur lors de la mise à jour de l'utilisateur");
+            notify.error(err.response?.data?.message || err.message || "Erreur lors de la mise à jour de l'utilisateur");
         }
     };
 
     return (
         <div>
-            {error && <div className="form-error">{error}</div>}
-            {success && <div className="form-success">{success}</div>}
-
             <form onSubmit={handleSubmit}>
                 <div className="form-grid">
 

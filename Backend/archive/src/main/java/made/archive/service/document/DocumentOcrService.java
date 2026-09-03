@@ -10,6 +10,7 @@ import made.archive.exception.BusinessException;
 import made.archive.exception.PdfAConversionException;
 import made.archive.repository.DocumentRepository;
 import made.archive.repository.TypeDocumentRepository;
+import made.archive.repository.UserRepository;
 import made.archive.service.organisation.UniteOrganisationnelleService;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -32,6 +33,8 @@ public class DocumentOcrService
     private final TypeDocumentRepository       typeDocumentRepository;
     private final DocumentRepository           documentRepository;
     private final UniteOrganisationnelleService uniteOrganisationnelleService;
+    private final UserRepository               userRepository;
+    private final OcrPositionalExtractionService ocrPositionalExtractionService;
 
     /**
      * Point d'entrée historique — upload navigateur (multipart/form-data).
@@ -59,7 +62,7 @@ public class DocumentOcrService
 
     /**
      * Cœur de la Phase 1 OCR — indépendant du transport (upload navigateur, dossier
-     * local, import FTP…). Toute source de fichiers converge ici dès qu'elle dispose
+     * local, import via lien…). Toute source de fichiers converge ici dès qu'elle dispose
      * du nom original et des bytes bruts.
      */
     public OcrSessionCache.OcrSessionData processOcrPreview(
@@ -101,8 +104,21 @@ public class DocumentOcrService
             // Même logique que l'anti-doublon ci-dessus : sans ça, un éditeur
             // sans clé active remplissait tout le formulaire de métadonnées
             // avant de se faire recaler seulement à la Phase 2 (finalize).
-            if (uploadedBy.getPkiKeyStatus() != PkiKeyStatus.ACTIVE
-                || uploadedBy.getPkiKeyAlias() == null || uploadedBy.getPkiKeyAlias().isBlank())
+            //
+            // Re-fetch INDISPENSABLE : uploadedBy vient ici de
+            // UserDetailsImpl.getUser() résolu par JwtAuthFilter via
+            // AuthCacheService (cache Redis) — cet objet reconstruit ne porte
+            // QUE id/email/nom/prenom/actif/sessionInvalidatedAt/roles (voir
+            // AuthCacheService.toUserDetails), pas les champs PKI, qui
+            // retombent donc silencieusement sur leur défaut Java
+            // (PkiKeyStatus.NONE) quel que soit l'état réel en base. Sans ce
+            // re-fetch, TOUT éditeur échoue systématiquement cette
+            // vérification, même avec une clé ACTIVE en base.
+            User uploadedByFrais = userRepository.findById(uploadedBy.getId())
+                .orElseThrow(() -> new BusinessException("Utilisateur introuvable"));
+
+            if (uploadedByFrais.getPkiKeyStatus() != PkiKeyStatus.ACTIVE
+                || uploadedByFrais.getPkiKeyAlias() == null || uploadedByFrais.getPkiKeyAlias().isBlank())
             {
                 throw new BusinessException(
                     "Vous ne possédez pas de clé de signature PKI active. "
@@ -122,15 +138,37 @@ public class DocumentOcrService
 
             // ── 6. OCR — guidé par le vocabulaire du type (attributs + valeurs
             //      déjà confirmées sur des documents précédents du même type) ─
-            String extractedText = ocrService.extractTextOnly(pdfABytes, typeDocument);
-            log.info("[OCR-Phase1] Texte : {} caractères",
-                     extractedText != null ? extractedText.length() : 0);
+            // Conserve aussi la position de chaque mot reconnu (voir
+            // OcrPositionalExtractionService) : la regex apprise sur un document
+            // précédent reste utile, mais chercher directement le NOM de chaque
+            // champ comme libellé sur CE document fonctionne dès le premier
+            // essai, et n'est pas affecté par une mise en page en colonnes qui
+            // aurait éloigné un libellé de sa valeur dans le texte linéaire.
+            OcrService.OcrExtractionResult extraction = ocrService.extractWithPositions(pdfABytes, typeDocument);
+            String extractedText = extraction.texte();
+            log.info("[OCR-Phase1] Texte : {} caractères, {} mot(s) positionné(s)",
+                     extractedText != null ? extractedText.length() : 0, extraction.mots().size());
 
-            // ── 8. Suggestions basées sur les regex DEPUIS TypeDocument ──────
+            // ── 8. Suggestions — positionnelles (ce document) + regex (héritées) ─
+            // Le positionnel prime quand les deux trouvent quelque chose : ancré
+            // sur CE document précis, il est généralement plus fiable qu'une
+            // regex apprise sur un autre document du même type.
             boolean regexAlreadyGenerated = typeDocument.hasRegexGenerated();
             Map<String, String> regexMap = typeDocument.getExtractionRegexMap();
-            Map<String, String> suggestions = calculateSuggestions(
-                regexMap, extractedText);
+            Map<String, String> suggestionsRegex = calculateSuggestions(regexMap, extractedText);
+            Map<String, String> suggestionsPositionnelles =
+                typeDocument.getMetaData() != null
+                    ? ocrPositionalExtractionService.extraire(extraction.mots(), typeDocument.getMetaData())
+                    : Map.<String, String>of();
+
+            Map<String, String> suggestions = new LinkedHashMap<>(suggestionsRegex);
+            suggestions.putAll(suggestionsPositionnelles);
+
+            if (!suggestionsPositionnelles.isEmpty())
+            {
+                log.info("[OCR-Phase1] ✅ {} suggestion(s) positionnelle(s) (libellé trouvé sur ce document)",
+                         suggestionsPositionnelles.size());
+            }
 
             if (suggestions.isEmpty() && extractedText != null && !extractedText.isBlank())
             {
@@ -148,8 +186,8 @@ public class DocumentOcrService
             }
             else
             {
-                log.info("[OCR-Phase1] ✅ {} suggestion(s) calculée(s) via regex existantes",
-                         suggestions.size());
+                log.info("[OCR-Phase1] ✅ {} suggestion(s) au total ({} positionnelle(s), {} via regex existantes)",
+                         suggestions.size(), suggestionsPositionnelles.size(), suggestionsRegex.size());
             }
 
             // ── 9. Construire la session avec les deux hashes ─────────────────

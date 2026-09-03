@@ -69,6 +69,12 @@ export interface DocumentListItemDto {
     createAt:        string | null;
     /** "Version 1", "Version 2"... ou "Final". null/undefined si jamais versionné (pas de badge). */
     versionLabel?:   string | null;
+    /** Statut d'avant corbeille (ex. "CORRUPTED") — non-null uniquement quand status === "CORBEILLE". */
+    statutAvantCorbeille?: string | null;
+    /** Date de purge définitive prévue — non-null uniquement quand status === "CORBEILLE". */
+    suppressionPrevueLe?:  string | null;
+    /** true si l'utilisateur consultant peut envoyer/restaurer CE document précis vers/depuis la corbeille. */
+    peutGererCorbeille?:  boolean;
 }
 
 /**
@@ -122,10 +128,12 @@ export interface DocumentDetailDto {
     historiqueVersions: DocumentVersionDto[];
     /** Ce qui a déclenché status === 'CORRUPTED' (hash différent, échec déchiffrement...). Null sinon. */
     corruptionRaison: string | null;
-    /** Date de suppression définitive programmée si l'éditeur l'a demandée. Null sinon. */
+    /** Statut d'avant corbeille (ex. "CORRUPTED") — non-null uniquement quand status === "CORBEILLE". */
+    statutAvantCorbeille: string | null;
+    /** Date de suppression définitive programmée — non-null uniquement quand status === "CORBEILLE". */
     suppressionPrevueLe: string | null;
-    /** true si l'utilisateur consultant ce détail est l'éditeur ayant déposé le document. */
-    peutEtreSupprime: boolean;
+    /** true si l'utilisateur consultant peut envoyer ce document à la corbeille, ou le restaurer s'il y est déjà. */
+    peutGererCorbeille: boolean;
     metaData:        MetaDataValueInDocDto[];
     /** Emplacement physique de l'original papier, s'il y en a un. Null sinon. */
     physicalLocationId: string | null;
@@ -135,6 +143,11 @@ export interface DocumentDetailDto {
     peutModifierEmplacement: boolean;
     /** UO du document — pour lister les emplacements physiques disponibles. */
     uniteOrganisationnelleId: number | null;
+    /** Projet auquel ce document est rattaché, s'il y en a un. Null sinon. */
+    projetId: number | null;
+    projetNom: string | null;
+    /** true si l'utilisateur consultant peut rattacher/migrer/détacher ce document d'un projet. */
+    peutModifierProjet: boolean;
 }
 
 /**
@@ -308,13 +321,69 @@ export const downloadPdfA = async (id: string, titre: string): Promise<void> => 
 };
 
 /**
- * POST /api/user/docs/{id}/planifier-suppression
- * Programme la suppression définitive d'un document CORROMPU dans 3 jours —
- * réservé à l'éditeur ayant déposé le document.
+ * POST /api/user/docs/{id}/corbeille
+ * Envoie un document à la corbeille — n'importe quel document, plus
+ * seulement un corrompu. Suppression définitive dans 3 jours, restaurable
+ * jusque-là (voir restaurerDocumentDepuisCorbeille). Réservé à un éditeur
+ * ayant accès au document.
  */
-export const planifierSuppressionDocument = async (id: string): Promise<void> => {
+export const envoyerDocumentCorbeille = async (id: string): Promise<void> => {
     try {
-        await api.post(`/user/docs/${id}/planifier-suppression`);
+        await api.post(`/user/docs/${id}/corbeille`);
+    } catch (error: any) {
+        throw error.response?.data?.message
+            ? new Error(error.response.data.message)
+            : error;
+    }
+};
+
+/**
+ * POST /api/user/docs/{id}/restaurer
+ * Restaure un document depuis la corbeille — réservé à un éditeur ayant
+ * accès au document.
+ */
+export const restaurerDocumentDepuisCorbeille = async (id: string): Promise<void> => {
+    try {
+        await api.post(`/user/docs/${id}/restaurer`);
+    } catch (error: any) {
+        throw error.response?.data?.message
+            ? new Error(error.response.data.message)
+            : error;
+    }
+};
+
+/**
+ * GET /api/user/docs/corbeille?page=&size=
+ * Liste les documents en corbeille visibles par l'utilisateur connecté —
+ * ADMIN : tout ; ADMIN_UO : son UO + descendantes (lecture seule côté UI,
+ * l'action restaurer reste refusée par le serveur) ; ÉDITEUR : ceux
+ * auxquels il a normalement accès. Fermé à ROLE_USER simple.
+ */
+export const getDocumentsCorbeille = async (
+    page = 1, size = 10
+): Promise<DocumentPageDto> => {
+    try {
+        const response = await api.get('/user/docs/corbeille', { params: { page, size } });
+        return response.data;
+    } catch (error: any) {
+        throw error.response?.data?.message
+            ? new Error(error.response.data.message)
+            : error;
+    }
+};
+
+/**
+ * PUT /api/user/docs/{id}/metadata
+ * Remplace les valeurs de métadonnées d'un document (jamais le fichier, le
+ * titre ni le type) — réservé à l'éditeur ayant accès. Si ce document est
+ * le seul de son type, invalide automatiquement les regex OCR de ce type.
+ */
+export const modifierMetaDataDocument = async (
+    id: string, valeurs: { nom: string; valeur: string }[]
+): Promise<DocumentDetailDto> => {
+    try {
+        const response = await api.put(`/user/docs/${id}/metadata`, valeurs);
+        return response.data;
     } catch (error: any) {
         throw error.response?.data?.message
             ? new Error(error.response.data.message)
@@ -342,6 +411,55 @@ export const modifierEmplacementPhysique = async (
     }
 };
 
+/**
+ * PUT /api/user/docs/{id}/projet?projetId=...&fusionnerGroupes=...
+ * Change le projet du document — omettre projetId le détache de son projet
+ * actuel ("le faire sortir du projet") ; le fournir le migre vers ce
+ * projet (qu'il en ait déjà un ou non). Réservé à l'éditeur ayant accès.
+ *
+ * fusionnerGroupes : à passer à true seulement après avoir appelé
+ * verifierFusionGroupeProjet et obtenu la confirmation de l'éditeur si les
+ * groupes diffèrent — voir ce dernier.
+ */
+export const modifierProjetDocument = async (
+    id: string, projetId: number | null, fusionnerGroupes = false
+): Promise<DocumentDetailDto> => {
+    try {
+        const response = await api.put(`/user/docs/${id}/projet`, null, {
+            params: projetId ? { projetId, fusionnerGroupes } : {},
+        });
+        return response.data;
+    } catch (error: any) {
+        throw error.response?.data?.message
+            ? new Error(error.response.data.message)
+            : error;
+    }
+};
+
+/**
+ * GET /api/user/docs/{id}/projet/{projetId}/verifier-fusion-groupe
+ * À appeler avant modifierProjetDocument quand le document et le projet
+ * cible sont tous les deux privés, pour savoir s'il faut avertir l'éditeur
+ * qu'un rattachement fusionnera les deux groupes d'accès.
+ */
+export interface FusionGroupeCheckDto {
+    groupesDifferents: boolean;
+    membresQuiSerontAjoutes: string[];
+}
+
+export const verifierFusionGroupeProjet = async (
+    documentId: string, projetId: number
+): Promise<FusionGroupeCheckDto> => {
+    try {
+        const response = await api.get(`/user/docs/${documentId}/projet/${projetId}/verifier-fusion-groupe`);
+        return response.data;
+    } catch (error: any) {
+        throw error.response?.data?.message
+            ? new Error(error.response.data.message)
+            : error;
+    }
+};
+
 // ═══════════════════════════════════════════════════════════════════════════
 // UPLOAD & CRÉATION (/api/editor/*)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -355,7 +473,6 @@ export interface DocumentUploadDto {
     typeDocumentId: number;
     uploadedById: string;
     integrityLevel: IntegrityLevel;
-    groupeNom?: string;
     groupeMembresIds?: string[];
     /** Rattache le document à un projet (dossier/affaire) existant. */
     projetId?: number;
@@ -475,7 +592,7 @@ export const finalizeUploadDocument = async (
 
 export interface OcrPreviewItemDto {
     sessionId:           string | null;
-    /** Nom du fichier traité — notamment utile pour l'import FTP (pas de File[] côté client). */
+    /** Nom du fichier traité — notamment utile pour l'import via lien (pas de File[] côté client). */
     nomFichier?:         string;
     metaDataSuggestions: Record<string, string> | null;
     message?:            string;
@@ -491,6 +608,21 @@ export interface BulkOcrPreviewResponseDto {
 export interface BulkFinalizeRequestDto {
     requests: FinalizeUploadRequestDto[];
 }
+
+/**
+ * GET /api/editor/ocr-preview/{sessionId}/pdf
+ * Récupère le PDF déjà généré pendant la Phase 1 OCR (aucune conversion
+ * supplémentaire) — pour l'aperçu du document à l'écran de validation, à
+ * côté des champs de métadonnées. Retourne un Blob URL utilisable dans un
+ * <iframe src=...>. Fonctionne quel que soit le format d'origine (Word,
+ * Excel, image...) : c'est le PDF déjà uniformisé côté serveur.
+ */
+export const getOcrPreviewPdfUrl = async (sessionId: string): Promise<string> => {
+    const response = await api.get(`/editor/ocr-preview/${sessionId}/pdf`, {
+        responseType: 'blob',
+    });
+    return URL.createObjectURL(response.data);
+};
 
 /**
  * POST /api/editor/docs/bulk/same-type/ocr-preview
@@ -520,40 +652,6 @@ export const bulkSameTypeOcrPreview = async (
     }
 };
 
-export interface FtpImportRequestDto {
-    host:            string;
-    port?:           number | null;
-    remotePath?:     string;
-    username?:       string;
-    password?:       string;
-    secure:          boolean;
-    typeDocumentId:  number;
-    uploadedById:    string;
-}
-
-/**
- * POST /api/editor/docs/bulk/same-type/ftp/ocr-preview
- * Variante "source distante" de bulkSameTypeOcrPreview : télécharge tous les
- * fichiers d'un dossier FTP/FTPS puis lance l'OCR Phase 1 sur chacun. Les
- * identifiants ne sont jamais persistés côté serveur. Retourne exactement le
- * même DTO — la suite du wizard (validation, finalize) est inchangée.
- */
-export const bulkSameTypeOcrPreviewFromFtp = async (
-    requete: FtpImportRequestDto,
-): Promise<BulkOcrPreviewResponseDto> => {
-    try {
-        const response = await api.post(
-            '/editor/docs/bulk/same-type/ftp/ocr-preview',
-            requete,
-        );
-        return response.data;
-    } catch (error: any) {
-        throw new Error(
-            error.response?.data?.message ?? error.message ?? "Erreur import FTP",
-        );
-    }
-};
-
 /**
  * POST /api/editor/docs/bulk/same-type/finalize
  * Finalise chaque document avec les métadonnées validées par le client.
@@ -575,7 +673,7 @@ export const bulkSameTypeFinalize = async (
 };
 
 // ┌─────────────────────────────────────────────────────────────────────────┐
-// │ Upload : BULK Multi-Type (CSV + ZIP)                                   │
+// │ Upload : BULK — rapport de finalisation (partagé par toutes les sources) │
 // └─────────────────────────────────────────────────────────────────────────┘
 
 export interface BulkUploadItemResultDto {
@@ -593,27 +691,60 @@ export interface BulkUploadReportDto {
     details: BulkUploadItemResultDto[];
 }
 
+// ┌─────────────────────────────────────────────────────────────────────────┐
+// │ Upload : BULK Same-Type — source distante via lien web                  │
+// └─────────────────────────────────────────────────────────────────────────┘
+
+export interface WebImportFileDto {
+    nomFichier: string;
+    url:        string;
+}
+
+export interface WebImportPreviewResponseDto {
+    sourceUrl: string;
+    // DOSSIER = dossier Google Drive public, récupéré via navigateur headless
+    // (voir HeadlessBrowserImportService côté backend) — les "url" de ses
+    // fichiers ne sont pas de vraies URLs (identifiant de cache interne), mais
+    // s'utilisent exactement pareil côté client : affichées telles quelles,
+    // puis renvoyées sans modification à /web/ocr-preview.
+    type:      'FICHIER_DIRECT' | 'PAGE_WEB' | 'DOSSIER';
+    fichiers:  WebImportFileDto[];
+}
+
 /**
- * POST /api/editor/docs/bulk/multi-type
- * Upload bulk multi-type via CSV de métadonnées + ZIP de fichiers.
+ * POST /api/editor/docs/bulk/same-type/web/preview
+ * Découvre les fichiers derrière un lien (fichier direct ou page web listant
+ * des documents) SANS les télécharger — pour affichage d'une confirmation.
  */
-export const uploadBulkMultiType = async (
-    metaFile:     File,
-    zipFile:      File,
-    uploadedById: string,
-): Promise<BulkUploadReportDto> => {
-    const formData = new FormData();
-    formData.append('metaFile', metaFile);
-    formData.append('zipFile', zipFile);
-    formData.append('uploadedById', uploadedById);
+export const previewImportWeb = async (url: string): Promise<WebImportPreviewResponseDto> => {
     try {
-        const response = await api.post('/editor/docs/bulk/multi-type', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
+        const response = await api.post('/editor/docs/bulk/same-type/web/preview', { url });
+        return response.data;
+    } catch (error: any) {
+        throw new Error(
+            error.response?.data?.message ?? error.message ?? "Erreur lors de l'analyse du lien",
+        );
+    }
+};
+
+/**
+ * POST /api/editor/docs/bulk/same-type/web/ocr-preview
+ * Télécharge les fichiers confirmés par l'utilisateur puis lance l'OCR Phase 1
+ * sur chacun. Retourne le même BulkOcrPreviewResponseDto que les autres sources.
+ */
+export const bulkSameTypeOcrPreviewFromWeb = async (
+    fichiersUrls:   string[],
+    typeDocumentId: number,
+    uploadedById:   string,
+): Promise<BulkOcrPreviewResponseDto> => {
+    try {
+        const response = await api.post('/editor/docs/bulk/same-type/web/ocr-preview', {
+            fichiersUrls, typeDocumentId, uploadedById,
         });
         return response.data;
     } catch (error: any) {
         throw new Error(
-            error.response?.data?.message ?? error.message ?? 'Erreur upload multi-type',
+            error.response?.data?.message ?? error.message ?? "Erreur import lien web",
         );
     }
 };
@@ -705,6 +836,8 @@ export interface DocumentAccessFilterParams {
     statut?:         string;       // "ACTIVE" | "PENDING" | ...
     /** Restreint à une UO précise (navigation Admin/Admin_UO dans l'arbre). */
     uoId?:           number | null;
+    /** Restreint aux documents rattachés à un projet précis (voir ProjetsPanel). */
+    projetId?:       number | null;
     page?:           number;
     size?:           number;
 }
@@ -727,6 +860,7 @@ export const getDocumentsAccessibles = async (
                 ...(params.dateFin        ? { dateFin:        params.dateFin }                  : {}),
                 ...(params.statut         ? { statut:         params.statut }                   : {}),
                 ...(params.uoId           ? { uoId:           params.uoId }                     : {}),
+                ...(params.projetId       ? { projetId:       params.projetId }                 : {}),
                 page: params.page ?? 1,
                 size: params.size ?? 10,
             },

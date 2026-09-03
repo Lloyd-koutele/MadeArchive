@@ -24,11 +24,11 @@ import made.archive.service.storage.StorageService;
  * a existé et a été archivé, status passe à DELETED) :
  *
  *   1. retentionUntil atteint — automatique, jamais déclenché manuellement.
- *   2. suppressionPrevueLe atteint — un document CORROMPU dont l'éditeur a
- *      explicitement demandé la suppression (voir DocumentService.planifierSuppression),
- *      après un délai de grâce de 3 jours pendant lequel il reste consultable.
- *      C'est la SEULE voie de suppression manuelle du système, et elle est
- *      restreinte aux documents corrompus.
+ *   2. suppressionPrevueLe atteint — un document en CORBEILLE (envoyé là par
+ *      un éditeur, voir DocumentService.envoyerCorbeille — n'importe quel
+ *      document, plus seulement un corrompu), après un délai de grâce de 3
+ *      jours pendant lequel il reste consultable et restaurable. C'est la
+ *      SEULE voie de suppression manuelle du système.
  *
  * Important : Meilisearch n'a aucune connaissance des suppressions côté base
  * ou stockage. C'est cette classe qui doit explicitement lui dire de retirer
@@ -65,26 +65,25 @@ public class DocumentRetentionService
     }
 
     /**
-     * Documents corrompus dont le délai de grâce de 3 jours (après demande de
-     * suppression par leur éditeur) est écoulé — voir DocumentService.planifierSuppression.
+     * Documents en CORBEILLE dont le délai de grâce de 3 jours est écoulé —
+     * voir DocumentService.envoyerCorbeille.
      */
     @Transactional
-    public void purgeDocumentsCorrompusPlanifies()
+    public void purgeDocumentsCorbeille()
     {
         List<Document> aPurger = documentRepository
-            .findBySuppressionPrevueLeLessThanEqualAndStatusNot(LocalDate.now(), DocumentStatus.DELETED);
+            .findByStatusAndSuppressionPrevueLeLessThanEqual(DocumentStatus.CORBEILLE, LocalDate.now());
 
         if (aPurger.isEmpty())
         {
             return;
         }
 
-        log.info("[Retention] {} document(s) corrompu(s) planifié(s) pour suppression, délai écoulé",
-            aPurger.size());
+        log.info("[Retention] {} document(s) en corbeille, délai de grâce écoulé", aPurger.size());
 
         for (Document document : aPurger)
         {
-            purgeOne(document, "Suppression demandée par l'éditeur (document corrompu), "
+            purgeOne(document, "Suppression demandée par l'éditeur (corbeille), "
                 + "délai de grâce de 3 jours écoulé");
         }
     }

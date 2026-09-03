@@ -79,6 +79,26 @@ public class PhysicalLocationController
     }
 
     @Secured({"ROLE_ADMIN", "ROLE_ADMIN_UO"})
+    @PutMapping("/{id}/deplacer")
+    public ResponseEntity<?> deplacer(@PathVariable UUID id,
+                                       @RequestParam(required = false) UUID nouveauParentId,
+                                       @AuthenticationPrincipal UserDetailsImpl principal)
+    {
+        try
+        {
+            return ResponseEntity.ok(service.deplacer(id, nouveauParentId, principal.getUser()));
+        }
+        catch (AccessDeniedException e)
+        {
+            return ResponseEntity.status(403).body(e.getMessage());
+        }
+        catch (BusinessException e)
+        {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @Secured({"ROLE_ADMIN", "ROLE_ADMIN_UO"})
     @PutMapping("/{id}/type-stockage")
     public ResponseEntity<?> changerTypeStockage(@PathVariable UUID id,
                                                   @RequestParam boolean storagePoint,

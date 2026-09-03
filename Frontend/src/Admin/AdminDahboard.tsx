@@ -15,12 +15,14 @@ import ProjetsPanel from '../organisation/ProjetsPanel';
 import PhysicalLocationsPanel from '../organisation/PhysicalLocationsPanel';
 import AuditLogPanel from './AuditLogPanel';
 import DocumentsArchivesPanel from './DocumentsArchivesPanel';
+import Corbeille from '../document/Corbeille';
 import type { TypeDocumentDto } from '../services/document/TypedocumentService';
 import { getAllUsers, getUsersByUO, updateUserStatus as updateStatus } from "../services/admin/AdminService";
 import {
     getAllUOs,
     createUO,
     updateUO,
+    deleteUO,
     deplacerVersRacine,
     retirerMembreUO,
     retirerMembreEtAdmin,
@@ -30,6 +32,9 @@ import "../Style/Admin/AdminDashboard.css";
 import { getCurrentUserInfo } from "../auth/authService";
 import FilterUsers from "../hooks/FilterUsers";
 import Pagination from "../hooks/Pagination";
+import { useRefetchOnFocus } from "../hooks/useRefetchOnFocus";
+import { useNotify } from "../notifications/NotificationProvider";
+import { useConfirm } from "../notifications/ConfirmProvider";
 
 interface RoleField {
     name: "ADMIN" | "ADMIN_UO" | "EDITOR" | "USER";
@@ -63,7 +68,7 @@ interface UONode {
 }
 
 type MainView = 'profile' | 'contenu';
-type Tab = 'utilisateurs' | 'documents' | 'archives' | 'projets' | 'emplacements' | 'journal';
+type Tab = 'utilisateurs' | 'documents' | 'archives' | 'corbeille' | 'projets' | 'emplacements' | 'journal';
 
 const GLOBAL_VIEW_ID = -1;
 const GLOBAL_VIEW_NODE: UONode = {
@@ -75,6 +80,8 @@ const GLOBAL_VIEW_NODE: UONode = {
 
 function AdminDashboard() {
     const userInfo = getCurrentUserInfo();
+    const notify = useNotify();
+    const confirm = useConfirm();
 
     const [mainView, setMainView] = useState<MainView>('contenu');
     const [tab, setTab] = useState<Tab>('utilisateurs');
@@ -104,6 +111,8 @@ function AdminDashboard() {
     const [isCreateUOModalOpen, setIsCreateUOModalOpen] = useState(false);
     const [createUOParentId, setCreateUOParentId] = useState<number | null>(null);
     const [createUONom, setCreateUONom] = useState('');
+    const [isRenameUOModalOpen, setIsRenameUOModalOpen] = useState(false);
+    const [renameUONom, setRenameUONom] = useState('');
     const [selectedUser, setSelectedUser] = useState<User | null>(null);
     const [viewingUser, setViewingUser] = useState<User | null>(null);
     const [actionInProgress, setActionInProgress] = useState(false);
@@ -117,9 +126,6 @@ function AdminDashboard() {
     const [quickCreateTarget, setQuickCreateTarget] = useState<{ id: number; nom: string } | null>(null);
     const [quickCreateSource, setQuickCreateSource] = useState<TypeDocumentDto[]>([]);
 
-    const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
-
     const [filters, setFilters] = useState<UserFilters>({
         nom: '', prenom: '', email: '', telephone: '', roles: []
     });
@@ -131,11 +137,16 @@ function AdminDashboard() {
             const data = await getAllUOs();
             setAllUOs(data);
         } catch {
-            setError("Erreur lors de la récupération des unités organisationnelles");
+            notify.error("Erreur lors de la récupération des unités organisationnelles");
         }
     }, []);
 
     useEffect(() => { fetchAllUOs(); }, [fetchAllUOs]);
+    // L'arbre reste monté en permanence dans la sidebar (pas de remontage au
+    // changement d'onglet) — sans ça, une UO créée/renommée/déplacée depuis
+    // une autre interface (ou un autre onglet du même navigateur) ne
+    // s'affiche qu'après un rechargement manuel de la page.
+    useRefetchOnFocus(fetchAllUOs);
 
     // Le nœud racine virtuel (GLOBAL_VIEW_ID) ne correspond à aucune UO réelle :
     // y ajouter un enfant crée une UO racine (parentId: null).
@@ -147,15 +158,56 @@ function AdminDashboard() {
 
     const handleCreateUO = async (e: FormEvent) => {
         e.preventDefault();
-        if (!createUONom.trim()) { setError('Le nom est obligatoire'); return; }
+        if (!createUONom.trim()) { notify.error('Le nom est obligatoire'); return; }
         setActionInProgress(true);
         try {
             await createUO({ nom: createUONom.trim(), parentId: createUOParentId });
-            setSuccess("UO créée avec succès");
+            notify.success("UO créée avec succès");
             setIsCreateUOModalOpen(false);
             await fetchAllUOs();
         } catch (err: any) {
-            setError(err.message || "Erreur lors de la création de l'UO");
+            notify.error(err.message || "Erreur lors de la création de l'UO");
+        } finally {
+            setActionInProgress(false);
+        }
+    };
+
+    const openRenameUOModal = () => {
+        if (!currentUO || currentUO.id === GLOBAL_VIEW_ID) return;
+        setRenameUONom(currentUO.nom);
+        setIsRenameUOModalOpen(true);
+    };
+
+    const handleRenommerUO = async (e: FormEvent) => {
+        e.preventDefault();
+        if (!currentUO || currentUO.id === GLOBAL_VIEW_ID) return;
+        if (!renameUONom.trim()) { notify.error('Le nom est obligatoire'); return; }
+        setActionInProgress(true);
+        try {
+            await updateUO(currentUO.id, { nom: renameUONom.trim() });
+            notify.success("UO renommée avec succès");
+            setIsRenameUOModalOpen(false);
+            await fetchAllUOs();
+        } catch (err: any) {
+            notify.error(err.message || "Erreur lors du renommage de l'UO");
+        } finally {
+            setActionInProgress(false);
+        }
+    };
+
+    // Suppression réservée aux UO vides (aucun membre, sous-UO, type de document...) —
+    // le serveur rejette sinon (UONonVideException) et le message est affiché tel quel.
+    const handleSupprimerUO = async () => {
+        if (!currentUO || currentUO.id === GLOBAL_VIEW_ID) return;
+        if (!(await confirm(`Supprimer définitivement l'UO "${currentUO.nom}" ? Impossible si elle n'est pas vide.`))) return;
+        setActionInProgress(true);
+        try {
+            await deleteUO(currentUO.id);
+            notify.success("UO supprimée avec succès");
+            setCurrentUOId(GLOBAL_VIEW_ID);
+            await fetchAllUOs();
+        } catch (err: any) {
+            notify.error(err.message || "Erreur lors de la suppression de l'UO");
         } finally {
             setActionInProgress(false);
         }
@@ -170,10 +222,10 @@ function AdminDashboard() {
             } else {
                 await updateUO(id, { parentId: targetId });
             }
-            setSuccess("UO déplacée avec succès");
+            notify.success("UO déplacée avec succès");
             await fetchAllUOs();
         } catch (err: any) {
-            setError(err.message || "Erreur lors du déplacement de l'UO");
+            notify.error(err.message || "Erreur lors du déplacement de l'UO");
         }
     };
 
@@ -192,7 +244,7 @@ function AdminDashboard() {
         setQuickCreateTarget(null);
         setQuickCreateSource([]);
         setTdRefresh(r => r + 1);
-        setSuccess("Type(s) de document créé(s) avec succès");
+        notify.success("Type(s) de document créé(s) avec succès");
     };
 
     const handleAssignToUO = (userId: string) => {
@@ -217,7 +269,7 @@ function AdminDashboard() {
                 : await getUsersByUO(uoId);
             setUsers(data);
         } catch {
-            setError("Erreur lors de la récupération des utilisateurs");
+            notify.error("Erreur lors de la récupération des utilisateurs");
         }
     }, []);
 
@@ -227,12 +279,13 @@ function AdminDashboard() {
         }
     }, [currentUOId, tab, fetchUsers]);
 
-    useEffect(() => {
-        if (error || success) {
-            const t = setTimeout(() => { setError(''); setSuccess(''); }, 2500);
-            return () => clearTimeout(t);
-        }
-    }, [error, success]);
+    // Idem que l'arbre des UO : la liste des utilisateurs ne se remonte pas
+    // en changeant d'onglet (elle vit dans ce même composant), donc sans ça
+    // un blocage/une réactivation faite depuis une autre interface reste
+    // invisible ici tant qu'on ne recharge pas la page à la main.
+    useRefetchOnFocus(useCallback(() => {
+        if (tab === 'utilisateurs') fetchUsers(currentUOId);
+    }, [tab, currentUOId, fetchUsers]));
 
     const handleSelectUO = (id: number) => {
         setCurrentUOId(id);
@@ -241,7 +294,6 @@ function AdminDashboard() {
     };
 
     const handleAction = async (userId: string, action: 'edit' | 'block-unblock' | 'delete' | 'view') => {
-        setError(''); setSuccess('');
         const targetUser = users.find(u => u.id === userId);
         if (!targetUser) return;
 
@@ -253,10 +305,10 @@ function AdminDashboard() {
             try {
                 const isActif = targetUser.actif === true || targetUser.actif === 'true';
                 await updateStatus(userId, { actif: !isActif });
-                setSuccess("Statut mis à jour avec succès");
+                notify.success("Statut mis à jour avec succès");
                 fetchUsers(currentUOId);
             } catch {
-                setError("Erreur lors du changement de statut");
+                notify.error("Erreur lors du changement de statut");
             } finally {
                 setActionInProgress(false);
             }
@@ -266,28 +318,28 @@ function AdminDashboard() {
     // uoId transmis directement par la ligne (UserTable) — plus de dépendance à
     // l'UO actuellement affichée, donc "Retirer" fonctionne aussi en vue globale.
     const handleRemoveFromUO = async (userId: string, uoId: number) => {
-        if (!window.confirm("Retirer cet utilisateur de cette UO ?")) return;
+        if (!(await confirm("Retirer cet utilisateur de cette UO ?"))) return;
         setActionInProgress(true);
         try {
             await retirerMembreUO(uoId, userId);
-            setSuccess("Utilisateur retiré de l'UO avec succès");
+            notify.success("Utilisateur retiré de l'UO avec succès");
             fetchUsers(currentUOId);
         } catch (err: any) {
-            setError(err.message || "Erreur lors du retrait de l'utilisateur");
+            notify.error(err.message || "Erreur lors du retrait de l'utilisateur");
         } finally {
             setActionInProgress(false);
         }
     };
 
     const handleRemoveAdminUO = async (userId: string, uoId: number) => {
-        if (!window.confirm("Retirer cet administrateur d'UO ? Il perdra son autorité de gestion sur cette UO.")) return;
+        if (!(await confirm("Retirer cet administrateur d'UO ? Il perdra son autorité de gestion sur cette UO."))) return;
         setActionInProgress(true);
         try {
             await retirerMembreEtAdmin(uoId, userId);
-            setSuccess("Administrateur d'UO retiré avec succès");
+            notify.success("Administrateur d'UO retiré avec succès");
             fetchUsers(currentUOId);
         } catch (err: any) {
-            setError(err.message || "Erreur lors du retrait de l'administrateur d'UO");
+            notify.error(err.message || "Erreur lors du retrait de l'administrateur d'UO");
         } finally {
             setActionInProgress(false);
         }
@@ -299,6 +351,7 @@ function AdminDashboard() {
         setIsViewModalOpen(false);
         setIsCreateTdModalOpen(false);
         setIsCreateUOModalOpen(false);
+        setIsRenameUOModalOpen(false);
         setSelectedUser(null);
         setViewingUser(null);
     };
@@ -306,13 +359,13 @@ function AdminDashboard() {
     const handleUserUpdated = () => {
         fetchUsers(currentUOId);
         handleCloseModal();
-        setSuccess("Opération effectuée avec succès");
+        notify.success("Opération effectuée avec succès");
     };
 
     const handleTdCreated = () => {
         handleCloseModal();
         setTdRefresh(r => r + 1);
-        setSuccess("Type de document créé avec succès");
+        notify.success("Type de document créé avec succès");
     };
 
     const filteredUsers = users.filter(u =>
@@ -377,7 +430,27 @@ function AdminDashboard() {
                             <p className="uo-page-path">
                                 {currentUO.id === GLOBAL_VIEW_ID ? 'Toute l\'organisation' : currentUO.cheminComplet}
                             </p>
-                            <h2 className="uo-page-title">{currentUO.nom}</h2>
+                            <div className="uo-page-title-row">
+                                <h2 className="uo-page-title">{currentUO.nom}</h2>
+                                {currentUO.id !== GLOBAL_VIEW_ID && (
+                                    <div className="uo-page-title-actions">
+                                        <button
+                                            className="details-close-btn"
+                                            onClick={openRenameUOModal}
+                                            disabled={actionInProgress}
+                                        >
+                                            <i className="fa-solid fa-pen" /> Renommer
+                                        </button>
+                                        <button
+                                            className="details-close-btn uo-delete-btn"
+                                            onClick={handleSupprimerUO}
+                                            disabled={actionInProgress}
+                                        >
+                                            <i className="fa-solid fa-trash" /> Supprimer
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
 
                             <div className="uo-tabs">
                                 <button
@@ -411,6 +484,12 @@ function AdminDashboard() {
                                     Emplacements physiques
                                 </button>
                                 <button
+                                    className={`uo-tab ${tab === 'corbeille' ? 'active' : ''}`}
+                                    onClick={() => setTab('corbeille')}
+                                >
+                                    <i className="fa-solid fa-trash-can" /> Corbeille
+                                </button>
+                                <button
                                     className={`uo-tab ${tab === 'journal' ? 'active' : ''}`}
                                     onClick={() => setTab('journal')}
                                 >
@@ -418,8 +497,6 @@ function AdminDashboard() {
                                 </button>
                             </div>
 
-                            {error && <div className="alert alert-error">{error}</div>}
-                            {success && <div className="alert alert-success">{success}</div>}
 
                             {tab === 'utilisateurs' && (
                                 <>
@@ -488,6 +565,10 @@ function AdminDashboard() {
                                 <PhysicalLocationsPanel uoId={currentUO.id === GLOBAL_VIEW_ID ? null : currentUO.id} />
                             )}
 
+                            {tab === 'corbeille' && (
+                                <Corbeille />
+                            )}
+
                             {tab === 'journal' && <AuditLogPanel />}
                         </>
                     )}
@@ -548,6 +629,29 @@ function AdminDashboard() {
                         </div>
                         <button type="submit" className="form-submit-btn" disabled={actionInProgress}>
                             Créer
+                        </button>
+                    </form>
+                </Modal>
+
+                <Modal
+                    isOpen={isRenameUOModalOpen}
+                    onClose={handleCloseModal}
+                    title="Renommer l'UO"
+                >
+                    <form onSubmit={handleRenommerUO}>
+                        <div className="form-field">
+                            <input
+                                id="uo-rename-nom"
+                                type="text"
+                                placeholder="Nom de l'UO" aria-label="Nom de l'UO"
+                                className="form-field-input"
+                                value={renameUONom}
+                                onChange={(e) => setRenameUONom(e.target.value)}
+                                required
+                            />
+                        </div>
+                        <button type="submit" className="form-submit-btn" disabled={actionInProgress}>
+                            Enregistrer
                         </button>
                     </form>
                 </Modal>

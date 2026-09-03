@@ -41,10 +41,16 @@ const PANEL_INITIALES: Record<string, string> = {
 
 function Sidebar({ title, children }: SidebarProps) {
     const [open, setOpen] = useState(true);
+    const [switching, setSwitching] = useState(false);
 
     const roles = getUserRoles();
     const currentPath = window.location.pathname;
-    const currentRole = Object.entries(ROLE_ROUTES).find(([, path]) => currentPath.startsWith(path))?.[0] || '';
+    // currentPath.startsWith(path) seul confondrait "/admin_uo" avec le préfixe
+    // "/admin" (c'est un préfixe de CARACTÈRES, pas de SEGMENT d'URL) — exiger une
+    // égalité exacte ou un "/" juste après le préfixe évite cette collision tout en
+    // gardant la correspondance pour un futur sous-chemin (ex. "/editor/documents/123").
+    const currentRole = Object.entries(ROLE_ROUTES)
+        .find(([, path]) => currentPath === path || currentPath.startsWith(path + '/'))?.[0] || '';
 
     // Le rôle affiché suit l'interface réellement ouverte (utile quand l'utilisateur
     // cumule plusieurs rôles et bascule) ; à défaut, son rôle principal.
@@ -74,31 +80,30 @@ function Sidebar({ title, children }: SidebarProps) {
     }, [afficheUO]);
 
     const handleRoleSwitch = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const selected = e.target.value;
-    console.log('selected:', selected, 'currentRole:', currentRole);
-    console.log('route cible:', ROLE_ROUTES[selected]);
-    console.log('redirection dans 3s...');
-    
-    if (selected && selected !== currentRole) {
-        setTimeout(() => {
-            console.log('redirection vers:', ROLE_ROUTES[selected]);
+        const selected = e.target.value;
+        if (selected && selected !== currentRole) {
+            // Navigation lancée immédiatement — l'overlay ci-dessous couvre le
+            // temps RÉEL de chargement de la nouvelle page (celui-ci n'est pas
+            // instantané, contrairement à l'ancien délai artificiel), sans en
+            // rajouter un de plus.
+            setSwitching(true);
             window.location.replace(ROLE_ROUTES[selected]);
-        }, 3000);
-    } else {
-        console.log('blocked — selected === currentRole ou selected vide');
-    }
-};
+        }
+    };
 
     const handleLogout = async () => {
         await logout();
         window.location.replace('/login');
     };
 
-    console.log('pathname:', window.location.pathname);
-    console.log('roles:', roles);
-    console.log('currentRole détecté:', currentRole);
-
     return (
+        <>
+        {switching && (
+            <div className='sidebar-switching-overlay'>
+                <i className='fa-solid fa-spinner fa-spin' />
+                <span>Changement d'interface…</span>
+            </div>
+        )}
         <aside className={open ? 'sidebar sidebar-open' : 'sidebar sidebar-closed'}>
             <div className='sidebar-header'>
                 <NotificationBell />
@@ -133,6 +138,7 @@ function Sidebar({ title, children }: SidebarProps) {
                         onChange={handleRoleSwitch}
                         className='role-select'
                         aria-label="Changer d'interface"
+                        disabled={switching}
                     >
                         {roles.map(role => (
                             <option key={role} value={role}>
@@ -158,6 +164,7 @@ function Sidebar({ title, children }: SidebarProps) {
                 </button>
             )}
         </aside>
+        </>
     );
 }
 

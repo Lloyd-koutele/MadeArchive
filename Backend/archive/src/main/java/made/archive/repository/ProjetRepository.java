@@ -13,4 +13,7 @@ public interface ProjetRepository extends JpaRepository<Projet, Long>
     // nom dans la même UO — même règle que pour les UO et les types de document (voir
     // UniteOrganisationnelleRepository / TypeDocumentRepository).
     boolean existsByNomIgnoreCaseAndUniteOrganisationnelleId(String nom, Long uoId);
+
+    /** Même vérification, en excluant le projet qu'on est justement en train de renommer (ProjetService.modifierProjet). */
+    boolean existsByNomIgnoreCaseAndUniteOrganisationnelleIdAndIdNot(String nom, Long uoId, Long excludeId);
 }

@@ -11,6 +11,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -49,6 +50,32 @@ public class ProjetController
         {
             return ResponseEntity.badRequest().body(Map.of("message",
                 "Erreur lors de la création du projet : " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Modifie le nom/la description d'un projet existant — jamais les types
+     * attendus (voir /types ci-dessous) ni l'accès (voir
+     * ProjetGroupeAccessController), toujours des appels séparés. Mêmes
+     * droits que gérer les types attendus ou supprimer (voir
+     * ProjetService.verifierPeutGererProjet).
+     */
+    @Secured("ROLE_EDITOR")
+    @PutMapping("/{id}")
+    public ResponseEntity<?> modifierProjet(
+        @PathVariable Long id,
+        @RequestBody ProjetDto dto,
+        @AuthenticationPrincipal UserDetailsImpl currentUser)
+    {
+        try
+        {
+            Projet projet = projetService.modifierProjet(id, dto.getNom(), dto.getDescription(), currentUser.getUser());
+            return ResponseEntity.ok(projet);
+        }
+        catch (Exception e)
+        {
+            return ResponseEntity.badRequest().body(Map.of("message",
+                "Erreur lors de la modification du projet : " + e.getMessage()));
         }
     }
 

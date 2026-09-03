@@ -8,7 +8,6 @@ export type LocationStatus = 'ACTIVE' | 'INACTIVE';
 
 export interface PhysicalLocationDto {
     id: string;
-    code: string;
     name: string;
     description: string | null;
     status: LocationStatus;
@@ -24,7 +23,6 @@ export interface PhysicalLocationDto {
 
 export interface PhysicalLocationNodeDto {
     id: string;
-    code: string;
     name: string;
     status: LocationStatus;
     storagePoint: boolean;
@@ -32,7 +30,6 @@ export interface PhysicalLocationNodeDto {
 }
 
 export interface PhysicalLocationCreateDto {
-    code: string;
     name: string;
     description?: string;
     storagePoint: boolean;
@@ -41,7 +38,6 @@ export interface PhysicalLocationCreateDto {
 }
 
 export interface PhysicalLocationUpdateDto {
-    code?: string;
     name?: string;
     description?: string;
 }
@@ -77,6 +73,18 @@ export const changerTypeStockage = async (id: string, storagePoint: boolean): Pr
     try {
         const response = await api.put(`/admin_uo/physical-locations/${id}/type-stockage`, null, {
             params: { storagePoint },
+        });
+        return response.data;
+    } catch (error: any) {
+        throw extractMessage(error);
+    }
+};
+
+/** nouveauParentId undefined/null = devient une nouvelle racine. */
+export const deplacerEmplacement = async (id: string, nouveauParentId: string | null): Promise<PhysicalLocationDto> => {
+    try {
+        const response = await api.put(`/admin_uo/physical-locations/${id}/deplacer`, null, {
+            params: nouveauParentId ? { nouveauParentId } : {},
         });
         return response.data;
     } catch (error: any) {

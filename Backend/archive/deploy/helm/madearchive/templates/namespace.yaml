@@ -1,0 +1,11 @@
+# Géré ici pour que le namespace porte le label de société dès sa création.
+# Si vous installez avec `--create-namespace`, Helm crée le namespace AVANT
+# ce template — les deux se recouvrent sans conflit (le label est simplement
+# appliqué). N'utilisez pas les deux si vous voulez éviter l'avertissement
+# "already exists" au premier install — l'un ou l'autre suffit.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Release.Namespace }}
+  labels:
+    madearchive.io/societe: {{ .Release.Name }}

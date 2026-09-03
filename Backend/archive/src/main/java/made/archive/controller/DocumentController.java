@@ -27,14 +27,17 @@ import made.archive.dto.BulkOcrPreviewResponseDto;
 import made.archive.dto.BulkUploadReportDto;
 import made.archive.dto.DocumentUploadResultDto;
 import made.archive.dto.FinalizeUploadRequestDto;
-import made.archive.dto.FtpImportRequestDto;
 import made.archive.dto.OcrPreviewResponseDto;
+import made.archive.dto.WebImportOcrRequestDto;
+import made.archive.dto.WebImportPreviewRequestDto;
+import made.archive.dto.WebImportPreviewResponseDto;
 import made.archive.entite.TypeDocument;
 import made.archive.exception.BusinessException;
 import made.archive.service.document.BulkUploadSameTypeService;
 import made.archive.service.document.DocumentOcrService;
 import made.archive.service.document.DocumentUploadeService;
 import made.archive.service.document.OcrSessionCache;
+import made.archive.service.document.WebImportService;
 import made.archive.security.UserDetailsImpl;
 import made.archive.service.document.TypeDocumentService;
 import made.archive.service.user.UserService;
@@ -47,6 +50,7 @@ public class DocumentController
 {
     private final DocumentUploadeService documentUploadeService;
     private final BulkUploadSameTypeService bulkUploadSameTypeService;
+    private final WebImportService webImportService;
     private final TypeDocumentService typeDocumentService;
     private final TypeDocumentMapper typeDocumentMapper;
     private final UserService userService;
@@ -142,6 +146,41 @@ public class DocumentController
                     .message("Erreur lors de l'OCR : " + e.getMessage())
                     .build());
         }
+    }
+
+    /**
+     * GET /api/editor/ocr-preview/{sessionId}/pdf
+     *
+     * Expose le PDF/A déjà généré pendant la Phase 1 OCR (voir
+     * DocumentOcrService.processOcrPreview) — pour l'aperçu du document à
+     * l'écran de validation, à côté des champs de métadonnées. Aucune
+     * conversion supplémentaire : ce sont les octets déjà en mémoire dans la
+     * session, quel que soit le format d'origine (Word, Excel, image...) —
+     * LibreOffice les a déjà uniformisés en PDF avant l'OCR.
+     */
+    @Secured("ROLE_EDITOR")
+    @GetMapping("/ocr-preview/{sessionId}/pdf")
+    public ResponseEntity<byte[]> ocrPreviewPdf(@PathVariable String sessionId)
+    {
+        UUID id;
+        try
+        {
+            id = UUID.fromString(sessionId);
+        }
+        catch (IllegalArgumentException e)
+        {
+            return ResponseEntity.badRequest().build();
+        }
+
+        OcrSessionCache.OcrSessionData data = ocrSessionCache.getSession(id);
+        if (data == null || data.pdfABytes == null)
+        {
+            return ResponseEntity.notFound().build();
+        }
+
+        return ResponseEntity.ok()
+            .contentType(MediaType.APPLICATION_PDF)
+            .body(data.pdfABytes);
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -242,28 +281,25 @@ public class DocumentController
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // Bulk same-type — Phase 1 (source distante) : import FTP/FTPS
+    // Bulk same-type — Phase 1 (source distante) : import via lien web
     // ═══════════════════════════════════════════════════════════════════
 
     /**
-     * POST /api/editor/docs/bulk/same-type/ftp/ocr-preview
+     * POST /api/editor/docs/bulk/same-type/web/preview
      *
-     * Variante de l'endpoint ci-dessus : au lieu de fichiers envoyés en
-     * multipart, télécharge tous les fichiers d'un dossier distant (FTP ou
-     * FTPS selon FtpImportRequestDto.secure) puis leur applique exactement
-     * le même traitement OCR Phase 1. Retourne le même BulkOcrPreviewResponseDto
-     * — le client enchaîne ensuite sur /bulk/same-type/finalize, inchangé.
-     *
-     * Les identifiants FTP fournis ne sont jamais persistés côté serveur.
+     * Découvre les fichiers derrière un lien SANS les télécharger : si le lien
+     * pointe directement sur un fichier, retourne ce fichier seul ; si c'est une
+     * page web, en extrait les liens vers des documents (PDF, Word, Excel,
+     * images...). Le client affiche cette liste pour confirmation avant
+     * d'appeler /web/ocr-preview.
      */
     @Secured("ROLE_EDITOR")
-    @PostMapping("/docs/bulk/same-type/ftp/ocr-preview")
-    public ResponseEntity<?> bulkSameTypeOcrPreviewFromFtp(@RequestBody FtpImportRequestDto requete)
+    @PostMapping("/docs/bulk/same-type/web/preview")
+    public ResponseEntity<?> bulkSameTypeWebPreview(@RequestBody WebImportPreviewRequestDto requete)
     {
         try
         {
-            BulkOcrPreviewResponseDto response =
-                bulkUploadSameTypeService.startOcrPreviewFromFtp(requete);
+            WebImportPreviewResponseDto response = webImportService.previewer(requete);
             return ResponseEntity.ok(response);
         }
         catch (BusinessException e)
@@ -275,7 +311,37 @@ public class DocumentController
         {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(buildErrorResponse("INTERNAL_ERROR",
-                    "Erreur import FTP : " + e.getMessage()));
+                    "Erreur lors de l'analyse du lien : " + e.getMessage()));
+        }
+    }
+
+    /**
+     * POST /api/editor/docs/bulk/same-type/web/ocr-preview
+     *
+     * Télécharge uniquement les fichiers confirmés par le client sur l'aperçu
+     * ci-dessus, puis leur applique exactement le même traitement OCR Phase 1
+     * que les autres sources. Retourne le même BulkOcrPreviewResponseDto — le
+     * client enchaîne ensuite sur /bulk/same-type/finalize, inchangé.
+     */
+    @Secured("ROLE_EDITOR")
+    @PostMapping("/docs/bulk/same-type/web/ocr-preview")
+    public ResponseEntity<?> bulkSameTypeOcrPreviewFromWeb(@RequestBody WebImportOcrRequestDto requete)
+    {
+        try
+        {
+            BulkOcrPreviewResponseDto response = bulkUploadSameTypeService.startOcrPreviewFromWeb(requete);
+            return ResponseEntity.ok(response);
+        }
+        catch (BusinessException e)
+        {
+            return ResponseEntity.badRequest()
+                .body(buildErrorResponse("BUSINESS_ERROR", e.getMessage()));
+        }
+        catch (Exception e)
+        {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(buildErrorResponse("INTERNAL_ERROR",
+                    "Erreur import lien web : " + e.getMessage()));
         }
     }
 

@@ -1,0 +1,89 @@
+{{/*
+  C'est ce fichier, pas le namespace, qui transforme "isolé nominalement" en
+  "isolé réellement" — voir le schéma "Silo K8s" : sans lui, n'importe quel
+  pod du cluster peut atteindre le Postgres ou le MinIO de cette société par
+  son ClusterIP, namespace ou pas.
+*/}}
+{{- if .Values.networkPolicy.enabled }}
+# 1. Tout refuser par défaut — ingress ET egress — pour tous les pods du
+#    namespace. Tout ce qui suit est une exception explicite à ce refus.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress", "Egress"]
+---
+# 2. Autoriser tout le trafic pod-à-pod À L'INTÉRIEUR de ce namespace (app
+#    <-> postgres/minio/meilisearch/redis). Rien ici ne sort vers une autre
+#    société.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intra-namespace
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - from: [{ podSelector: {} }]
+  egress:
+    - to: [{ podSelector: {} }]
+---
+# 3. DNS — sans ça, plus aucune résolution de nom ne marche, même celle des
+#    Services DE CE namespace. Piège classique, oublié en premier.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector: {}
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+# 4. Egress vers shared-services (Gotenberg, Ollama) — la SEULE sortie
+#    autorisée hors du namespace vers un service applicatif, et seulement
+#    vers des services qui ne retiennent aucun contenu (voir values.yaml).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-shared-services
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels: { app: {{ .Release.Name }}-app }
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: {{ .Values.shared.namespace }} }
+---
+# 5. Ingress externe — seul le pod app peut recevoir du trafic depuis
+#    l'Ingress Controller, et seulement sur son port applicatif. Postgres,
+#    MinIO, Meilisearch, Redis ne sont jamais exposés au-delà de ce
+#    namespace : cette policy ne les mentionne pas.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-from-controller
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels: { app: {{ .Release.Name }}-app }
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: {{ .Values.networkPolicy.ingressControllerNamespace }} }
+      ports:
+        - { protocol: TCP, port: 8080 }
+{{- end }}

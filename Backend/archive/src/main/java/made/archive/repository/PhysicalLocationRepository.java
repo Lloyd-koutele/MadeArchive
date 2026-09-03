@@ -10,10 +10,6 @@ import made.archive.entite.PhysicalLocation;
 
 public interface PhysicalLocationRepository extends JpaRepository<PhysicalLocation, UUID>
 {
-    boolean existsByCode(String code);
-
-    boolean existsByCodeAndIdNot(String code, UUID id);
-
     List<PhysicalLocation> findByParentId(UUID parentId);
 
     List<PhysicalLocation> findByParentIsNullAndUniteOrganisationnelleId(Long uniteOrganisationnelleId);

@@ -1,0 +1,171 @@
+/* ── Fenêtre unique de notifications ─────────────────────────────────── */
+
+.notif-stack {
+    position: fixed;
+    top: 1.25rem;
+    right: 1.25rem;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    max-width: 380px;
+    width: calc(100% - 2.5rem);
+}
+
+.notif-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.7rem;
+    padding: 0.85rem 1rem;
+    border-radius: var(--radius, 10px);
+    background: var(--white-choc, #fff);
+    border-left: 4px solid var(--border, #E8D9C5);
+    box-shadow: var(--shadow-md, 0 4px 16px rgba(44,26,14,0.12));
+    animation: notif-in 0.2s ease;
+}
+
+@keyframes notif-in {
+    from { opacity: 0; transform: translateX(24px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
+.notif-card i:first-child {
+    font-size: 1.15rem;
+    margin-top: 0.15rem;
+    flex-shrink: 0;
+}
+
+.notif-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+}
+
+.notif-label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.notif-message {
+    font-size: 0.85rem;
+    color: var(--dark-choc, #2C1A0E);
+    word-break: break-word;
+}
+
+.notif-close {
+    border: none;
+    background: transparent;
+    color: var(--text-light, #9E8878);
+    cursor: pointer;
+    font-size: 0.75rem;
+    padding: 0.1rem 0.2rem;
+    flex-shrink: 0;
+}
+
+.notif-success { border-left-color: var(--success, #4A7C59); }
+.notif-success i:first-child, .notif-success .notif-label { color: var(--success, #4A7C59); }
+
+.notif-error { border-left-color: var(--error, #9B3A3A); }
+.notif-error i:first-child, .notif-error .notif-label { color: var(--error, #9B3A3A); }
+
+.notif-warning { border-left-color: #B8860B; }
+.notif-warning i:first-child, .notif-warning .notif-label { color: #B8860B; }
+
+.notif-info { border-left-color: #3B6E91; }
+.notif-info i:first-child, .notif-info .notif-label { color: #3B6E91; }
+
+@media (max-width: 600px) {
+    .notif-stack { top: 0.6rem; right: 0.6rem; left: 0.6rem; width: auto; max-width: none; }
+}
+
+/* ── Modale de confirmation (remplace window.confirm) ────────────────── */
+
+.confirm-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10001;
+    background: rgba(44, 26, 14, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+}
+
+.confirm-dialog {
+    background: var(--white-choc, #fff);
+    border-radius: var(--radius, 10px);
+    box-shadow: var(--shadow-lg, 0 8px 32px rgba(44,26,14,0.16));
+    max-width: 420px;
+    width: 100%;
+    padding: 1.5rem;
+    animation: notif-in 0.15s ease;
+}
+
+.confirm-dialog-header {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 0.75rem;
+}
+
+.confirm-dialog-header i {
+    font-size: 1.3rem;
+    color: var(--accent, #8B5E3C);
+}
+
+.confirm-dialog-header h3 {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--dark-choc, #2C1A0E);
+    margin: 0;
+}
+
+.confirm-dialog-message {
+    font-size: 0.9rem;
+    color: var(--dark-soft, #5C3D2E);
+    line-height: 1.5;
+    margin: 0 0 1.5rem;
+}
+
+.confirm-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.6rem;
+}
+
+.confirm-btn-cancel, .confirm-btn-confirm, .confirm-btn-danger {
+    padding: 0.55rem 1.1rem;
+    border-radius: var(--radius-sm, 6px);
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1.5px solid transparent;
+    transition: background var(--transition, 0.2s ease), border-color var(--transition, 0.2s ease);
+}
+
+.confirm-btn-cancel {
+    background: var(--white-choc, #fff);
+    color: var(--dark-soft, #5C3D2E);
+    border-color: var(--border, #E8D9C5);
+}
+
+.confirm-btn-cancel:hover { background: var(--cream, #F5EDE0); }
+
+.confirm-btn-confirm {
+    background: var(--accent, #8B5E3C);
+    color: #fff;
+}
+
+.confirm-btn-confirm:hover { background: var(--dark-soft, #5C3D2E); }
+
+.confirm-btn-danger {
+    background: var(--error, #9B3A3A);
+    color: #fff;
+}
+
+.confirm-btn-danger:hover { background: #7a2e2e; }

@@ -13,6 +13,9 @@ const TYPE_ICONS: Record<string, string> = {
     DOCUMENT_CORROMPU: 'fa-solid fa-triangle-exclamation notif-icon-corrompu',
     DOCUMENT_AJOUTE:   'fa-solid fa-file-circle-plus notif-icon-ajoute',
     PROJET_CREE:       'fa-solid fa-folder-plus notif-icon-projet',
+    UO_CREEE:          'fa-solid fa-sitemap notif-icon-projet',
+    DOCUMENT_HORODATAGE_ECHEC:  'fa-solid fa-clock notif-icon-corrompu',
+    DOCUMENT_HORODATAGE_REUSSI: 'fa-solid fa-stamp notif-icon-ajoute',
 };
 
 const POLL_INTERVAL_MS = 60_000;

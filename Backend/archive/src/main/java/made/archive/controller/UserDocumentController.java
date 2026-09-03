@@ -2,14 +2,20 @@ package made.archive.controller;
 
 import lombok.RequiredArgsConstructor;
 import made.archive.dto.AttestationDto;
+import made.archive.dto.DataTypeDto;
 import made.archive.dto.DocumentAccessFilterDto;
 import made.archive.dto.DocumentDetailDto;
 import made.archive.dto.DocumentFolderDto;
 import made.archive.dto.DocumentPageDto;
+import made.archive.dto.TypeDocumentDto;
+import made.archive.entite.TypeDocument;
+import made.archive.security.UserDetailsImpl;
 import made.archive.service.document.AttestationService;
 import made.archive.service.document.DocumentAccessService;
 import made.archive.exception.BusinessException;
 import made.archive.service.document.DocumentService;
+import made.archive.service.document.TypeDocumentService;
+import made.archive.util.TypeDocumentMapper;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -71,6 +77,54 @@ public class UserDocumentController
     private final DocumentService documentService;
     private final DocumentAccessService documentAccessService;
     private final AttestationService attestationService;
+    private final TypeDocumentService typeDocumentService;
+    private final TypeDocumentMapper typeDocumentMapper;
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Types de documents — pour peupler un filtre côté client
+    // ═══════════════════════════════════════════════════════════════════
+
+    /**
+     * GET /api/user/types-documents?uoId=
+     *
+     * Types de documents visibles par l'utilisateur connecté — ouvert à
+     * ROLE_USER (donc EDITOR/ADMIN_UO/ADMIN qui en héritent aussi),
+     * contrairement à /api/admin_uo/types-documents (ROLE_ADMIN seul) et
+     * /api/editor/types-documents (ROLE_EDITOR seul, et non filtré par UO).
+     * Sert le filtre "Type de document" de "Documents accessibles", utilisé
+     * par tous les tableaux de bord.
+     *
+     * ?uoId= optionnel : restreint à une UO précise (navigation Admin/
+     * Admin_UO dans l'arbre) — reste borné au périmètre déjà autorisé pour
+     * l'appelant. Sans lui, retourne tout le périmètre visible de
+     * l'appelant (sa propre UO pour EDITOR/USER, son sous-arbre pour
+     * ADMIN_UO, tout pour ADMIN).
+     */
+    @Secured("ROLE_USER")
+    @GetMapping("/types-documents")
+    public ResponseEntity<?> getTypeDocumentsVisibles(
+        @RequestParam(required = false) Long uoId,
+        @AuthenticationPrincipal UserDetailsImpl currentUser)
+    {
+        try
+        {
+            List<TypeDocument> typeDocuments =
+                typeDocumentService.getTypeDocumentsVisibles(currentUser.getUser(), uoId);
+            List<TypeDocumentDto> dtos = typeDocumentMapper.toDtoList(typeDocuments);
+            return ResponseEntity.ok(dtos);
+        }
+        catch (BusinessException e)
+        {
+            return ResponseEntity.badRequest()
+                .body(buildError("BUSINESS_ERROR", e.getMessage()));
+        }
+        catch (Exception e)
+        {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(buildError("INTERNAL_ERROR",
+                    "Erreur récupération types de documents : " + e.getMessage()));
+        }
+    }
 
     // ═══════════════════════════════════════════════════════════════════
     // Grille de dossiers
@@ -340,6 +394,37 @@ public class UserDocumentController
     }
 
     // ═══════════════════════════════════════════════════════════════════
+    // Métadonnées — correction après coup
+    // ═══════════════════════════════════════════════════════════════════
+
+    /**
+     * PUT /api/user/docs/{id}/metadata
+     *
+     * Remplace les valeurs de métadonnées d'un document — jamais le
+     * fichier/titre/type. Réservé à l'éditeur ayant accès au document (voir
+     * DocumentService.modifierMetaData). Si ce document est le seul de son
+     * type, invalide automatiquement les regex d'extraction OCR de ce type.
+     */
+    @Secured("ROLE_USER")
+    @PutMapping("/docs/{id}/metadata")
+    public ResponseEntity<?> modifierMetaData(
+        @PathVariable UUID id,
+        @RequestBody List<DataTypeDto> nouvellesValeurs,
+        @AuthenticationPrincipal UserDetails userDetails)
+    {
+        try
+        {
+            return ResponseEntity.ok(
+                documentService.modifierMetaData(id, nouvellesValeurs, userDetails));
+        }
+        catch (BusinessException e)
+        {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(buildError("BUSINESS_ERROR", e.getMessage()));
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
     // Localisation physique
     // ═══════════════════════════════════════════════════════════════════
 
@@ -370,26 +455,90 @@ public class UserDocumentController
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // Suppression d'un document corrompu — planifiée, 3 jours de grâce
+    // Projet — rattacher, migrer ou détacher un document après coup
     // ═══════════════════════════════════════════════════════════════════
 
     /**
-     * POST /api/user/docs/{id}/planifier-suppression
+     * PUT /api/user/docs/{id}/projet?projetId=...&fusionnerGroupes=...
      *
-     * Programme la suppression définitive d'un document CORROMPU dans 3 jours.
-     * Réservé à l'éditeur ayant déposé le document (voir DocumentService.planifierSuppression) —
-     * un admin peut consulter un document corrompu mais pas le supprimer.
+     * Change le projet d'un document — omettre projetId le détache de son
+     * projet actuel ("le faire sortir du projet") ; le fournir le migre
+     * vers ce projet (qu'il en ait déjà un ou non). Réservé à l'éditeur
+     * ayant accès au document, et borné à un projet de la même UO (voir
+     * DocumentService.modifierProjetDocument pour le détail des règles).
+     *
+     * fusionnerGroupes : à ne passer à true qu'après que le client a appelé
+     * GET .../verifier-fusion-groupe et obtenu la confirmation de l'éditeur —
+     * voir DocumentService.modifierProjetDocument, qui refuse sinon de
+     * fusionner silencieusement deux groupes différents.
+     */
+    @Secured("ROLE_USER")
+    @PutMapping("/docs/{id}/projet")
+    public ResponseEntity<?> modifierProjetDocument(
+        @PathVariable UUID id,
+        @RequestParam(required = false) Long projetId,
+        @RequestParam(defaultValue = "false") boolean fusionnerGroupes,
+        @AuthenticationPrincipal UserDetails userDetails)
+    {
+        try
+        {
+            return ResponseEntity.ok(
+                documentService.modifierProjetDocument(id, projetId, fusionnerGroupes, userDetails));
+        }
+        catch (BusinessException e)
+        {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(buildError("BUSINESS_ERROR", e.getMessage()));
+        }
+    }
+
+    /**
+     * GET /api/user/docs/{id}/projet/{projetId}/verifier-fusion-groupe
+     *
+     * À appeler AVANT modifierProjetDocument quand le document et le projet
+     * cible sont tous les deux privés, pour savoir s'il faut avertir
+     * l'éditeur qu'une fusion de groupes aura lieu (voir
+     * DocumentService.verifierFusionGroupe). Lecture seule.
+     */
+    @Secured("ROLE_USER")
+    @GetMapping("/docs/{id}/projet/{projetId}/verifier-fusion-groupe")
+    public ResponseEntity<?> verifierFusionGroupe(
+        @PathVariable UUID id,
+        @PathVariable Long projetId,
+        @AuthenticationPrincipal UserDetails userDetails)
+    {
+        try
+        {
+            return ResponseEntity.ok(documentService.verifierFusionGroupe(id, projetId, userDetails));
+        }
+        catch (BusinessException e)
+        {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(buildError("BUSINESS_ERROR", e.getMessage()));
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Corbeille — suppression volontaire, 3 jours de grâce, restaurable
+    // ═══════════════════════════════════════════════════════════════════
+
+    /**
+     * POST /api/user/docs/{id}/corbeille
+     *
+     * Envoie un document à la corbeille — n'importe quel document, plus
+     * seulement un corrompu (voir DocumentService.envoyerCorbeille).
+     * Réservé à un éditeur ayant accès au document.
      */
     @Secured("ROLE_EDITOR")
-    @PostMapping("/docs/{id}/planifier-suppression")
-    public ResponseEntity<?> planifierSuppression(
+    @PostMapping("/docs/{id}/corbeille")
+    public ResponseEntity<?> envoyerCorbeille(
         @PathVariable UUID id,
         @AuthenticationPrincipal UserDetails userDetails)
     {
         try
         {
-            documentService.planifierSuppression(id, userDetails);
-            return ResponseEntity.ok(java.util.Map.of("message", "Suppression planifiée dans 3 jours"));
+            documentService.envoyerCorbeille(id, userDetails);
+            return ResponseEntity.ok(java.util.Map.of("message", "Document envoyé à la corbeille, suppression définitive dans 3 jours"));
         }
         catch (BusinessException e)
         {
@@ -400,6 +549,72 @@ public class UserDocumentController
         {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(buildError("INTERNAL_ERROR", "Erreur : " + e.getMessage()));
+        }
+    }
+
+    /**
+     * POST /api/user/docs/{id}/restaurer
+     *
+     * Restaure un document depuis la corbeille — voir
+     * DocumentService.restaurerDepuisCorbeille. Réservé à un éditeur ayant
+     * accès au document (un admin/admin_uo peut consulter la corbeille mais
+     * pas restaurer).
+     */
+    @Secured("ROLE_EDITOR")
+    @PostMapping("/docs/{id}/restaurer")
+    public ResponseEntity<?> restaurerDepuisCorbeille(
+        @PathVariable UUID id,
+        @AuthenticationPrincipal UserDetails userDetails)
+    {
+        try
+        {
+            documentService.restaurerDepuisCorbeille(id, userDetails);
+            return ResponseEntity.ok(java.util.Map.of("message", "Document restauré"));
+        }
+        catch (BusinessException e)
+        {
+            return ResponseEntity.badRequest()
+                .body(buildError("BUSINESS_ERROR", e.getMessage()));
+        }
+        catch (Exception e)
+        {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(buildError("INTERNAL_ERROR", "Erreur : " + e.getMessage()));
+        }
+    }
+
+    /**
+     * GET /api/user/docs/corbeille?page=&size=
+     *
+     * Liste les documents en corbeille visibles par l'utilisateur connecté —
+     * voir DocumentAccessService.getDocumentsCorbeille pour le détail du
+     * périmètre (ADMIN : tout ; ADMIN_UO : son UO + descendantes, lecture
+     * seule ; ÉDITEUR : ceux auxquels il a normalement accès). Fermé à
+     * ROLE_USER simple — la corbeille n'est pas un espace de consultation
+     * générale.
+     */
+    @Secured({"ROLE_EDITOR", "ROLE_ADMIN_UO", "ROLE_ADMIN"})
+    @GetMapping("/docs/corbeille")
+    public ResponseEntity<?> getDocumentsCorbeille(
+        @RequestParam(defaultValue = "1")  int page,
+        @RequestParam(defaultValue = "10") int size,
+        @AuthenticationPrincipal UserDetails userDetails)
+    {
+        try
+        {
+            DocumentPageDto result = documentAccessService.getDocumentsCorbeille(page, size, userDetails);
+            return ResponseEntity.ok(result);
+        }
+        catch (BusinessException e)
+        {
+            return ResponseEntity.badRequest()
+                .body(buildError("BUSINESS_ERROR", e.getMessage()));
+        }
+        catch (Exception e)
+        {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(buildError("INTERNAL_ERROR",
+                    "Erreur récupération de la corbeille : " + e.getMessage()));
         }
     }
 
@@ -446,6 +661,10 @@ public class UserDocumentController
      *   ?uoId=      → restreint à une UO précise (navigation Admin/Admin_UO dans
      *                 l'arbre) — reste borné au périmètre déjà autorisé, ne
      *                 permet jamais d'en sortir (voir DocumentAccessService)
+     *   ?projetId=  → restreint aux documents rattachés à un projet précis
+     *                 (onglet "Types de documents" d'un projet, une fois un
+     *                 type ouvert) — se combine avec typeId, jamais un
+     *                 contournement de la visibilité PUBLIC/PRIVÉ
      *   ?page=      → numéro de page (défaut : 1)
      *   ?size=      → taille de page (défaut : 10, max : 50)
      *
@@ -455,6 +674,7 @@ public class UserDocumentController
      *   GET /api/user/docs/accessibles?titre=contrat&dateDebut=2024-01-01&dateFin=2024-12-31
      *   GET /api/user/docs/accessibles?typeId=3&access=PRIVE
      *   GET /api/user/docs/accessibles?uoId=7
+     *   GET /api/user/docs/accessibles?projetId=12&typeId=3
      */
     @Secured("ROLE_USER")
     @GetMapping("/docs/accessibles")
@@ -466,6 +686,7 @@ public class UserDocumentController
         @RequestParam(required = false) String    dateFin,
         @RequestParam(required = false) String    statut,
         @RequestParam(required = false) Long      uoId,
+        @RequestParam(required = false) Long      projetId,
         @RequestParam(defaultValue = "1")  int   page,
         @RequestParam(defaultValue = "10") int   size,
         @AuthenticationPrincipal UserDetails userDetails)
@@ -479,6 +700,7 @@ public class UserDocumentController
             filter.setAccess(access);
             filter.setStatut(statut);
             filter.setUoId(uoId);
+            filter.setProjetId(projetId);
             filter.setPage(page);
             filter.setSize(size);
     

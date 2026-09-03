@@ -17,6 +17,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.Lob;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OneToOne;
@@ -126,6 +127,22 @@ public class Document
     @Column(length = 600)
     private String pkiSignature;
 
+    /**
+     * Jeton d'horodatage RFC 3161 (TimeStampToken, encodage DER brut) obtenu
+     * auprès d'une autorité d'horodatage (TSA) sur pdfaSha256 — voir
+     * HorodatageService. Preuve tierce indépendante de la BD elle-même que
+     * ce hash existait à horodatageDate ; complète pkiSignature (qui prouve
+     * QUI a signé/QUE le contenu n'a pas changé) sans s'y substituer. Null
+     * si l'horodatage a échoué à l'upload — best-effort, voir
+     * HorodatageRetryScheduler pour la reprise différée, jamais bloquant
+     * pour l'archivage lui-même.
+     */
+    @Lob
+    private byte[] horodatageToken;
+
+    /** Heure certifiée par le TSA, extraite du jeton — évite de le reparser pour un simple affichage. */
+    private java.time.Instant horodatageDate;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "projet_id")
     private Projet projet;
@@ -145,7 +162,26 @@ public class Document
     @Column(nullable = false)
     private boolean derniereVersion = true;
 
+    /**
+     * Échéance de purge définitive — posée quand le document entre en
+     * CORBEILLE (voir DocumentService.envoyerCorbeille), quel que soit son
+     * statut d'origine (y compris CORRUPTED, qui utilisait autrefois ce
+     * champ directement sans passer par CORBEILLE). Effacée à la
+     * restauration.
+     */
     private LocalDate suppressionPrevueLe;
+
+    /**
+     * Statut réel du document juste avant son passage en CORBEILLE — permet
+     * à la restauration (DocumentService.restaurerDepuisCorbeille) de le
+     * rendre exactement tel qu'il était (un document CORROMPU envoyé à la
+     * corbeille et restauré redevient CORROMPU, pas ACTIVE : voir
+     * DocumentDetailDto, le badge de corruption doit rester visible).
+     * Null en dehors de CORBEILLE.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private DocumentStatus statutAvantCorbeille;
 
     // Emplacement physique de l'original papier, si ce document en a un — voir
     // PhysicalLocation. Nullable : un document purement numérique n'a pas

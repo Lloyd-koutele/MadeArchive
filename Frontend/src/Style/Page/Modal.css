@@ -30,6 +30,13 @@
     border: 1px solid var(--border);
 }
 
+/* Contenu qui a besoin de place à l'écran (ex : import de document — visionneuse
+   PDF + formulaire de métadonnées côte à côte, voir document/ImportDocuments.tsx). */
+.modal-content-large {
+    max-width: 1100px;
+    max-height: 94vh;
+}
+
 @keyframes modalIn {
     from { opacity: 0; transform: translateY(12px); }
     to   { opacity: 1; transform: translateY(0); }

@@ -1,6 +1,12 @@
 import api from '../api';
 
-export type NotificationType = 'DOCUMENT_CORROMPU' | 'DOCUMENT_AJOUTE' | 'PROJET_CREE';
+export type NotificationType =
+    | 'DOCUMENT_CORROMPU'
+    | 'DOCUMENT_AJOUTE'
+    | 'PROJET_CREE'
+    | 'UO_CREEE'
+    | 'DOCUMENT_HORODATAGE_ECHEC'
+    | 'DOCUMENT_HORODATAGE_REUSSI';
 
 export interface NotificationDto {
     id:       number;

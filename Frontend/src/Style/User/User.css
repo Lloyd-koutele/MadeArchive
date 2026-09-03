@@ -127,10 +127,14 @@
     gap: 0.75rem;
 }
 
+/* Radiogroup Public/Privé — centré en tant que paire, voir Editor.css (même
+   règle dupliquée ici — les deux fichiers sont bundlés globalement, donc les
+   deux doivent rester identiques pour ne pas se marcher dessus au hasard de
+   l'ordre d'import). */
 .up-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.75rem;
+    display: flex;
+    justify-content: center;
+    gap: 2.5rem;
 }
 
 .up-select {
@@ -651,7 +655,7 @@
 
 /* Responsive */
 @media (max-width: 768px) {
-    .up-row { grid-template-columns: 1fr; }
+    .up-row { flex-direction: column; align-items: center; gap: 0.75rem; }
     .multitype-files { grid-template-columns: 1fr; }
     .template-actions { flex-direction: column; }
     .groupe-add-row { flex-direction: column; }

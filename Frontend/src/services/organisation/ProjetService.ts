@@ -80,6 +80,24 @@ export const creerProjet = async (dto: CreerProjetDto): Promise<ProjetDto> => {
 };
 
 /**
+ * PUT /api/editor/projets/{id} — nom/description uniquement, jamais les
+ * types attendus (voir ajouterTypesAttendus/retirerTypeAttendu) ni l'accès.
+ */
+export const modifierProjet = async (
+    id: number,
+    dto: { nom: string; description?: string }
+): Promise<ProjetDto> => {
+    try {
+        const response = await api.put(`/editor/projets/${id}`, dto);
+        return response.data;
+    } catch (error: any) {
+        throw new Error(
+            error.response?.data?.message ?? error.message ?? 'Erreur modification du projet'
+        );
+    }
+};
+
+/**
  * GET /api/user/projets/uo/{uoId} — lecture seule, ouverte à tout utilisateur
  * authentifié (ROLE_USER), pas seulement EDITOR/ADMIN_UO/ADMIN.
  */

@@ -7,9 +7,11 @@ interface ModalProps {
     onClose: () => void;
     title: string;
     children: ReactNode;
+    /** 'large' pour un contenu qui a besoin de place (ex : visionneuse + formulaire côte à côte). */
+    size?: 'default' | 'large';
 }
 
-function Modal({ isOpen, onClose, title, children }: ModalProps) {
+function Modal({ isOpen, onClose, title, children, size = 'default' }: ModalProps) {
 
     useEffect(() => {
         const handleEsc = (event: KeyboardEvent) => {
@@ -29,7 +31,7 @@ function Modal({ isOpen, onClose, title, children }: ModalProps) {
 
     return (
         <div className="modal-overlay">
-            <div className="modal-content">
+            <div className={`modal-content ${size === 'large' ? 'modal-content-large' : ''}`}>
                 <div className="modal-header">
                     <h2>{title}</h2>
                     <button onClick={onClose} aria-label="Fermer la fenêtre modale">

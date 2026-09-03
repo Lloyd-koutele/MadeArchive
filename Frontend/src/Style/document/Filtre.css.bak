@@ -1,0 +1,158 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   PANNEAU DE FILTRES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Bouton toggle filtres */
+.filtres-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: none;
+    border: 1px solid var(--border, #e0e0e0);
+    border-radius: 8px;
+    padding: 0.4rem 0.85rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-primary, #222);
+    cursor: pointer;
+    transition: background 0.15s;
+    position: relative;
+}
+
+.filtres-toggle-btn:hover {
+    background: var(--hover-bg, rgba(0,0,0,0.04));
+}
+
+.filtres-badge {
+    background: var(--accent, #4A90D9);
+    color: #fff;
+    font-size: 0.65rem;
+    font-weight: 700;
+    border-radius: 999px;
+    padding: 1px 6px;
+    min-width: 18px;
+    text-align: center;
+}
+
+.filtres-chevron {
+    font-size: 0.65rem;
+    color: var(--text-muted, #888);
+    margin-left: 0.1rem;
+}
+
+/* Panneau filtres */
+.filtres-panel {
+    background: var(--surface-alt, #f8f9fa);
+    border: 1px solid var(--border, #e0e0e0);
+    border-radius: 10px;
+    padding: 1.1rem 1.25rem;
+    margin-bottom: 1rem;
+}
+
+.filtres-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 0.85rem;
+    margin-bottom: 1rem;
+}
+
+.filtre-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.filtre-label {
+    font-size: 0.73rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted, #888);
+}
+
+/* Actions du panneau */
+.filtres-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.6rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border, #e8e8e8);
+}
+
+.filtres-reset-btn {
+    background: none;
+    border: 1px solid var(--border, #e0e0e0);
+    border-radius: 8px;
+    padding: 0.45rem 1rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-muted, #666);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    transition: background 0.15s;
+}
+
+.filtres-reset-btn:hover:not(:disabled) {
+    background: var(--hover-bg, rgba(0,0,0,0.04));
+}
+
+.filtres-reset-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.filtres-apply-btn {
+    padding: 0.45rem 1.25rem !important;
+    font-size: 0.82rem !important;
+}
+
+/* ── Barre filtres actifs ─────────────────────────────────────────────── */
+
+.filtres-actifs-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    margin-bottom: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    background: #EFF6FF;
+    border: 1px solid #BFDBFE;
+    border-radius: 8px;
+    font-size: 0.8rem;
+}
+
+.filtres-actifs-label {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    color: #1D4ED8;
+    font-weight: 600;
+}
+
+.filtre-tag {
+    background: #DBEAFE;
+    color: #1E40AF;
+    border-radius: 999px;
+    padding: 2px 10px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.filtres-actifs-clear {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: #1D4ED8;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    opacity: 0.8;
+    transition: opacity 0.15s;
+}
+
+.filtres-actifs-clear:hover { opacity: 1; }

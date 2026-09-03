@@ -195,15 +195,42 @@ public class TypeDocumentService
                 "Vous n'avez pas l'autorisation de réinitialiser les regex de ce type");
         }
 
-        typeDocument.setExtractionRegexMap(Map.of());
-        typeDocumentRepository.save(typeDocument);
-
-        log.info("[TypeDocument] Regex réinitialisées pour le type {} par {}",
-            id, currentUser.getEmail());
+        viderRegex(typeDocument);
 
         auditLogService.log(currentUser, AuditAction.TYPE_DOCUMENT_REGEX_REINITIALISEE, AuditCible.TYPE_DOCUMENT,
             id.toString(), typeDocument.getUniteOrganisationnelle().getId(),
-            "Réinitialisation des regex du type " + typeDocument.getNom(), true);
+            "Réinitialisation manuelle des regex du type " + typeDocument.getNom()
+                + " par " + currentUser.getEmail(), true);
+    }
+
+    /**
+     * Version SANS vérification d'autorité — appelée automatiquement quand la
+     * correction des métadonnées de l'unique document existant d'un type
+     * invalide les regex générées à partir de lui seul (voir
+     * DocumentService.modifierMetaData). L'autorisation a déjà été vérifiée
+     * en amont, sur l'action réellement effectuée par l'utilisateur (modifier
+     * SON document) — pas la gestion du type lui-même, donc aAutoriteSur ne
+     * s'applique pas ici.
+     */
+    @Transactional
+    public void viderRegexAutomatiquement(TypeDocument typeDocument, User acteur, String raison)
+    {
+        viderRegex(typeDocument);
+
+        log.info("[TypeDocument] Regex invalidées automatiquement pour le type {} : {}",
+            typeDocument.getId(), raison);
+
+        auditLogService.log(acteur, AuditAction.TYPE_DOCUMENT_REGEX_REINITIALISEE, AuditCible.TYPE_DOCUMENT,
+            typeDocument.getId().toString(), typeDocument.getUniteOrganisationnelle().getId(),
+            "Regex du type " + typeDocument.getNom() + " invalidées automatiquement — " + raison, true);
+    }
+
+    private void viderRegex(TypeDocument typeDocument)
+    {
+        typeDocument.setExtractionRegexMap(Map.of());
+        typeDocumentRepository.save(typeDocument);
+
+        log.info("[TypeDocument] Regex réinitialisées pour le type {}", typeDocument.getId());
     }
 
     public void cleanupExternalStoresBeforeDeletion(Long typeDocumentId)
@@ -487,7 +514,7 @@ public class TypeDocumentService
         {
             throw new BusinessException("L'UO est obligatoire");
         }
-    
+
         try
         {
             return typeDocumentRepository.findByUniteOrganisationnelleIdWithRetentionAndMetaData(uoId);
@@ -496,6 +523,48 @@ public class TypeDocumentService
         {
             throw new RuntimeException("Erreur lors de la récupération des types de documents de l'UO");
         }
+    }
+
+    /**
+     * Types de documents visibles par l'utilisateur connecté — ouvert à
+     * TOUT rôle (EDITOR, ADMIN_UO, ADMIN, simple USER), contrairement à
+     * getAllTypeDocuments()/getTypeDocumentsByUO() ci-dessus qui exigent
+     * tous les deux un rôle ADMIN/ADMIN_UO côté contrôleur. Sert le filtre
+     * "Type de document" de "Documents accessibles" (voir
+     * DocumentAccessService), qui doit rester utilisable par un simple
+     * éditeur ou utilisateur — pas seulement un administrateur.
+     *
+     * @param uoIdExplicite Restreint à une UO précise (navigation Admin/
+     *                      Admin_UO dans l'arbre) — reste borné au périmètre
+     *                      déjà autorisé pour l'appelant, jamais un moyen d'en
+     *                      sortir (même garde que DocumentAccessFilterDto.uoId).
+     *                      null = tout le périmètre visible de l'appelant.
+     */
+    @Transactional
+    public List<TypeDocument> getTypeDocumentsVisibles(User currentUser, Long uoIdExplicite)
+    {
+        // null = ADMIN global, aucun filtrage nécessaire — voir
+        // UniteOrganisationnelleService.getUoIdsVisiblesPourLecture().
+        Set<Long> uoVisibles = uniteOrganisationnelleService.getUoIdsVisiblesPourLecture(currentUser);
+
+        if (uoIdExplicite != null)
+        {
+            if (uoVisibles != null && !uoVisibles.contains(uoIdExplicite))
+            {
+                return List.of(); // hors périmètre autorisé — jamais une fuite
+            }
+            return typeDocumentRepository.findByUniteOrganisationnelleIdWithRetentionAndMetaData(uoIdExplicite);
+        }
+
+        if (uoVisibles == null)
+        {
+            return typeDocumentRepository.findAllWithRetentionAndMetaData();
+        }
+        if (uoVisibles.isEmpty())
+        {
+            return List.of();
+        }
+        return typeDocumentRepository.findByUniteOrganisationnelleIdInWithRetentionAndMetaData(uoVisibles);
     }
 
     @Transactional

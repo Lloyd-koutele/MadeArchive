@@ -10,17 +10,25 @@ import made.archive.dto.DocumentFolderDto;
 import made.archive.dto.DocumentListItemDto;
 import made.archive.dto.DocumentPageDto;
 import made.archive.dto.DocumentVersionDto;
+import made.archive.dto.DataTypeDto;
+import made.archive.dto.FusionGroupeCheckDto;
+import made.archive.entite.GroupeAccess;
 import made.archive.entite.AuditAction;
 import made.archive.entite.AuditCible;
+import made.archive.entite.DataType;
 import made.archive.entite.Document;
 import made.archive.entite.DocumentStatus;
 import made.archive.entite.FixityCheckResult;
+import made.archive.entite.MetaData;
+import made.archive.entite.Projet;
 import made.archive.entite.Role_Name;
 import made.archive.entite.TypeAccess;
+import made.archive.entite.TypeDocument;
 import made.archive.entite.User;
 import made.archive.exception.BusinessException;
 import made.archive.repository.DocumentRepository;
 import made.archive.repository.FixityCheckResultRepository;
+import made.archive.repository.ProjetRepository;
 import made.archive.repository.UserRepository;
 import made.archive.security.DocumentEncryptionService;
 import made.archive.service.audit.AuditLogService;
@@ -72,8 +80,21 @@ public class DocumentService
     private final UniteOrganisationnelleService uniteOrganisationnelleService;
     private final FixityCheckResultRepository fixityCheckResultRepository;
     private final made.archive.service.organisation.PhysicalLocationService physicalLocationService;
+    private final made.archive.repository.DataTypeRepository dataTypeRepository;
+    private final TypeDocumentService typeDocumentService;
+    private final ProjetRepository projetRepository;
+    private final made.archive.repository.GroupeAccessRepository groupeAccessRepository;
 
     private static final String INDEX_NAME        = "documents";
+
+    /**
+     * Statuts à exclure de tout listage/recherche NORMAL — tombstoné
+     * (DELETED) et mis de côté volontairement (CORBEILLE, voir
+     * envoyerCorbeille). Seule la corbeille elle-même (DocumentAccessService
+     * .getDocumentsCorbeille) montre les documents CORBEILLE.
+     */
+    private static final List<DocumentStatus> STATUTS_EXCLUS_LECTURE =
+        List.of(DocumentStatus.DELETED, DocumentStatus.CORBEILLE);
 
     // ═══════════════════════════════════════════════════════════════════
     // 1. DOSSIERS — grille de types avec compteurs
@@ -132,15 +153,15 @@ public class DocumentService
         );
 
         Page<Document> pageResult = documentRepository
-            .findByUploadedByIdAndTypeDocumentIdAndStatusNot(
+            .findByUploadedByIdAndTypeDocumentIdAndStatusNotIn(
                 user.getId(),
                 typeDocumentId,
-                DocumentStatus.DELETED,
+                STATUTS_EXCLUS_LECTURE,
                 pageable
             );
 
         List<DocumentListItemDto> items = pageResult.getContent().stream()
-            .map(this::toListItemDto)
+            .map(doc -> toListItemDto(doc, user))
             .collect(Collectors.toList());
 
         return DocumentPageDto.builder()
@@ -195,8 +216,8 @@ public class DocumentService
 
         // BD : charger par IDs en filtrant sur l'utilisateur connecté (sécurité)
         List<Document> documents = documentRepository
-            .findByIdInAndUploadedByIdAndStatusNot(
-                ids, user.getId(), DocumentStatus.DELETED);
+            .findByIdInAndUploadedByIdAndStatusNotIn(
+                ids, user.getId(), STATUTS_EXCLUS_LECTURE);
 
         // Conserver l'ordre retourné par Meilisearch (pertinence)
         Map<UUID, Document> docMap = documents.stream()
@@ -205,7 +226,7 @@ public class DocumentService
         List<DocumentListItemDto> items = ids.stream()
             .map(docMap::get)
             .filter(Objects::nonNull)
-            .map(this::toListItemDto)
+            .map(doc -> toListItemDto(doc, user))
             .collect(Collectors.toList());
 
         return DocumentPageDto.builder()
@@ -231,7 +252,13 @@ public class DocumentService
         User user     = resolveUser(userDetails);
         Document doc  = resolveDocument(documentId, user);
 
-        String corruptionRaison = doc.getStatus() == DocumentStatus.CORRUPTED
+        // Un document corrompu envoyé à la corbeille garde CORRUPTED dans
+        // statutAvantCorbeille (voir Document.statutAvantCorbeille) — sa
+        // raison de corruption doit rester affichée (badge), pas disparaître
+        // simplement parce que son status affiché est devenu CORBEILLE.
+        boolean estOuEtaitCorrompu = doc.getStatus() == DocumentStatus.CORRUPTED
+            || doc.getStatutAvantCorbeille() == DocumentStatus.CORRUPTED;
+        String corruptionRaison = estOuEtaitCorrompu
             ? fixityCheckResultRepository.findByDocumentId(doc.getId())
                 .map(FixityCheckResult::getRaison).orElse(null)
             : null;
@@ -253,8 +280,9 @@ public class DocumentService
             .versionLabel(DocumentVersionLabels.compute(doc))
             .historiqueVersions(getHistoriqueVersions(doc))
             .corruptionRaison(corruptionRaison)
+            .statutAvantCorbeille(doc.getStatutAvantCorbeille() != null ? doc.getStatutAvantCorbeille().name() : null)
             .suppressionPrevueLe(doc.getSuppressionPrevueLe())
-            .peutEtreSupprime(estEditeur(user) && getUtilisateursAyantAcces(doc).stream()
+            .peutGererCorbeille(estEditeur(user) && getUtilisateursAyantAcces(doc).stream()
                 .anyMatch(u -> u.getId().equals(user.getId())))
             .metaData(doc.getData().stream()
                 .map(dt -> DocumentDetailDto.MetaDataValueDto.builder()
@@ -269,6 +297,10 @@ public class DocumentService
                 .anyMatch(u -> u.getId().equals(user.getId())))
             .uniteOrganisationnelleId(doc.getUniteOrganisationnelle() != null
                 ? doc.getUniteOrganisationnelle().getId() : null)
+            .projetId(doc.getProjet() != null ? doc.getProjet().getId() : null)
+            .projetNom(doc.getProjet() != null ? doc.getProjet().getNom() : null)
+            .peutModifierProjet(estEditeur(user) && getUtilisateursAyantAcces(doc).stream()
+                .anyMatch(u -> u.getId().equals(user.getId())))
             .build();
     }
 
@@ -344,23 +376,32 @@ public class DocumentService
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // 7. SUPPRESSION D'UN DOCUMENT CORROMPU — planifiée, 3 jours de grâce
+    // 7. CORBEILLE — suppression volontaire (3 jours de grâce, restaurable)
     // ═══════════════════════════════════════════════════════════════════
 
     /**
-     * Programme la suppression définitive d'un document CORROMPU dans 3 jours —
-     * réservé à un ÉDITEUR de la liste d'accès normale du document (voir
-     * getUtilisateursAyantAcces), pas seulement l'uploadeur : un document dont
-     * l'uploadeur a quitté l'UO ne doit pas rester bloqué indéfiniment si
-     * d'autres éditeurs y ont légitimement accès. Toujours pas un admin, même
-     * avec autorité sur l'UO : "seulement côté éditeur". Pendant les 3 jours,
-     * le document reste consultable/téléchargeable exactement comme avant
-     * (resolveDocument ne bloque que sur DELETED) ; c'est
-     * DocumentRetentionService qui purge réellement une fois l'échéance
+     * Envoie un document à la corbeille — N'IMPORTE QUEL document non déjà
+     * DELETED/CORBEILLE (plus seulement un corrompu, voir historique :
+     * l'ancien planifierSuppression était restreint à CORRUPTED). Réservé à
+     * un ÉDITEUR de la liste d'accès normale du document (voir
+     * getUtilisateursAyantAcces), pas seulement l'uploadeur — un document
+     * dont l'uploadeur a quitté l'UO ne doit pas rester bloqué indéfiniment
+     * si d'autres éditeurs y ont légitimement accès. Jamais un admin seul,
+     * même avec autorité sur l'UO : "seulement côté éditeur", comme pour
+     * modifierMetaData/modifierEmplacementPhysique/modifierProjetDocument.
+     *
+     * Le statut d'origine est conservé dans statutAvantCorbeille (un document
+     * CORROMPU envoyé à la corbeille redevient CORROMPU à la restauration,
+     * badge inclus — voir Document.statutAvantCorbeille). Pendant les 3
+     * jours, le document reste consultable/téléchargeable par les mêmes
+     * profils que le circuit CORROMPU (resolveDocument), mais disparaît de
+     * tout listage/recherche normal (voir STATUTS_EXCLUS_LECTURE) — seule la
+     * corbeille elle-même (DocumentAccessService.getDocumentsCorbeille) le
+     * montre. DocumentRetentionService purge réellement une fois l'échéance
      * atteinte (même mécanisme tombstone que la fin de rétention).
      */
     @Transactional
-    public void planifierSuppression(UUID documentId, UserDetails userDetails)
+    public void envoyerCorbeille(UUID documentId, UserDetails userDetails)
     {
         User user    = resolveUser(userDetails);
         Document doc = resolveDocument(documentId, user);
@@ -370,29 +411,71 @@ public class DocumentService
         if (!autorise)
         {
             throw new BusinessException(
-                "Seul un éditeur ayant accès à ce document peut demander sa suppression");
+                "Seul un éditeur ayant accès à ce document peut l'envoyer à la corbeille");
         }
 
-        if (doc.getStatus() != DocumentStatus.CORRUPTED)
+        if (doc.getStatus() == DocumentStatus.CORBEILLE)
         {
-            throw new BusinessException(
-                "Seul un document détecté corrompu peut être planifié pour suppression");
-        }
-
-        if (doc.getSuppressionPrevueLe() != null)
-        {
-            throw new BusinessException("La suppression de ce document est déjà planifiée pour le "
+            throw new BusinessException("Ce document est déjà dans la corbeille, prévu pour le "
                 + doc.getSuppressionPrevueLe());
         }
+        if (doc.getStatus() == DocumentStatus.DELETED)
+        {
+            throw new BusinessException("Ce document est déjà supprimé définitivement");
+        }
 
+        DocumentStatus statutOrigine = doc.getStatus();
+        doc.setStatutAvantCorbeille(statutOrigine);
+        doc.setStatus(DocumentStatus.CORBEILLE);
         doc.setSuppressionPrevueLe(LocalDate.now().plusDays(3));
         documentRepository.save(doc);
 
-        auditLogService.log(user, AuditAction.DOCUMENT_SUPPRESSION_PLANIFIEE, AuditCible.DOCUMENT,
+        auditLogService.log(user, AuditAction.DOCUMENT_PLACE_CORBEILLE, AuditCible.DOCUMENT,
             doc.getId().toString(),
             doc.getUniteOrganisationnelle() != null ? doc.getUniteOrganisationnelle().getId() : null,
-            "Suppression définitive planifiée pour le " + doc.getSuppressionPrevueLe()
-                + " — document corrompu \"" + doc.getTitre() + "\"",
+            "Document \"" + doc.getTitre() + "\" (" + statutOrigine + ") envoyé à la corbeille — "
+                + "suppression définitive prévue le " + doc.getSuppressionPrevueLe(),
+            true);
+    }
+
+    /**
+     * Restaure un document depuis la corbeille — même règle d'autorisation
+     * qu'envoyerCorbeille. Rend au document exactement son statut d'avant
+     * (voir Document.statutAvantCorbeille) : un document CORROMPU restauré
+     * redevient CORROMPU, pas ACTIVE — restaurer ne "répare" pas le fichier,
+     * seulement l'action de suppression est annulée.
+     */
+    @Transactional
+    public void restaurerDepuisCorbeille(UUID documentId, UserDetails userDetails)
+    {
+        User user    = resolveUser(userDetails);
+        Document doc = resolveDocument(documentId, user);
+
+        boolean autorise = estEditeur(user) && getUtilisateursAyantAcces(doc).stream()
+            .anyMatch(u -> u.getId().equals(user.getId()));
+        if (!autorise)
+        {
+            throw new BusinessException(
+                "Seul un éditeur ayant accès à ce document peut le restaurer depuis la corbeille");
+        }
+
+        if (doc.getStatus() != DocumentStatus.CORBEILLE)
+        {
+            throw new BusinessException("Ce document n'est pas dans la corbeille");
+        }
+
+        DocumentStatus statutRestaure = doc.getStatutAvantCorbeille() != null
+            ? doc.getStatutAvantCorbeille() : DocumentStatus.ACTIVE;
+
+        doc.setStatus(statutRestaure);
+        doc.setStatutAvantCorbeille(null);
+        doc.setSuppressionPrevueLe(null);
+        documentRepository.save(doc);
+
+        auditLogService.log(user, AuditAction.DOCUMENT_RESTAURE_CORBEILLE, AuditCible.DOCUMENT,
+            doc.getId().toString(),
+            doc.getUniteOrganisationnelle() != null ? doc.getUniteOrganisationnelle().getId() : null,
+            "Document \"" + doc.getTitre() + "\" restauré depuis la corbeille (statut " + statutRestaure + ")",
             true);
     }
 
@@ -403,7 +486,7 @@ public class DocumentService
     /**
      * Modifie (ou retire, si physicalLocationId == null) l'emplacement
      * physique d'un document — même règle d'autorisation que
-     * planifierSuppression : réservé à un ÉDITEUR de la liste d'accès
+     * envoyerCorbeille : réservé à un ÉDITEUR de la liste d'accès
      * normale du document (voir getUtilisateursAyantAcces), pas ouvert à un
      * simple lecteur. L'emplacement choisi est validé par
      * PhysicalLocationService.resolvePourRattachement (point de stockage
@@ -448,6 +531,355 @@ public class DocumentService
     }
 
     // ═══════════════════════════════════════════════════════════════════
+    // 8b. PROJET — rattacher, migrer ou détacher un document après coup
+    // ═══════════════════════════════════════════════════════════════════
+
+    /**
+     * Change le projet d'un document — même règle d'autorisation que
+     * modifierEmplacementPhysique/modifierMetaData (éditeur de la liste
+     * d'accès normale du document). nouveauProjetId == null détache le
+     * document de son projet actuel ("le faire sortir du projet") ;
+     * une valeur migre le document vers ce projet (que celui-ci en ait
+     * déjà un ou non).
+     *
+     * Au détachement, si le document partageait encore le GroupeAccess de
+     * ce projet (fusion antérieure ou héritage direct à l'upload — voir
+     * DocumentUploadeService), il reçoit sa propre copie indépendante,
+     * figée aux membres actuels : sans ça, il resterait exposé pour
+     * toujours à quiconque rejoint le groupe du projet PLUS TARD, alors
+     * qu'il n'en fait plus partie.
+     *
+     * Deux gardes supplémentaires, propres au projet CIBLE :
+     *   - même UO que le document (jamais un document migré hors de son UO) ;
+     *   - si le projet cible est PRIVÉ, l'acteur doit être membre de son
+     *     groupe d'accès — sans quoi la confidentialité du projet serait
+     *     contournable en y rattachant un document depuis l'extérieur.
+     *
+     * Aucune validation stricte contre les types attendus du projet cible —
+     * un document d'un type hors-liste peut toujours être rattaché. En
+     * revanche, si son type n'y figure pas encore, il est ajouté
+     * automatiquement à Projet.typesDocumentsAttendus (jamais retiré
+     * automatiquement au détachement — voir retirerTypeAttendu pour le
+     * retrait volontaire) : un document rattaché doit toujours être
+     * trouvable en parcourant son projet, jamais orphelin de la navigation
+     * par types (voir ProjetsPanel côté client, qui ne liste les documents
+     * que via ces dossiers de type).
+     *
+     * Document PRIVÉ rattaché à un projet PRIVÉ dont le groupe diffère : le
+     * document.groupe ne change JAMAIS tout seul silencieusement — voir
+     * verifierFusionGroupe, appelée par le client AVANT cette méthode pour
+     * savoir s'il faut avertir l'éditeur. fusionnerGroupes doit valoir true
+     * pour que la fusion ait lieu ; sinon, un écart entre les deux groupes
+     * fait échouer l'appel plutôt que de fusionner sans confirmation. La
+     * fusion elle-même : les membres du groupe du document manquants dans
+     * celui du projet y sont ajoutés (union), puis document.groupe pointe
+     * ensuite vers CE MÊME GroupeAccess que le projet — un lien permanent,
+     * pas un instantané, exactement comme DocumentUploadeService le fait
+     * déjà pour un document uploadé directement dans un projet privé.
+     */
+    @Transactional
+    public DocumentDetailDto modifierProjetDocument(
+        UUID documentId, Long nouveauProjetId, boolean fusionnerGroupes, UserDetails userDetails)
+    {
+        User user    = resolveUser(userDetails);
+        Document doc = resolveDocument(documentId, user);
+
+        boolean autorise = estEditeur(user) && getUtilisateursAyantAcces(doc).stream()
+            .anyMatch(u -> u.getId().equals(user.getId()));
+        if (!autorise)
+        {
+            throw new BusinessException(
+                "Seul un éditeur ayant accès à ce document peut le rattacher ou le détacher d'un projet");
+        }
+
+        Projet ancien = doc.getProjet();
+
+        if (nouveauProjetId == null)
+        {
+            // Si ce document partage encore le GroupeAccess de son projet
+            // actuel (fusion antérieure, ou héritage direct à l'upload — voir
+            // DocumentUploadeService), le détachement doit rompre ce lien
+            // permanent : sans ça, le document resterait indéfiniment
+            // exposé à quiconque rejoint PLUS TARD le groupe du projet,
+            // alors qu'il n'en fait plus partie. On lui donne donc sa PROPRE
+            // copie indépendante — figée aux membres actuels, jamais plus
+            // suivie par le projet ensuite. Le document reste privé, avec
+            // exactement les mêmes personnes qui y avaient accès juste avant.
+            // Détail resté silencieux dans le journal — l'entrée
+            // DOCUMENT_PROJET_MODIFIE plus bas couvre déjà "détaché du
+            // projet X" ; ce dédoublement de groupe n'est qu'un détail de
+            // mise en œuvre protégeant l'accès, pas un événement à part.
+            if (ancien != null && ancien.getGroupe() != null && doc.getGroupe() != null
+                && doc.getGroupe().getId().equals(ancien.getGroupe().getId()))
+            {
+                GroupeAccess copie = new GroupeAccess();
+                copie.setMembres(new ArrayList<>(ancien.getGroupe().getMembres()));
+                copie.setCreateAt(LocalDate.now());
+                copie = groupeAccessRepository.save(copie);
+                doc.setGroupe(copie);
+            }
+
+            doc.setProjet(null);
+        }
+        else
+        {
+            Projet nouveau = projetRepository.findById(nouveauProjetId)
+                .orElseThrow(() -> new BusinessException("Projet introuvable : " + nouveauProjetId));
+
+            if (doc.getUniteOrganisationnelle() == null || nouveau.getUniteOrganisationnelle() == null
+                || !nouveau.getUniteOrganisationnelle().getId().equals(doc.getUniteOrganisationnelle().getId()))
+            {
+                throw new BusinessException(
+                    "Ce projet n'appartient pas à la même unité organisationnelle que le document");
+            }
+
+            if (nouveau.getAccess() == TypeAccess.PRIVE)
+            {
+                boolean estMembreDuProjet = nouveau.getGroupe() != null
+                    && nouveau.getGroupe().getMembres().stream()
+                        .anyMatch(m -> m.getId().equals(user.getId()));
+                if (!estMembreDuProjet)
+                {
+                    throw new BusinessException(
+                        "Ce projet est privé — seul un membre de son groupe d'accès peut y rattacher un document");
+                }
+            }
+
+            // Import automatique du type dans les types attendus du projet
+            // CIBLE, si absent — sans quoi le document rattaché n'aurait
+            // aucun dossier sous lequel apparaître en le parcourant (voir
+            // le javadoc ci-dessus). Ne s'applique qu'au projet cible : un
+            // simple changement de projet n'a pas à modifier l'ancien.
+            TypeDocument type = doc.getTypeDocument();
+            List<TypeDocument> typesAttendus = nouveau.getTypesDocumentsAttendus();
+            boolean dejaPresent = typesAttendus != null
+                && typesAttendus.stream().anyMatch(t -> t.getId().equals(type.getId()));
+            if (!dejaPresent)
+            {
+                if (typesAttendus == null)
+                {
+                    typesAttendus = new ArrayList<>();
+                }
+                else
+                {
+                    typesAttendus = new ArrayList<>(typesAttendus);
+                }
+                typesAttendus.add(type);
+                nouveau.setTypesDocumentsAttendus(typesAttendus);
+                projetRepository.save(nouveau);
+
+                auditLogService.log(user, AuditAction.PROJET_TYPES_AJOUTES, AuditCible.PROJET,
+                    nouveau.getId().toString(),
+                    nouveau.getUniteOrganisationnelle() != null ? nouveau.getUniteOrganisationnelle().getId() : null,
+                    "Type \"" + type.getNom() + "\" ajouté automatiquement au projet " + nouveau.getNom()
+                        + " (document \"" + doc.getTitre() + "\" rattaché)",
+                    true);
+            }
+
+            // Document privé rattaché à un projet privé : deux groupes
+            // potentiellement différents (voir le javadoc ci-dessus). On ne
+            // fusionne jamais sans confirmation explicite du client.
+            if (doc.getAccess() == TypeAccess.PRIVE && doc.getGroupe() != null
+                && nouveau.getAccess() == TypeAccess.PRIVE && nouveau.getGroupe() != null
+                && !doc.getGroupe().getId().equals(nouveau.getGroupe().getId()))
+            {
+                List<User> manquants = membresManquants(doc.getGroupe(), nouveau.getGroupe());
+                if (!manquants.isEmpty())
+                {
+                    if (!fusionnerGroupes)
+                    {
+                        throw new BusinessException(
+                            "Le groupe du document et celui du projet n'ont pas les mêmes membres — "
+                            + "confirmation requise avant de les fusionner (voir verifierFusionGroupe)");
+                    }
+
+                    GroupeAccess groupeProjet = nouveau.getGroupe();
+                    List<User> membresFusionnes = new ArrayList<>(groupeProjet.getMembres());
+                    membresFusionnes.addAll(manquants);
+                    groupeProjet.setMembres(membresFusionnes);
+                    groupeAccessRepository.save(groupeProjet);
+
+                    auditLogService.log(user, AuditAction.GROUPE_MEMBRE_AJOUTE, AuditCible.DOCUMENT,
+                        doc.getId().toString(),
+                        doc.getUniteOrganisationnelle() != null ? doc.getUniteOrganisationnelle().getId() : null,
+                        manquants.size() + " membre(s) du groupe du document \"" + doc.getTitre()
+                            + "\" fusionné(s) dans le groupe du projet " + nouveau.getNom()
+                            + " (rattachement confirmé par l'éditeur)",
+                        true);
+                }
+                // Lien permanent — pas une copie : le document partage désormais
+                // le même GroupeAccess que le projet, comme à l'upload direct
+                // dans un projet privé (voir DocumentUploadeService).
+                doc.setGroupe(nouveau.getGroupe());
+            }
+
+            doc.setProjet(nouveau);
+        }
+
+        documentRepository.save(doc);
+
+        auditLogService.log(user, AuditAction.DOCUMENT_PROJET_MODIFIE, AuditCible.DOCUMENT,
+            doc.getId().toString(),
+            doc.getUniteOrganisationnelle() != null ? doc.getUniteOrganisationnelle().getId() : null,
+            "Projet du document \"" + doc.getTitre() + "\" changé de "
+                + (ancien != null ? "\"" + ancien.getNom() + "\"" : "aucun") + " vers "
+                + (doc.getProjet() != null ? "\"" + doc.getProjet().getNom() + "\"" : "aucun"),
+            true);
+
+        return getDetail(documentId, userDetails);
+    }
+
+    /**
+     * Appelée par le client AVANT modifierProjetDocument, pour savoir s'il
+     * faut avertir l'éditeur qu'une fusion de groupes aura lieu — voir le
+     * javadoc de modifierProjetDocument. Lecture seule, aucun effet de bord.
+     * groupesDifferents reste false (aucun avertissement) si le document
+     * n'est pas privé, si le projet cible ne l'est pas, ou si les deux
+     * groupes ont déjà exactement les mêmes membres.
+     */
+    @Transactional(readOnly = true)
+    public FusionGroupeCheckDto verifierFusionGroupe(UUID documentId, Long projetId, UserDetails userDetails)
+    {
+        User user    = resolveUser(userDetails);
+        Document doc = resolveDocument(documentId, user);
+        Projet projet = projetRepository.findById(projetId)
+            .orElseThrow(() -> new BusinessException("Projet introuvable : " + projetId));
+
+        if (doc.getAccess() != TypeAccess.PRIVE || doc.getGroupe() == null
+            || projet.getAccess() != TypeAccess.PRIVE || projet.getGroupe() == null
+            || doc.getGroupe().getId().equals(projet.getGroupe().getId()))
+        {
+            return FusionGroupeCheckDto.builder().groupesDifferents(false).build();
+        }
+
+        List<User> manquants = membresManquants(doc.getGroupe(), projet.getGroupe());
+        return FusionGroupeCheckDto.builder()
+            .groupesDifferents(!manquants.isEmpty())
+            .membresQuiSerontAjoutes(manquants.stream()
+                .map(u -> u.getPrenom() + " " + u.getNom())
+                .toList())
+            .build();
+    }
+
+    /** Membres de "source" absents de "cible" — comparés par id, jamais par référence d'objet. */
+    private List<User> membresManquants(GroupeAccess source, GroupeAccess cible)
+    {
+        List<User> membresSource = source.getMembres() != null ? source.getMembres() : List.of();
+        List<User> membresCible  = cible.getMembres()  != null ? cible.getMembres()  : List.of();
+        return membresSource.stream()
+            .filter(m -> membresCible.stream().noneMatch(c -> c.getId().equals(m.getId())))
+            .toList();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 9. MÉTADONNÉES — modification après coup (valeurs uniquement, jamais
+    //    le fichier/titre/type)
+    // ═══════════════════════════════════════════════════════════════════
+
+    /**
+     * Remplace les valeurs de métadonnées d'un document — même règle
+     * d'autorisation que envoyerCorbeille/modifierEmplacementPhysique :
+     * réservé à un ÉDITEUR de la liste d'accès normale du document. Ne
+     * touche jamais au fichier, au titre ni au type — uniquement les
+     * DataType associés.
+     *
+     * Effet de bord important : si ce document est le SEUL document vivant
+     * de son type, les regex d'extraction OCR de ce type (si déjà générées)
+     * ont forcément été apprises à partir de CE document, et de rien
+     * d'autre — corriger ses métadonnées ici invalide donc automatiquement
+     * ces regex (voir TypeDocumentService.viderRegexAutomatiquement),
+     * plutôt que de laisser un admin découvrir plus tard, sans lien
+     * évident, que les suggestions restent mauvaises pour tout le monde.
+     */
+    @Transactional
+    public DocumentDetailDto modifierMetaData(
+        UUID documentId, List<DataTypeDto> nouvellesValeurs, UserDetails userDetails)
+    {
+        User user    = resolveUser(userDetails);
+        Document doc = resolveDocument(documentId, user);
+
+        boolean autorise = estEditeur(user) && getUtilisateursAyantAcces(doc).stream()
+            .anyMatch(u -> u.getId().equals(user.getId()));
+        if (!autorise)
+        {
+            throw new BusinessException(
+                "Seul un éditeur ayant accès à ce document peut modifier ses métadonnées");
+        }
+
+        List<MetaData> metaDataDefinies = doc.getTypeDocument().getMetaData();
+        Map<String, MetaData> parNom = metaDataDefinies.stream()
+            .collect(Collectors.toMap(MetaData::getNom, m -> m, (a, b) -> a));
+
+        List<String> erreurs = new ArrayList<>();
+        List<DataType> aEnregistrer = new ArrayList<>();
+
+        for (DataTypeDto dto : nouvellesValeurs)
+        {
+            MetaData meta = parNom.get(dto.getNom());
+            if (meta == null)
+            {
+                erreurs.add("Champ inconnu pour ce type : " + dto.getNom());
+                continue;
+            }
+
+            String valeur = dto.getValeur();
+            if (Boolean.TRUE.equals(meta.getObligatoire()) && (valeur == null || valeur.isBlank()))
+            {
+                erreurs.add("Le champ '" + meta.getNom() + "' est obligatoire");
+                continue;
+            }
+            if (valeur == null || valeur.isBlank())
+            {
+                continue;
+            }
+
+            DataType dataType = new DataType();
+            dataType.setDocument(doc);
+            dataType.setMetaData(meta);
+            dataType.setValeur(valeur);
+            aEnregistrer.add(dataType);
+        }
+
+        // Tous les champs obligatoires doivent être couverts par la requête,
+        // même ceux absents de nouvellesValeurs (pas seulement ceux présents
+        // avec une valeur vide) — sinon un client pourrait simplement omettre
+        // un champ obligatoire pour contourner la validation ci-dessus.
+        Set<String> nomsRecus = nouvellesValeurs.stream()
+            .map(DataTypeDto::getNom).collect(Collectors.toSet());
+        for (MetaData meta : metaDataDefinies)
+        {
+            if (Boolean.TRUE.equals(meta.getObligatoire()) && !nomsRecus.contains(meta.getNom()))
+            {
+                erreurs.add("Le champ '" + meta.getNom() + "' est obligatoire");
+            }
+        }
+
+        if (!erreurs.isEmpty())
+        {
+            throw new BusinessException("Validation des métadonnées échouée : "
+                + String.join(" | ", erreurs));
+        }
+
+        dataTypeRepository.deleteByDocumentId(documentId);
+        dataTypeRepository.saveAll(aEnregistrer);
+
+        auditLogService.log(user, AuditAction.DOCUMENT_METADATA_MODIFIEE, AuditCible.DOCUMENT,
+            doc.getId().toString(),
+            doc.getUniteOrganisationnelle() != null ? doc.getUniteOrganisationnelle().getId() : null,
+            "Métadonnées corrigées pour le document \"" + doc.getTitre() + "\"", true);
+
+        long documentsVivantsDuType = documentRepository.countByTypeDocument_IdAndStatusNot(
+            doc.getTypeDocument().getId(), DocumentStatus.DELETED);
+        if (documentsVivantsDuType == 1 && doc.getTypeDocument().hasRegexGenerated())
+        {
+            typeDocumentService.viderRegexAutomatiquement(doc.getTypeDocument(), user,
+                "métadonnées corrigées sur son seul document existant (\"" + doc.getTitre() + "\")");
+        }
+
+        return getDetail(documentId, userDetails);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
     // Helpers privés
     // ═══════════════════════════════════════════════════════════════════
 
@@ -463,11 +895,11 @@ public class DocumentService
         );
 
         Page<Document> pageResult = documentRepository
-            .findByUploadedByIdAndStatusNot(
-                user.getId(), DocumentStatus.DELETED, pageable);
+            .findByUploadedByIdAndStatusNotIn(
+                user.getId(), STATUTS_EXCLUS_LECTURE, pageable);
 
         List<DocumentListItemDto> items = pageResult.getContent().stream()
-            .map(this::toListItemDto)
+            .map(doc -> toListItemDto(doc, user))
             .collect(Collectors.toList());
 
         return DocumentPageDto.builder()
@@ -496,7 +928,7 @@ public class DocumentService
             body.put("attributesToRetrieve", List.of("id"));
 
             List<String> filters = new ArrayList<>();
-            filters.add("status != DELETED");
+            filters.add("status != DELETED AND status != CORBEILLE");
             if (typeDocumentId != null)
             {
                 filters.add("typeDocumentId = " + typeDocumentId);
@@ -591,11 +1023,13 @@ public class DocumentService
      *     consulter/télécharger un document pour lequel il est autorisé, pas
      *     seulement à son propre uploadeur (ROUTE FINALE de "USER consulte et
      *     télécharge les documents auxquels il est autorisé") ;
-     *   - sinon, pour un document CORROMPU, restreint à l'ADMIN/ADMIN_UO ayant
-     *     autorité sur son UO, ou à un ÉDITEUR de sa liste d'accès (voir
-     *     getUtilisateursAyantAcces) — investigation, suppression ou
-     *     remplacement (voir FixityCheckService) ; un simple USER ne le voit
-     *     plus tant qu'il reste corrompu, même s'il y avait normalement accès.
+     *   - sinon, pour un document CORROMPU ou en CORBEILLE, restreint à
+     *     l'ADMIN/ADMIN_UO ayant autorité sur son UO (lecture — investigation
+     *     ou audit de la corbeille), ou à un ÉDITEUR de sa liste d'accès (voir
+     *     getUtilisateursAyantAcces) — qui peut en plus le restaurer/remplacer
+     *     (voir envoyerCorbeille/restaurerDepuisCorbeille/FixityCheckService) ;
+     *     un simple USER ne le voit plus dans aucun des deux cas, même s'il y
+     *     avait normalement accès.
      */
     private Document resolveDocument(UUID documentId, User user)
     {
@@ -607,7 +1041,10 @@ public class DocumentService
 
         if (!estUploadeur)
         {
-            boolean autorise = doc.getStatus() == DocumentStatus.CORRUPTED
+            boolean estMisDeCote = doc.getStatus() == DocumentStatus.CORRUPTED
+                || doc.getStatus() == DocumentStatus.CORBEILLE;
+
+            boolean autorise = estMisDeCote
                 ? (
                     doc.getUniteOrganisationnelle() != null
                     && uniteOrganisationnelleService.aAutoriteSur(
@@ -690,8 +1127,11 @@ public class DocumentService
     /**
      * Convertit un Document en DTO léger pour la liste.
      */
-    private DocumentListItemDto toListItemDto(Document doc)
+    private DocumentListItemDto toListItemDto(Document doc, User currentUser)
     {
+        boolean peutGererCorbeille = estEditeur(currentUser) && getUtilisateursAyantAcces(doc).stream()
+            .anyMatch(u -> u.getId().equals(currentUser.getId()));
+
         return DocumentListItemDto.builder()
             .documentId(doc.getId())
             .titre(doc.getTitre())
@@ -702,6 +1142,7 @@ public class DocumentService
             .retentionUntil(doc.getRetentionUntil())
             .createAt(doc.getCreateAt())
             .versionLabel(DocumentVersionLabels.compute(doc))
+            .peutGererCorbeille(peutGererCorbeille)
             .build();
     }
 

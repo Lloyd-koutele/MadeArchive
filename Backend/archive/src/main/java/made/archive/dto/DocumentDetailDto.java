@@ -34,12 +34,19 @@ public class DocumentDetailDto
     /** Ce qui a déclenché status == CORRUPTED (hash différent, échec déchiffrement...). Null sinon. */
     private String corruptionRaison;
 
-    /** Date de suppression définitive programmée si l'éditeur l'a demandée. Null sinon. */
+    /** Statut d'avant corbeille (ex. "CORRUPTED") — non-null uniquement quand
+     *  status == "CORBEILLE" (voir Document.statutAvantCorbeille). Un document
+     *  corrompu envoyé à la corbeille reste identifiable comme tel (badge). */
+    private String statutAvantCorbeille;
+
+    /** Date de suppression définitive programmée — non-null uniquement quand status == "CORBEILLE". */
     private LocalDate suppressionPrevueLe;
 
-    /** true si l'utilisateur consultant ce détail est l'éditeur ayant déposé le document
-     *  (seul habilité à demander sa suppression — voir DocumentService.planifierSuppression). */
-    private boolean peutEtreSupprime;
+    /** true si l'utilisateur consultant peut envoyer ce document à la corbeille, ou
+     *  le restaurer s'il y est déjà — voir DocumentService.envoyerCorbeille/
+     *  restaurerDepuisCorbeille (éditeur ayant accès normal au document, pas
+     *  seulement son uploadeur). */
+    private boolean peutGererCorbeille;
 
     private List<MetaDataValueDto> metaData;
 
@@ -50,11 +57,19 @@ public class DocumentDetailDto
     private String physicalLocationPath;
 
     /** true si l'utilisateur consultant peut modifier l'emplacement physique
-     *  (même règle que planifierSuppression : éditeur + accès normal au document). */
+     *  (même règle que envoyerCorbeille/modifierEmplacementPhysique : éditeur + accès normal au document). */
     private boolean peutModifierEmplacement;
 
     /** UO du document — nécessaire côté client pour lister les emplacements physiques disponibles. */
     private Long uniteOrganisationnelleId;
+
+    /** Projet auquel ce document est rattaché, s'il y en a un — voir Document.projet. Null sinon. */
+    private Long   projetId;
+    private String projetNom;
+
+    /** true si l'utilisateur consultant peut rattacher/migrer/détacher ce document
+     *  d'un projet (même règle que peutModifierEmplacement : éditeur + accès normal au document). */
+    private boolean peutModifierProjet;
 
     @Data
     @Builder

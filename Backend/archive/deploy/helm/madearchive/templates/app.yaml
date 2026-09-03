@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-app
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: {{ .Values.app.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-app
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-app
+    spec:
+      # dépendances au démarrage — même esprit que les `depends_on
+      # condition: service_healthy` du docker-compose actuel, transposé en
+      # initContainers puisque K8s n'a pas d'équivalent direct.
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:1.36
+          command: ["sh", "-c", "until nc -z {{ .Release.Name }}-postgres 5432; do sleep 2; done"]
+        - name: wait-for-minio
+          image: busybox:1.36
+          command: ["sh", "-c", "until nc -z {{ .Release.Name }}-minio 9000; do sleep 2; done"]
+      containers:
+        - name: app
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: {{ .Release.Name }}-config
+            - secretRef:
+                name: {{ .Release.Name }}-secrets
+          env:
+            - name: HSM_KEYSTORE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.hsm.existingSecretName }}
+                  key: keystore-password
+            - name: TESSERACT_DATA_PATH
+              value: /usr/share/tessdata
+          volumeMounts:
+            - name: hsm
+              mountPath: /app/hsm
+              readOnly: true
+          resources:
+            {{- toYaml .Values.app.resources | nindent 12 }}
+          # TCP simple, pas /actuator/health : spring-boot-starter-actuator
+          # n'est pas dans build.gradle aujourd'hui. À remplacer par un vrai
+          # HTTP GET dès que l'actuator est ajouté — un TCP ouvert ne dit
+          # rien de l'état réel de l'appli (juste que le port écoute).
+          readinessProbe:
+            tcpSocket: { port: 8080 }
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          livenessProbe:
+            tcpSocket: { port: 8080 }
+            initialDelaySeconds: 60
+            periodSeconds: 30
+      volumes:
+        - name: hsm
+          secret:
+            # Secret créé hors bande — voir values.yaml (hsm.*). Ce chart ne
+            # génère jamais de keystore PKI lui-même.
+            secretName: {{ .Values.hsm.existingSecretName }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-app
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    app: {{ .Release.Name }}-app
+  ports:
+    - port: 8080
+      targetPort: 8080

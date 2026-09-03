@@ -3,6 +3,7 @@ package made.archive.service.organisation;
 import java.time.LocalDateTime;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
@@ -79,10 +80,9 @@ public class PhysicalLocationService
         {
             throw new BusinessException("L'unité organisationnelle est obligatoire");
         }
-        if (dto.getCode() == null || dto.getCode().isBlank()
-            || dto.getName() == null || dto.getName().isBlank())
+        if (dto.getName() == null || dto.getName().isBlank())
         {
-            throw new BusinessException("Le code et le nom sont obligatoires");
+            throw new BusinessException("Le nom est obligatoire");
         }
 
         if (!uoService.aAutoriteSur(dto.getUniteOrganisationnelleId(), currentUser))
@@ -117,10 +117,7 @@ public class PhysicalLocationService
             }
         }
 
-        verifierCodeUnique(dto.getCode());
-
         PhysicalLocation loc = new PhysicalLocation();
-        loc.setCode(dto.getCode());
         loc.setName(dto.getName());
         loc.setDescription(dto.getDescription());
         loc.setStoragePoint(dto.isStoragePoint());
@@ -142,16 +139,85 @@ public class PhysicalLocationService
         return toDto(saved);
     }
 
+    /**
+     * Déplace un emplacement (glisser-déposer) — change son parent, ou le
+     * fait devenir une nouvelle racine si nouveauParentId est null.
+     *
+     * L'autorité est vérifiée sur l'UO de loc, qui est aussi celle exigée du
+     * nouveau parent (arbre scopé par UO — voir Javadoc de classe), donc une
+     * seule vérification suffit ici.
+     *
+     * Refusé si :
+     *   - la cible est le nœud lui-même ou l'un de ses propres descendants
+     *     (créerait un cycle) ;
+     *   - la cible est un point de stockage (ne peut jamais avoir d'enfant) ;
+     *   - la cible est désactivée — même incohérence que réactiver un nœud
+     *     sous un ancêtre INACTIVE, refusée pour la même raison : jamais de
+     *     nœud "actif" sous une branche fermée.
+     */
+    @Transactional
+    public PhysicalLocationDto deplacer(UUID id, UUID nouveauParentId, User currentUser)
+    {
+        PhysicalLocation loc = getEtVerifierAutorite(id, currentUser);
+
+        PhysicalLocation nouveauParent = null;
+        if (nouveauParentId != null)
+        {
+            if (nouveauParentId.equals(id))
+            {
+                throw new BusinessException("Un emplacement ne peut pas être son propre parent");
+            }
+
+            nouveauParent = locationRepository.findById(nouveauParentId)
+                .orElseThrow(() -> new BusinessException("Emplacement cible introuvable"));
+
+            if (estLuiMemeOuDescendantDe(nouveauParent, loc))
+            {
+                throw new BusinessException(
+                    "Impossible : cet emplacement ne peut pas devenir enfant de l'un de ses propres descendants");
+            }
+            if (nouveauParent.isStoragePoint())
+            {
+                throw new BusinessException(
+                    "Impossible : \"" + nouveauParent.getName() + "\" est un point de stockage, il ne peut pas avoir d'enfant");
+            }
+            if (nouveauParent.getStatus() != LocationStatus.ACTIVE)
+            {
+                throw new BusinessException(
+                    "Impossible : \"" + nouveauParent.getName() + "\" est désactivé");
+            }
+            if (!nouveauParent.getUniteOrganisationnelle().getId().equals(loc.getUniteOrganisationnelle().getId()))
+            {
+                throw new BusinessException("L'emplacement cible doit appartenir à la même UO");
+            }
+        }
+
+        UUID ancienParentId = loc.getParent() != null ? loc.getParent().getId() : null;
+        if ((ancienParentId == null && nouveauParentId == null)
+            || (ancienParentId != null && ancienParentId.equals(nouveauParentId)))
+        {
+            return toDto(loc);
+        }
+
+        loc.setParent(nouveauParent);
+        loc.setUpdatedBy(currentUser);
+        loc.setUpdatedAt(LocalDateTime.now());
+        PhysicalLocation saved = locationRepository.save(loc);
+
+        auditLogService.log(currentUser, AuditAction.LOCATION_DEPLACEE, AuditCible.PHYSICAL_LOCATION,
+            saved.getId().toString(), saved.getUniteOrganisationnelle().getId(),
+            "Déplacement de \"" + saved.getName() + "\" "
+                + (nouveauParent != null ? "sous \"" + nouveauParent.getName() + "\"" : "vers la racine"),
+            true);
+
+        return toDto(saved);
+    }
+
     @Transactional
     public PhysicalLocationDto modifier(UUID id, PhysicalLocationUpdateDto dto, User currentUser)
     {
         PhysicalLocation loc = getEtVerifierAutorite(id, currentUser);
 
-        if (dto.getCode() != null && !dto.getCode().isBlank() && !dto.getCode().equals(loc.getCode()))
-        {
-            verifierCodeUniqueExclut(dto.getCode(), id);
-            loc.setCode(dto.getCode());
-        }
         if (dto.getName() != null && !dto.getName().isBlank())
         {
             loc.setName(dto.getName());
@@ -274,21 +340,39 @@ public class PhysicalLocationService
     {
         PhysicalLocation loc = getEtVerifierAutorite(id, currentUser);
 
-        if (!locationRepository.findByParentId(id).isEmpty())
+        // Toute la sous-arborescence (loc incluse) — pas seulement une feuille :
+        // supprimer un nœud avec des enfants est autorisé si TOUT (lui-même et
+        // chaque descendant) est vide de documents vivants. Statut ACTIVE/
+        // INACTIVE indifférent — seule l'absence de document compte, pas
+        // besoin d'exiger une désactivation préalable.
+        List<PhysicalLocation> sousArbre = collecterSousArbre(loc);
+
+        for (PhysicalLocation n : sousArbre)
         {
-            throw new BusinessException("Impossible de supprimer : cet emplacement a des enfants");
-        }
-        if (documentRepository.existsByPhysicalLocationIdAndStatusNot(id, DocumentStatus.DELETED))
-        {
-            throw new BusinessException(
-                "Impossible de supprimer : des documents sont rattachés à cet emplacement");
+            if (documentRepository.existsByPhysicalLocationIdAndStatusNot(n.getId(), DocumentStatus.DELETED))
+            {
+                throw new BusinessException(
+                    "Impossible de supprimer : \"" + n.getName() + "\""
+                    + (n.getId().equals(id) ? "" : " (dans la sous-arborescence de \"" + loc.getName() + "\")")
+                    + " a des documents rattachés");
+            }
         }
 
-        locationRepository.delete(loc);
+        // Enfants d'abord, parent en dernier — collecterSousArbre garantit un
+        // parent toujours avant ses enfants dans la liste, donc l'inverser
+        // donne l'ordre de suppression sûr vis-à-vis de la contrainte de clé
+        // étrangère parent_id (physical_locations → physical_locations).
+        List<PhysicalLocation> ordreSuppression = new ArrayList<>(sousArbre);
+        Collections.reverse(ordreSuppression);
+        locationRepository.deleteAll(ordreSuppression);
 
         auditLogService.log(currentUser, AuditAction.LOCATION_SUPPRIMEE, AuditCible.PHYSICAL_LOCATION,
             id.toString(), loc.getUniteOrganisationnelle().getId(),
-            "Suppression de l'emplacement \"" + loc.getName() + "\"", true);
+            sousArbre.size() == 1
+                ? "Suppression de l'emplacement \"" + loc.getName() + "\""
+                : "Suppression de l'emplacement \"" + loc.getName() + "\" et de "
+                  + (sousArbre.size() - 1) + " descendant(s)",
+            true);
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -394,6 +478,21 @@ public class PhysicalLocationService
         return loc;
     }
 
+    /** true si cible == loc, ou si cible est un descendant de loc — détecte un déplacement cyclique. */
+    private boolean estLuiMemeOuDescendantDe(PhysicalLocation cible, PhysicalLocation loc)
+    {
+        PhysicalLocation courant = cible;
+        while (courant != null)
+        {
+            if (courant.getId().equals(loc.getId()))
+            {
+                return true;
+            }
+            courant = courant.getParent();
+        }
+        return false;
+    }
+
     /**
      * Lecture (browsing/fiche) : plus large que la gestion — tout utilisateur
      * voyant normalement cette UO (même règle que documents/projets, voir
@@ -429,7 +528,6 @@ public class PhysicalLocationService
         List<PhysicalLocation> enfants = parEnfantsDe.getOrDefault(n.getId(), List.of());
         return PhysicalLocationNodeDto.builder()
             .id(n.getId())
-            .code(n.getCode())
             .name(n.getName())
             .status(n.getStatus().name())
             .storagePoint(n.isStoragePoint())
@@ -437,27 +535,10 @@ public class PhysicalLocationService
             .build();
     }
 
-    private void verifierCodeUnique(String code)
-    {
-        if (locationRepository.existsByCode(code))
-        {
-            throw new BusinessException("Ce code d'emplacement existe déjà : " + code);
-        }
-    }
-
-    private void verifierCodeUniqueExclut(String code, UUID id)
-    {
-        if (locationRepository.existsByCodeAndIdNot(code, id))
-        {
-            throw new BusinessException("Ce code d'emplacement existe déjà : " + code);
-        }
-    }
-
     private PhysicalLocationDto toDto(PhysicalLocation loc)
     {
         return PhysicalLocationDto.builder()
             .id(loc.getId())
-            .code(loc.getCode())
             .name(loc.getName())
             .description(loc.getDescription())
             .status(loc.getStatus().name())

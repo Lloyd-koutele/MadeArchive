@@ -10,11 +10,15 @@ import made.archive.entite.TypeDocument;
 import made.archive.repository.OcrResultRepository;
 import made.archive.security.DocumentEncryptionService;
 import made.archive.service.storage.StorageService;
+import net.sourceforge.tess4j.ITessAPI;
 import net.sourceforge.tess4j.Tesseract;
 import net.sourceforge.tess4j.TesseractException;
+import net.sourceforge.tess4j.Word;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.PDFRenderer;
+import org.apache.pdfbox.text.PDFTextStripper;
+import org.apache.pdfbox.text.TextPosition;
 import org.apache.tika.Tika;
 import org.apache.tika.exception.TikaException;
 import org.apache.tika.metadata.Metadata;
@@ -25,11 +29,14 @@ import org.springframework.stereotype.Service;
 import org.xml.sax.SAXException;
 
 import javax.imageio.ImageIO;
+import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 
 @Slf4j
@@ -166,6 +173,195 @@ public class OcrService
             log.error("[OCR-Phase1] Échec extraction : {}", e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * Texte + position de chaque mot reconnu sur la (première) page — voir
+     * OcrPositionalExtractionService. `mots` est vide si la position n'a pas pu
+     * être déterminée (Word/Excel sans mise en page 2D pertinente, échec
+     * best-effort) : le texte reste utilisable normalement, seule l'extraction
+     * positionnelle est indisponible pour ce document.
+     */
+    public record OcrExtractionResult(String texte, List<PositionedWord> mots) {}
+
+    /**
+     * PHASE 1 (positionnel) : comme {@link #extractTextOnly(byte[], TypeDocument)}
+     * mais conserve aussi la position de chaque mot reconnu, pour permettre à
+     * OcrPositionalExtractionService de retrouver un champ par son libellé même
+     * quand la linéarisation du texte a éloigné le libellé de sa valeur (mise en
+     * page en colonnes, formulaire...).
+     */
+    public OcrExtractionResult extractWithPositions(byte[] pdfABytes, TypeDocument typeDocument)
+    {
+        try
+        {
+            String mimeType = tika.detect(pdfABytes);
+            return extractTextAndPositions(pdfABytes, mimeType, typeDocument);
+        }
+        catch (Exception e)
+        {
+            log.error("[OCR-Phase1] Échec extraction positionnelle : {}", e.getMessage());
+            return new OcrExtractionResult(null, List.of());
+        }
+    }
+
+    private OcrExtractionResult extractTextAndPositions(byte[] fileBytes, String mimeType, TypeDocument typeDocument)
+            throws IOException, SAXException, TikaException, TesseractException
+    {
+        // Images → Tess4J directement
+        if (mimeType.startsWith("image/"))
+        {
+            BufferedImage image = ImageIO.read(new ByteArrayInputStream(fileBytes));
+            if (image == null)
+            {
+                log.warn("[OCR] ImageIO ne peut pas lire ce fichier pour Tess4J");
+                return new OcrExtractionResult(null, List.of());
+            }
+            Tesseract tesseract = buildTesseract(typeDocument);
+            String texte = tesseract.doOCR(image);
+            return new OcrExtractionResult(texte, motsDepuisTesseract(tesseract, image));
+        }
+
+        // PDF → couche texte (PDFBox/Tika) si elle existe, sinon rendu + Tess4J
+        if (mimeType.equals("application/pdf"))
+        {
+            String texteTika = extractWithTika(fileBytes);
+            if (texteTika != null && !texteTika.isBlank())
+            {
+                return new OcrExtractionResult(texteTika, extrairePositionsPdfBox(fileBytes));
+            }
+            log.info("[OCR] PDF sans couche texte, rendu page par page (positionnel)...");
+            return extractPdfWithTesseractPositions(fileBytes, typeDocument);
+        }
+
+        // Word, Excel, etc. → Tika, sans position (pas de mise en page 2D pertinente ici)
+        String texte = extractWithTika(fileBytes);
+        if (texte != null && !texte.isBlank())
+        {
+            return new OcrExtractionResult(texte, List.of());
+        }
+
+        // Fallback Tess4J pour tout autre format non reconnu par Tika
+        log.info("[OCR] Tika vide, fallback Tess4J (positionnel)...");
+        BufferedImage image = ImageIO.read(new ByteArrayInputStream(fileBytes));
+        if (image == null)
+        {
+            return new OcrExtractionResult(null, List.of());
+        }
+        Tesseract tesseract = buildTesseract(typeDocument);
+        String texteOcr = tesseract.doOCR(image);
+        return new OcrExtractionResult(texteOcr, motsDepuisTesseract(tesseract, image));
+    }
+
+    /**
+     * Rendu + OCR page par page, comme {@link #extractPdfWithTesseract} — mais
+     * ne récupère les positions que de la PREMIÈRE page : les métadonnées d'un
+     * document (facture, identité, certificat...) s'y trouvent presque
+     * toujours, et ça évite de mélanger les coordonnées de pages différentes
+     * (chaque page repart de (0,0), un même Y désignerait sinon deux endroits
+     * différents selon la page).
+     */
+    private OcrExtractionResult extractPdfWithTesseractPositions(byte[] fileBytes, TypeDocument typeDocument)
+            throws IOException, TesseractException
+    {
+        Tesseract tesseract = buildTesseract(typeDocument);
+        StringBuilder fullText = new StringBuilder();
+        List<PositionedWord> motsPremierePage = List.of();
+
+        try (PDDocument pdDocument = PDDocument.load(new ByteArrayInputStream(fileBytes).readAllBytes()))
+        {
+            PDFRenderer renderer = new PDFRenderer(pdDocument);
+            int pageCount = pdDocument.getNumberOfPages();
+
+            for (int page = 0; page < pageCount; page++)
+            {
+                BufferedImage image = renderer.renderImageWithDPI(page, PDF_RENDER_DPI);
+                String pageText = tesseract.doOCR(image);
+                if (pageText != null && !pageText.isBlank())
+                {
+                    fullText.append(pageText).append("\n");
+                }
+                if (page == 0)
+                {
+                    motsPremierePage = motsDepuisTesseract(tesseract, image);
+                }
+            }
+        }
+
+        return new OcrExtractionResult(fullText.toString().trim(), motsPremierePage);
+    }
+
+    /** Mots + positions reconnus par Tess4J sur une image déjà OCRisée par `tesseract.doOCR`. */
+    private List<PositionedWord> motsDepuisTesseract(Tesseract tesseract, BufferedImage image)
+    {
+        try
+        {
+            List<Word> mots = tesseract.getWords(image, ITessAPI.TessPageIteratorLevel.RIL_WORD);
+            List<PositionedWord> resultat = new ArrayList<>();
+            for (Word mot : mots)
+            {
+                if (mot.getText() == null || mot.getText().isBlank())
+                {
+                    continue;
+                }
+                Rectangle r = mot.getBoundingBox();
+                resultat.add(new PositionedWord(mot.getText().trim(), r.x, r.y, r.width, r.height));
+            }
+            return resultat;
+        }
+        catch (Exception e)
+        {
+            log.warn("[OCR] Extraction positionnelle Tess4J échouée (best-effort) : {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    /** Mots + positions extraits par PDFBox sur la première page d'un PDF à couche texte. */
+    private List<PositionedWord> extrairePositionsPdfBox(byte[] fileBytes)
+    {
+        try (PDDocument document = PDDocument.load(new ByteArrayInputStream(fileBytes)))
+        {
+            PositionalTextStripper stripper = new PositionalTextStripper();
+            stripper.setStartPage(1);
+            stripper.setEndPage(1);
+            stripper.getText(document); // déclenche writeString(...) ; la chaîne renvoyée n'est pas utilisée ici
+            return stripper.getMots();
+        }
+        catch (Exception e)
+        {
+            log.warn("[OCR] Extraction positionnelle PDFBox échouée (best-effort) : {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    /** Capture la position (x, y, largeur, hauteur) de chaque fragment de texte pendant l'extraction PDFBox. */
+    private static class PositionalTextStripper extends PDFTextStripper
+    {
+        private final List<PositionedWord> mots = new ArrayList<>();
+
+        PositionalTextStripper() throws IOException { super(); }
+
+        @Override
+        protected void writeString(String text, List<TextPosition> textPositions) throws IOException
+        {
+            if (text == null || text.isBlank() || textPositions == null || textPositions.isEmpty())
+            {
+                return;
+            }
+            float minX = Float.MAX_VALUE, minY = Float.MAX_VALUE, maxX = -Float.MAX_VALUE, maxY = -Float.MAX_VALUE;
+            for (TextPosition tp : textPositions)
+            {
+                minX = Math.min(minX, tp.getXDirAdj());
+                minY = Math.min(minY, tp.getYDirAdj() - tp.getHeightDir());
+                maxX = Math.max(maxX, tp.getXDirAdj() + tp.getWidthDirAdj());
+                maxY = Math.max(maxY, tp.getYDirAdj());
+            }
+            mots.add(new PositionedWord(text.trim(),
+                Math.round(minX), Math.round(minY),
+                Math.round(maxX - minX), Math.round(maxY - minY)));
+        }
+
+        List<PositionedWord> getMots() { return mots; }
     }
 
     private String extractText(byte[] fileBytes, String mimeType, TypeDocument typeDocument)

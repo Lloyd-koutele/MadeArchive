@@ -29,19 +29,7 @@ import com.google.zxing.qrcode.QRCodeWriter;
 import lombok.extern.slf4j.Slf4j;
 import made.archive.exception.BusinessException;
 
-/**
- * Construit à la volée le PDF d'une attestation d'archivage — jamais stocké
- * (voir Attestation), reconstruit à chaque consultation publique. Page A4,
- * polices standard PDFBox (WinAnsiEncoding — couvre les accents français,
- * pas besoin d'embarquer une police externe).
- *
- * Logo : chargé depuis le classpath "attestation/logo.png" s'il existe
- * (voir README de ce dossier) — sinon repli silencieux sur un en-tête
- * texte seul "MadeArchive". Emplacement volontairement dans
- * src/main/resources pour être embarqué dans le jar (donc disponible aussi
- * en Docker), contrairement à un chemin fichier relatif au répertoire de
- * travail qui ne survivrait pas à l'empaquetage.
- */
+
 @Slf4j
 @Service
 public class AttestationPdfService
@@ -124,10 +112,6 @@ public class AttestationPdfService
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────
-    // Mise en page
-    // ─────────────────────────────────────────────────────────────────────
-
     private float dessinerEntete(PDDocument document, PDPageContentStream cs,
                                   BufferedImage logo, float y) throws IOException
     {
@@ -200,10 +184,6 @@ public class AttestationPdfService
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────
-    // Primitives de dessin de texte
-    // ─────────────────────────────────────────────────────────────────────
-
     private float sectionTitre(PDPageContentStream cs, String titre, float y) throws IOException
     {
         texte(cs, POLICE_TITRE, 12, titre, MARGE, y);
@@ -247,11 +227,6 @@ public class AttestationPdfService
         return y;
     }
 
-    /**
-     * Retour à la ligne manuel (police non proportionnelle-safe via
-     * getStringWidth) — les valeurs de métadonnées ou titres longs ne sont
-     * jamais garantis de tenir sur une seule ligne.
-     */
     private float paragraphe(PDPageContentStream cs, String contenu, PDFont police,
                               float taille, float y, float largeurMax) throws IOException
     {

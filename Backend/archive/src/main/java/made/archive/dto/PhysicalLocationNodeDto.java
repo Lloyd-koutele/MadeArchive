@@ -16,7 +16,6 @@ import lombok.Data;
 public class PhysicalLocationNodeDto
 {
     private UUID id;
-    private String code;
     private String name;
     private String status;
     private boolean storagePoint;

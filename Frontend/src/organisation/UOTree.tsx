@@ -171,9 +171,9 @@ function UOTree({
                     draggable={isDraggable}
                     onDragStart={(e) => handleDragStart(e, node.id)}
                     onDragEnd={handleDragEnd}
-                    onDragOver={(e) => handleDragOver(e, node.id)}
+                    onDragOver={(e) => { e.stopPropagation(); handleDragOver(e, node.id); }}
                     onDragLeave={() => handleDragLeave(node.id)}
-                    onDrop={(e) => handleDrop(e, node.id)}
+                    onDrop={(e) => { e.stopPropagation(); handleDrop(e, node.id); }}
                 >
                     {hasChildren ? (
                         <button
@@ -213,8 +213,19 @@ function UOTree({
     const root = normalizedNodes.find(n => n.id === toNum(rootId));
     if (!root) return null;
 
+    const numRootId = toNum(rootId) as number;
+    // Le fond du conteneur (espaces entre nœuds, sous le dernier nœud...) est
+    // LUI-MÊME une cible "racine" — chaque nœud stoppe la propagation de ses
+    // propres événements, donc un dépôt qui n'atterrit pas précisément sur un
+    // nœud retombe forcément ici, exactement comme un dépôt sur la ligne de
+    // la racine elle-même (même handleDragOver/handleDrop, même id cible).
     return (
-        <div className="uo-tree">
+        <div
+            className={`uo-tree ${dragOverId === numRootId ? 'drag-over' : ''}`}
+            onDragOver={(e) => handleDragOver(e, numRootId)}
+            onDragLeave={() => handleDragLeave(numRootId)}
+            onDrop={(e) => handleDrop(e, numRootId)}
+        >
             <p className="uo-tree-heading">UO</p>
             {renderNode(root, 0)}
         </div>

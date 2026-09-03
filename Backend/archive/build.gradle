@@ -7,6 +7,10 @@ plugins {
 group = 'smart'
 version = '0.0.1-SNAPSHOT'
 
+ext {
+	testcontainersVersion = '1.20.4'
+}
+
 java {
 	toolchain {
 		languageVersion = JavaLanguageVersion.of(17)
@@ -37,6 +41,14 @@ dependencies {
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testImplementation 'org.springframework.security:spring-security-test'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+	// Testcontainers — PostgreSQL éphémère pour les tests d'intégration (voir
+	// src/test/.../integration). Version épinglée explicitement : le BOM
+	// spring-boot-dependencies ne résout pas org.testcontainers:* tout seul
+	// ici (testé — version vide sans ce testcontainersVersion).
+	testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+	testImplementation "org.testcontainers:junit-jupiter:${testcontainersVersion}"
+	testImplementation "org.testcontainers:postgresql:${testcontainersVersion}"
 	
 	// JWT
 	implementation 'io.jsonwebtoken:jjwt-api:0.12.5'
@@ -63,6 +75,21 @@ dependencies {
 	
 	// HTTP Client
 	implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+
+	// Parsing HTML — extraction des liens de documents pour l'import via lien web
+	implementation 'org.jsoup:jsoup:1.17.2'
+
+	// Navigateur headless — repli pour l'import via lien web quand la page dépend
+	// du JavaScript pour afficher son contenu (ex. dossier Google Drive public),
+	// voir service.document.HeadlessBrowserImportService. Version alignée avec
+	// le conteneur ghcr.io/browserless/chromium (docker-compose.yml) — le
+	// protocole de connexion "playwright.chromium().connect(...)" est un
+	// protocole interne à Playwright, PAS rétro/avant-compatible entre versions
+	// éloignées (vérifié : la 1.49.0 échoue à l'établissement de connexion
+	// contre ce conteneur, qui n'annonce supporter que 1.58.2 → 1.62.1 sur son
+	// endpoint /meta). Si ce conteneur change de version supportée à l'avenir,
+	// remonter cette version en conséquence.
+	implementation 'com.microsoft.playwright:playwright:1.62.0'
 
 	// Web3 (si nécessaire)
 	implementation 'org.web3j:core:4.10.3'
@@ -94,6 +121,7 @@ dependencies {
     // service.document.AttestationPdfService)
     implementation 'com.google.zxing:core:3.5.3'
     implementation 'com.google.zxing:javase:3.5.3'
+	
 
 	// Recherche
 	implementation 'com.meilisearch.sdk:meilisearch-java:0.11.0'
@@ -103,9 +131,6 @@ dependencies {
 	implementation 'org.apache.poi:poi-ooxml:5.2.5'
 	implementation 'com.opencsv:opencsv:5.9'
 
-	// Import en masse depuis un serveur distant (FTP / FTPS)
-	implementation 'commons-net:commons-net:3.11.1'
-	
 	// Test
 	implementation 'org.springframework:spring-test'
 
@@ -117,13 +142,45 @@ dependencies {
 
 	//JSON
 	implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
-
-	// FTP
-	implementation 'commons-net:commons-net:3.13.0'
 }
 
+// Trois catégories de test, séparées par tag JUnit 5 (@Tag) plutôt que par
+// package — voir 5.10 du mémoire. Chacune produit son propre rapport HTML
+// (build/reports/tests/<nom-de-tâche>) et son propre XML pour la CI :
+//   - test            : unitaires — rapides, aucune dépendance externe
+//   - integrationTest : Testcontainers (PostgreSQL éphémère) — nécessite Docker
+//   - performanceTest : charge/concurrence — plus lentes, exécutées à part
 tasks.named('test') {
-	useJUnitPlatform()
+	useJUnitPlatform {
+		// full-context : ArchiveApplicationTests, nécessite l'environnement
+		// complet (MinIO/Redis/Meilisearch/Ollama/HSM/secrets) — voir sa Javadoc.
+		excludeTags 'integration', 'performance', 'full-context'
+	}
+}
+
+tasks.register('integrationTest', Test) {
+	description = "Tests d'intégration (Testcontainers — nécessite Docker)"
+	group = 'verification'
+	// Un Test enregistré à la main ne pointe pas automatiquement vers le
+	// sourceSet 'test' (contrairement à la tâche 'test' préconfigurée par le
+	// plugin java) — sans ces deux lignes, la tâche tourne sur NO-SOURCE.
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	useJUnitPlatform {
+		includeTags 'integration'
+	}
+	shouldRunAfter test
+}
+
+tasks.register('performanceTest', Test) {
+	description = 'Tests de performance/charge (sans serveur live)'
+	group = 'verification'
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	useJUnitPlatform {
+		includeTags 'performance'
+	}
+	shouldRunAfter test
 }
 
 // Tess4J/JNA cherche libtesseract.dylib dans les emplacements système standards

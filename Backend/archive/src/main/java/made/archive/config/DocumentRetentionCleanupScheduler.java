@@ -8,8 +8,8 @@ import org.springframework.stereotype.Component;
 
 /**
  * Tâche planifiée pour purger les documents en fin de vie — soit par fin de
- * rétention, soit par demande explicite de suppression d'un document corrompu
- * après son délai de grâce de 3 jours (voir DocumentRetentionService).
+ * rétention, soit par délai de grâce de 3 jours écoulé pour un document en
+ * corbeille (voir DocumentRetentionService).
  *
  * Une fois par jour suffit : les deux échéances sont des dates (granularité jour).
  * @EnableScheduling est déjà activé globalement via OcrSessionCleanupScheduler.
@@ -39,11 +39,11 @@ public class DocumentRetentionCleanupScheduler
 
         try
         {
-            documentRetentionService.purgeDocumentsCorrompusPlanifies();
+            documentRetentionService.purgeDocumentsCorbeille();
         }
         catch (Exception e)
         {
-            log.error("[Retention] Erreur lors de la purge des documents corrompus planifiés : {}",
+            log.error("[Retention] Erreur lors de la purge de la corbeille : {}",
                 e.getMessage(), e);
         }
     }

@@ -40,6 +40,14 @@ import made.archive.security.CachedUserAuth;
  * cache sans expiration sur de la donnée d'autorisation serait dangereux (voir
  * la Javadoc d'AuthCacheService sur l'éviction précise déjà en place ; le TTL
  * n'est qu'un filet de sécurité en plus, pas le mécanisme principal).
+ *
+ * TTL du cache d'authentification volontairement COURT (2 min, pas les 30 min
+ * de l'arbre UO ci-dessous) : c'est de la donnée d'autorisation, pas un simple
+ * confort de navigation — l'éviction explicite (AuthCacheService) couvre déjà
+ * les changements faits PAR l'appli (blocage, rôle, mot de passe), ce TTL ne
+ * borne que le cas résiduel d'un changement fait EN DEHORS d'elle (édition
+ * manuelle en base, réinitialisation de la base...), que rien ne peut évincer
+ * explicitement puisque l'appli n'en a jamais connaissance.
  */
 @Configuration
 @EnableCaching
@@ -59,7 +67,7 @@ public class RedisCacheConfig
         RedisCacheConfiguration userAuthConfig = baseConfig()
             .serializeValuesWith(RedisSerializationContext.SerializationPair
                 .fromSerializer(new Jackson2JsonRedisSerializer<>(mapper, CachedUserAuth.class)))
-            .entryTtl(Duration.ofMinutes(10));
+            .entryTtl(Duration.ofMinutes(2));
 
         JavaType listeLiaisons = mapper.getTypeFactory()
             .constructCollectionType(List.class, UOParentIdPair.class);

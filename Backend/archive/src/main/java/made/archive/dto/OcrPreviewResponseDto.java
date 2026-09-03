@@ -27,7 +27,7 @@ public class OcrPreviewResponseDto
 
     /**
      * Nom du fichier traité — utile côté client pour recomposer la liste sans
-     * dépendre de l'ordre d'un File[] (notamment pour l'import FTP, où les
+     * dépendre de l'ordre d'un File[] (notamment pour l'import via lien, où les
      * fichiers n'existent jamais côté navigateur).
      */
     private String nomFichier;

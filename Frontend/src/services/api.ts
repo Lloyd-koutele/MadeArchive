@@ -1,7 +1,11 @@
 import axios from 'axios';
 
-// URL de base de ton serveur Spring Boot
-const BASE_URL = 'http://localhost:8080/api';
+// URL de base du serveur Spring Boot — configurable via VITE_API_URL (fichier
+// .env du frontend, ou variable d'environnement au build) pour pointer vers
+// le domaine HTTPS réel en production ; par défaut, accès local direct au
+// backend en HTTP (pas de Traefik en dev). En local à travers Traefik/HTTPS,
+// définir VITE_API_URL=https://localhost/api (ou le domaine configuré).
+const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080/api';
 
 // Création d'une instance Axios
 const api = axios.create({

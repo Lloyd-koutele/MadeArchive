@@ -1,31 +1,31 @@
 import { useState } from 'react';
 import { loginUser } from './authService';
 import { FaEye, FaEyeSlash } from 'react-icons/fa';
+import { useNotify } from '../notifications/NotificationProvider';
 import '../Style/auth/login.css';
 
 function Login() {
+  const notify = useNotify();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
     if (!email || !password) {
-      setError("Veuillez remplir tous les champs.");
+      notify.error("Veuillez remplir tous les champs.");
       return;
     }
     setIsLoading(true);
     try {
       await loginUser(email, password);
-      
+
     } catch (error) {
       console.error('Erreur de connexion:', error);
       setIsLoading(false);
       const errorMessage = error.response?.data?.message || error.message || "Erreur de connexion.";
-      setError(errorMessage);
+      notify.error(errorMessage);
     }
   };
 
@@ -36,8 +36,6 @@ function Login() {
           <h2 className="login-title">Connexion</h2>
           <p className="login-subtitle">Connectez-vous pour accéder à votre espace</p>
         </div>
-
-        {error && <div className="error-message">{error}</div>}
 
         <form className="login-form" onSubmit={handleSubmit}>
 

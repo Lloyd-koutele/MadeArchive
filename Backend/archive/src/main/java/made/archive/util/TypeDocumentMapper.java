@@ -1,12 +1,14 @@
 package made.archive.util;
 
-import org.springframework.stereotype.Component;
-import made.archive.entite.TypeDocument;
-import made.archive.entite.MetaData;
-import made.archive.dto.TypeDocumentDto;
-import made.archive.dto.MetaDataDto;
 import java.util.List;
 import java.util.stream.Collectors;
+
+import org.springframework.stereotype.Component;
+
+import made.archive.dto.MetaDataDto;
+import made.archive.dto.TypeDocumentDto;
+import made.archive.entite.MetaData;
+import made.archive.entite.TypeDocument;
 
 @Component
 public class TypeDocumentMapper 

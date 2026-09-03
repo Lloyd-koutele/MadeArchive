@@ -1,30 +1,40 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
     getDocumentsAccessibles,
     streamPdfAAsBlob,
     getDocumentDetail,
     downloadPdfA,
-    planifierSuppressionDocument
+    envoyerDocumentCorbeille,
+    restaurerDocumentDepuisCorbeille
 } from '../services/document/DocumentService';
 import { genererAttestation } from '../services/document/AttestationService';
-import { modifierEmplacementPhysique } from '../services/document/DocumentService';
+import { modifierEmplacementPhysique, modifierMetaDataDocument, modifierProjetDocument, verifierFusionGroupeProjet, getTypeDocumentById } from '../services/document/DocumentService';
+import type { TypeDocumentDto as TypeDocumentEditorDto } from '../services/document/DocumentService';
 import { getEmplacementsDisponibles } from '../services/organisation/PhysicalLocationService';
 import type { PhysicalLocationDto } from '../services/organisation/PhysicalLocationService';
+import { getProjetsDeUO } from '../services/organisation/ProjetService';
+import type { ProjetDto } from '../services/organisation/ProjetService';
+import MetaDataField from './MetadaField';
 import type { DocumentListItemDto, DocumentDetailDto } from '../services/document/DocumentService';
-import { getAllTypeDocuments } from '../services/document/TypedocumentService';
+import { getTypeDocumentsVisibles } from '../services/document/TypedocumentService';
 import type { TypeDocumentDto } from '../services/document/TypedocumentService';
 import Modal from '../Page/Modal';
 import VersionBadge from './VersionBadge';
 import GestionGroupe from './GestionGroupe';
+import { useNotify } from '../notifications/NotificationProvider';
+import { useConfirm } from '../notifications/ConfirmProvider';
+import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus';
+import { renderPdfFirstPageThumbnail } from '../services/document/PdfThumbnail';
+import '../Style/document/Filtre.css';
+import '../Style/Admin/DocumentsArchivesPanel.css';
+// .docs-breadcrumb / .breadcrumb-back / .pdf-viewer-wrapper (lecteur PDF
+// intégré à la page, voir plus bas) — garanti disponible quel que soit le
+// tableau de bord qui monte ce composant.
+import '../Style/Editor/Editor.css';
 
 interface DocumentsAccessiblesProps {
-    /** null/absent = pas de restriction supplémentaire, tout le périmètre autorisé (voir DocumentService.getUoIdsVisiblesPourLecture côté serveur). */
     uoId?: number | null;
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Constantes
-// ─────────────────────────────────────────────────────────────────────────────
 
 const STATUS_LABELS: Record<string, string> = {
     ACTIVE:         'Actif',
@@ -75,31 +85,67 @@ const FILTRES_VIDES: Filtres = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
+    const notify = useNotify();
+    const confirm = useConfirm();
     // ── Données ───────────────────────────────────────────────────────────
     const [documents, setDocuments]     = useState<DocumentListItemDto[]>([]);
     const [totalElements, setTotal]     = useState(0);
     const [totalPages, setTotalPages]   = useState(1);
     const [page, setPage]               = useState(1);
 
+    // ── Sélection multiple — pour l'envoi en masse à la corbeille. Ne
+    // retient que des documents réellement gérables (peutGererCorbeille) ;
+    // vidée à chaque changement de page/filtre pour éviter une sélection
+    // fantôme sur des documents qui ne sont plus affichés. Les cases à
+    // cocher ne s'affichent QUE quand selectionModeActive est vrai — activé
+    // par un clic droit (PC) ou un appui prolongé (tactile) sur une ligne,
+    // jamais visible par défaut (voir la vue tableau plus bas). ─────────────
+    const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
+    const [selectionModeActive, setSelectionModeActive] = useState(false);
+    const [suppressionMasseEnCours, setSuppressionMasseEnCours] = useState(false);
+    const longPressTimer = useRef<number | null>(null);
+
     // ── Filtres ───────────────────────────────────────────────────────────
+    // Une seule source de vérité — la recherche se déclenche toute seule
+    // (debounce) à chaque changement, plus de distinction brouillon/appliqué
+    // ni de bouton "Appliquer".
     const [filtres, setFiltres]         = useState<Filtres>(FILTRES_VIDES);
-    const [filtresActifs, setFiltresActifs] = useState<Filtres>(FILTRES_VIDES);
     const [typeDocuments, setTypeDocuments] = useState<TypeDocumentDto[]>([]);
 
     // ── États UI ──────────────────────────────────────────────────────────
     const [isLoading, setIsLoading]     = useState(false);
-    const [error, setError]             = useState('');
     const [filtresOuverts, setFiltresOuverts] = useState(true);
+
+    // ── Mode d'affichage : liste (tableau) ou grille (aperçus PDF) ────────
+    type ViewMode = 'list' | 'grid';
+    const [viewMode, setViewMode] = useState<ViewMode>('list');
+
+    // ── Aperçus PDF pour la vue grille — chargés à la demande, uniquement
+    // pour les documents de la page courante et uniquement en vue grille
+    // (inutile de payer le coût réseau/rendu d'un aperçu qu'on n'affiche
+    // jamais en vue liste). Chaque valeur est une image (data URL PNG de la
+    // première page, voir PdfThumbnail.ts) — rien à révoquer explicitement,
+    // contrairement à un blob URL.
+    const [previews, setPreviews] = useState<Record<string, string>>({});
+    const [previewsEnCours, setPreviewsEnCours] = useState<Set<string>>(new Set());
+    // Distingue "en cours" de "abandonné après échec" — sans ça, une carte
+    // dont l'aperçu échoue (fichier corrompu, erreur réseau...) affichait un
+    // spinner qui tournait indéfiniment, indiscernable d'un aperçu réellement
+    // encore en train de charger.
+    const [previewsEchec, setPreviewsEchec] = useState<Set<string>>(new Set());
 
     // ── Détail ────────────────────────────────────────────────────────────
     const [detail, setDetail]           = useState<DocumentDetailDto | null>(null);
     const [detailLoading, setDetailLoading] = useState(false);
     const [isDetailOpen, setIsDetailOpen]   = useState(false);
 
-    // ── Lecteur PDF ───────────────────────────────────────────────────────
+    // ── Lecteur PDF — intégré à la page (pas un modal), voir le rendu plus
+    // bas : lectureDoc non-null bascule toute la vue vers le lecteur, avec
+    // un bouton "Retour" façon fil d'ariane, même principe que la
+    // navigation dossier→documents déjà en place ailleurs dans l'app. ────
     const [pdfBlobUrl, setPdfBlobUrl]   = useState<string | null>(null);
     const [pdfLoading, setPdfLoading]   = useState(false);
-    const [isPdfOpen, setIsPdfOpen]     = useState(false);
+    const [lectureDoc, setLectureDoc]   = useState<DocumentListItemDto | null>(null);
 
     // ── Téléchargement ────────────────────────────────────────────────────
     const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -114,17 +160,16 @@ function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
     // ── Attestation d'archivage ───────────────────────────────────────────
     const [attestationUrl, setAttestationUrl]         = useState<string | null>(null);
     const [attestationLoading, setAttestationLoading] = useState(false);
-    const [attestationError, setAttestationError]     = useState('');
 
     // ─────────────────────────────────────────────────────────────────────
     // Chargement des types pour le select
     // ─────────────────────────────────────────────────────────────────────
 
     useEffect(() => {
-        getAllTypeDocuments()
+        getTypeDocumentsVisibles(uoId)
             .then(setTypeDocuments)
-            .catch(() => {});
-    }, []);
+            .catch(err => notify.error(err.message ?? 'Erreur chargement des types de documents'));
+    }, [uoId, notify]);
 
     // ─────────────────────────────────────────────────────────────────────
     // Chargement des documents
@@ -132,7 +177,6 @@ function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
 
     const loadDocuments = useCallback(async (f: Filtres, p: number) => {
         setIsLoading(true);
-        setError('');
         try {
             const result = await getDocumentsAccessibles({
                 titre:          f.titre          || undefined,
@@ -149,18 +193,82 @@ function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
             setTotal(result.totalElements);
             setTotalPages(result.totalPages);
             setPage(p);
+
+            // Nouvelle page/filtre → les aperçus déjà générés, et toute
+            // sélection en cours, ne correspondent plus forcément aux
+            // documents affichés ; on les vide et on laisse l'effet de la
+            // vue grille en régénérer au besoin.
+            setPreviews({});
+            setPreviewsEchec(new Set());
+            setSelectedDocIds(new Set());
+            setSelectionModeActive(false);
         } catch (err: any) {
-            setError(err.message ?? 'Erreur chargement');
+            notify.error(err.message ?? 'Erreur chargement');
         } finally {
             setIsLoading(false);
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [uoId]);
 
-    // Chargement initial + rechargement si l'UO sélectionnée change (navigation Admin/Admin_UO)
+    // ─────────────────────────────────────────────────────────────────────
+    // Aperçus PDF pour la vue grille
+    // ─────────────────────────────────────────────────────────────────────
+
     useEffect(() => {
-        loadDocuments(FILTRES_VIDES, 1);
+        if (viewMode !== 'grid' || documents.length === 0) return;
+        let annule = false;
+
+        const idsACharger = documents
+            .map(d => d.documentId)
+            .filter(id => !previews[id] && !previewsEnCours.has(id) && !previewsEchec.has(id));
+        if (idsACharger.length === 0) return;
+
+        setPreviewsEnCours(prev => new Set([...prev, ...idsACharger]));
+
+        idsACharger.forEach(async (id) => {
+            let blobUrl: string | null = null;
+            try {
+                // blob: intermédiaire — sert uniquement de source à pdf.js pour
+                // rasteriser la première page, jamais affiché tel quel (voir
+                // PdfThumbnail.ts : pas de chrome de lecteur PDF natif en grille).
+                blobUrl = await streamPdfAAsBlob(id);
+                const thumbnail = await renderPdfFirstPageThumbnail(blobUrl);
+                if (!annule) setPreviews(prev => ({ ...prev, [id]: thumbnail }));
+            } catch {
+                // La carte retombe sur un placeholder "aperçu indisponible" —
+                // PAS le spinner, qui donnerait l'impression trompeuse que le
+                // chargement continue indéfiniment.
+                if (!annule) setPreviewsEchec(prev => new Set([...prev, id]));
+            } finally {
+                if (blobUrl) URL.revokeObjectURL(blobUrl);
+                if (!annule) {
+                    setPreviewsEnCours(prev => {
+                        const next = new Set(prev);
+                        next.delete(id);
+                        return next;
+                    });
+                }
+            }
+        });
+
+        return () => { annule = true; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [loadDocuments]);
+    }, [viewMode, documents]);
+
+    // Chargement initial + à chaque changement de filtre (saisie, select,
+    // date...) ou d'UO sélectionnée (navigation Admin/Admin_UO) — un léger
+    // debounce évite une requête par caractère tapé, même pattern que la
+    // recherche de "Mes documents".
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            loadDocuments(filtres, 1);
+        }, 300);
+        return () => clearTimeout(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [loadDocuments, filtres]);
+    // Document archivé/modifié depuis une autre interface pendant qu'on reste
+    // sur cet écran → rechargé (filtres/page courants) au retour de focus.
+    useRefetchOnFocus(useCallback(() => loadDocuments(filtres, page), [loadDocuments, filtres, page]));
 
     // ─────────────────────────────────────────────────────────────────────
     // Handlers filtres
@@ -170,40 +278,32 @@ function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
         setFiltres(prev => ({ ...prev, [key]: value }));
     };
 
-    const appliquerFiltres = (e: React.FormEvent) => {
-        e.preventDefault();
-        setFiltresActifs(filtres);
-        loadDocuments(filtres, 1);
-    };
-
     const reinitialiserFiltres = () => {
         setFiltres(FILTRES_VIDES);
-        setFiltresActifs(FILTRES_VIDES);
-        loadDocuments(FILTRES_VIDES, 1);
     };
 
-    const nbFiltresActifs = Object.values(filtresActifs).filter(v => v !== '').length;
+    const nbFiltresActifs = Object.values(filtres).filter(v => v !== '').length;
 
     // ─────────────────────────────────────────────────────────────────────
     // Lecteur PDF
     // ─────────────────────────────────────────────────────────────────────
 
     const openPdfViewer = async (doc: DocumentListItemDto) => {
+        setLectureDoc(doc);
         setPdfLoading(true);
-        setIsPdfOpen(true);
         setPdfBlobUrl(null);
         try {
             const url = await streamPdfAAsBlob(doc.documentId);
             setPdfBlobUrl(url);
         } catch {
-            setIsPdfOpen(false);
+            setLectureDoc(null);
         } finally {
             setPdfLoading(false);
         }
     };
 
     const closePdfViewer = () => {
-        setIsPdfOpen(false);
+        setLectureDoc(null);
         if (pdfBlobUrl) { URL.revokeObjectURL(pdfBlobUrl); setPdfBlobUrl(null); }
     };
 
@@ -219,7 +319,6 @@ function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
         setIsDetailOpen(true);
         setDetail(null);
         setAttestationUrl(null);
-        setAttestationError('');
         try {
             const d = await getDocumentDetail(documentId);
             setDetail(d);
@@ -253,35 +352,160 @@ function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
 
     const handleGenererAttestation = async (documentId: string) => {
         setAttestationLoading(true);
-        setAttestationError('');
         try {
             const dto = await genererAttestation(documentId);
             setAttestationUrl(dto.url);
         } catch (err: any) {
-            setAttestationError(err.response?.data?.message ?? 'Erreur lors de la génération de l\'attestation');
+            notify.error(err.response?.data?.message ?? 'Erreur lors de la génération de l\'attestation');
         } finally {
             setAttestationLoading(false);
         }
     };
 
     // ─────────────────────────────────────────────────────────────────────
-    // Suppression d'un document corrompu (délai de grâce de 3 jours)
+    // Corbeille — suppression volontaire (délai de grâce de 3 jours, restaurable)
     // ─────────────────────────────────────────────────────────────────────
 
-    const handleSupprimerCorrompu = async (documentId: string) => {
-        if (!window.confirm(
-            'Confirmer la suppression définitive de ce document dans 3 jours ? '
-            + 'Il reste consultable et téléchargeable pendant ce délai.'
-        )) return;
+    const handleEnvoyerCorbeille = async (documentId: string) => {
+        if (!(await confirm(
+            'Envoyer ce document à la corbeille ? Il sera supprimé définitivement dans 3 jours — '
+            + 'vous pourrez le restaurer avant cette échéance.'
+        ))) return;
 
         setSuppressionLoading(true);
         try {
-            await planifierSuppressionDocument(documentId);
+            await envoyerDocumentCorbeille(documentId);
             await openDetailById(documentId); // recharge pour afficher la date planifiée
+            loadDocuments(filtres, page);
+            notify.success('Document envoyé à la corbeille');
         } catch (err: any) {
-            window.alert(err.message ?? 'Erreur lors de la planification de la suppression');
+            notify.error(err.message ?? 'Erreur lors de l\'envoi à la corbeille');
         } finally {
             setSuppressionLoading(false);
+        }
+    };
+
+    const handleRestaurerCorbeille = async (documentId: string) => {
+        setSuppressionLoading(true);
+        try {
+            await restaurerDocumentDepuisCorbeille(documentId);
+            await openDetailById(documentId);
+            loadDocuments(filtres, page);
+            notify.success('Document restauré');
+        } catch (err: any) {
+            notify.error(err.message ?? 'Erreur lors de la restauration');
+        } finally {
+            setSuppressionLoading(false);
+        }
+    };
+
+    // Envoi à la corbeille depuis la liste (grille ou tableau) — contrairement
+    // à handleEnvoyerCorbeille (déclenché depuis le détail déjà ouvert), ne
+    // rouvre pas le détail : juste rafraîchir la liste sur place.
+    const handleEnvoyerCorbeilleRapide = async (doc: DocumentListItemDto) => {
+        if (!(await confirm(
+            `Envoyer "${doc.titre}" à la corbeille ? Il sera supprimé définitivement dans 3 jours — `
+            + 'vous pourrez le restaurer avant cette échéance.'
+        ))) return;
+
+        try {
+            await envoyerDocumentCorbeille(doc.documentId);
+            notify.success(`"${doc.titre}" envoyé à la corbeille`);
+            setSelectedDocIds(prev => {
+                const next = new Set(prev);
+                next.delete(doc.documentId);
+                return next;
+            });
+            loadDocuments(filtres, page);
+        } catch (err: any) {
+            notify.error(err.message ?? 'Erreur lors de l\'envoi à la corbeille');
+        }
+    };
+
+    const toggleDocSelection = (documentId: string) => {
+        setSelectedDocIds(prev => {
+            const next = new Set(prev);
+            if (next.has(documentId)) next.delete(documentId); else next.add(documentId);
+            // Plus rien coché → on quitte le mode sélection tout seul, pas
+            // besoin de rester avec des cases vides à l'écran.
+            if (next.size === 0) setSelectionModeActive(false);
+            return next;
+        });
+    };
+
+    // Coche/décoche tous les documents sélectionnables de la page courante —
+    // seuls ceux avec peutGererCorbeille peuvent être envoyés à la corbeille,
+    // les autres ne sont jamais inclus dans la sélection.
+    const toggleSelectAllDocs = () => {
+        const selectionnables = documents.filter(d => d.peutGererCorbeille).map(d => d.documentId);
+        setSelectedDocIds(prev => {
+            const toutCoche = selectionnables.length > 0 && selectionnables.every(id => prev.has(id));
+            if (toutCoche) setSelectionModeActive(false);
+            return toutCoche ? new Set() : new Set(selectionnables);
+        });
+    };
+
+    // Active le mode sélection (cases à cocher visibles) — déclenché par un
+    // clic droit ou un appui prolongé sur une ligne, jamais par défaut.
+    const activateSelectionMode = (documentId: string) => {
+        setSelectionModeActive(true);
+        setSelectedDocIds(prev => new Set(prev).add(documentId));
+    };
+
+    const annulerSelection = () => {
+        setSelectedDocIds(new Set());
+        setSelectionModeActive(false);
+    };
+
+    const LONG_PRESS_MS = 500;
+
+    const handleRowTouchStart = (documentId: string) => {
+        if (longPressTimer.current) window.clearTimeout(longPressTimer.current);
+        longPressTimer.current = window.setTimeout(() => {
+            activateSelectionMode(documentId);
+            longPressTimer.current = null;
+        }, LONG_PRESS_MS);
+    };
+
+    const handleRowTouchEnd = () => {
+        if (longPressTimer.current) {
+            window.clearTimeout(longPressTimer.current);
+            longPressTimer.current = null;
+        }
+    };
+
+    const handleEnvoyerCorbeilleMasse = async () => {
+        const ids = Array.from(selectedDocIds);
+        if (ids.length === 0) return;
+
+        if (!(await confirm(
+            `Envoyer ${ids.length} document${ids.length > 1 ? 's' : ''} à la corbeille ? `
+            + `Ils seront supprimés définitivement dans 3 jours — vous pourrez les restaurer avant cette échéance.`
+        ))) return;
+
+        setSuppressionMasseEnCours(true);
+        try {
+            const resultats = await Promise.allSettled(ids.map(id => envoyerDocumentCorbeille(id)));
+            const succes = resultats.filter(r => r.status === 'fulfilled').length;
+            const echecs = resultats.length - succes;
+
+            resultats.forEach((r, i) => {
+                if (r.status === 'rejected') {
+                    console.error(`Échec de l'envoi à la corbeille pour ${ids[i]} :`, r.reason);
+                }
+            });
+
+            if (succes > 0) {
+                notify.success(`${succes} document${succes > 1 ? 's' : ''} envoyé${succes > 1 ? 's' : ''} à la corbeille`);
+            }
+            if (echecs > 0) {
+                notify.error(`${echecs} échec${echecs > 1 ? 's' : ''} sur ${ids.length} — voir la console pour le détail`);
+            }
+
+            annulerSelection();
+            loadDocuments(filtres, page);
+        } finally {
+            setSuppressionMasseEnCours(false);
         }
     };
 
@@ -289,37 +513,89 @@ function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
     // RENDU
     // ─────────────────────────────────────────────────────────────────────
 
+    // ── Lecture d'un document — intégrée à la page, pas un modal ──────────
+    if (lectureDoc) {
+        return (
+            <div className="mes-docs-wrapper">
+                <div className="docs-breadcrumb">
+                    <button className="breadcrumb-back" onClick={closePdfViewer}>
+                        <i className="fa-solid fa-arrow-left" /> Retour
+                    </button>
+                    <i className="fa-solid fa-chevron-right breadcrumb-sep" />
+                    <span className="breadcrumb-current">{lectureDoc.titre}</span>
+                </div>
+                <div className="pdf-viewer-wrapper">
+                    {pdfLoading ? (
+                        <div className="pdf-viewer-loading">
+                            <i className="fa-solid fa-spinner fa-spin" />
+                            <span>Chargement du document...</span>
+                        </div>
+                    ) : pdfBlobUrl ? (
+                        <iframe src={pdfBlobUrl} className="pdf-viewer-iframe" title="Lecteur PDF" />
+                    ) : (
+                        <div className="td-empty"><p>Impossible de charger le document.</p></div>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="mes-docs-wrapper">
 
             {/* ── En-tête ── */}
             <div className="mes-docs-header">
                 <h2 className="mes-docs-title">Documents accessibles</h2>
-                <button
-                    className="filtres-toggle-btn"
-                    onClick={() => setFiltresOuverts(o => !o)}
-                >
-                    <i className="fa-solid fa-sliders" />
-                    Filtres
-                    {nbFiltresActifs > 0 && (
-                        <span className="filtres-badge">{nbFiltresActifs}</span>
-                    )}
-                    <i className={`fa-solid fa-chevron-${filtresOuverts ? 'up' : 'down'} filtres-chevron`} />
-                </button>
+                <div className="docs-header-actions">
+                    <div className="docs-view-toggle" role="group" aria-label="Mode d'affichage">
+                        <button
+                            type="button"
+                            className={`view-toggle-btn ${viewMode === 'list' ? 'active' : ''}`}
+                            onClick={() => setViewMode('list')}
+                            title="Vue liste"
+                            aria-label="Afficher en liste"
+                        >
+                            <i className="fa-solid fa-list" />
+                        </button>
+                        <button
+                            type="button"
+                            className={`view-toggle-btn ${viewMode === 'grid' ? 'active' : ''}`}
+                            onClick={() => setViewMode('grid')}
+                            title="Vue grille"
+                            aria-label="Afficher en grille"
+                        >
+                            <i className="fa-solid fa-table-cells-large" />
+                        </button>
+                    </div>
+                    <button
+                        className="filtres-toggle-btn"
+                        onClick={() => setFiltresOuverts(o => !o)}
+                    >
+                        <i className="fa-solid fa-sliders" />
+                        Filtres
+                        {nbFiltresActifs > 0 && (
+                            <span className="filtres-badge">{nbFiltresActifs}</span>
+                        )}
+                        <i className={`fa-solid fa-chevron-${filtresOuverts ? 'up' : 'down'} filtres-chevron`} />
+                    </button>
+                </div>
             </div>
 
-            {/* ── Panneau filtres ── */}
+            {/* ── Panneau filtres — recherche live, pas de bouton "Appliquer" :
+                 chaque changement (saisie, select, date) relance la recherche
+                 tout seul (debounce, voir l'effet sur `filtres`). ── */}
             {filtresOuverts && (
-                <form className="filtres-panel" onSubmit={appliquerFiltres}>
+                <div className="filtres-panel">
                     <div className="filtres-grid">
 
-                        {/* Titre */}
-                        <div className="filtre-field">
-                            <label className="filtre-label">Titre</label>
+                        {/* Titre + contenu (recherche plein texte via Meilisearch côté
+                            serveur, voir DocumentAccessService.rechercherIdsMeilisearch) */}
+                        <div className="filtre-field filtre-field-titre">
                             <input
                                 type="text"
                                 className="filter-input"
-                                placeholder="Rechercher par titre..."
+                                placeholder="Titre ou contenu du document"
+                                aria-label="Filtrer par titre ou contenu"
                                 value={filtres.titre}
                                 onChange={e => handleFiltreChange('titre', e.target.value)}
                             />
@@ -327,13 +603,10 @@ function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
 
                         {/* Type de document */}
                         <div className="filtre-field">
-                            {/* 1. Ajoutez htmlFor qui correspond à l'id du select */}
-                            <label htmlFor="typeDocumentSelect" className="filtre-label">
-                                Type de document
-                            </label>
                             <select
-                                id="typeDocumentSelect" // 2. Ajoutez un id unique
+                                id="typeDocumentSelect"
                                 className="filter-input"
+                                aria-label="Filtrer par type de document"
                                 value={filtres.typeDocumentId}
                                 onChange={e => handleFiltreChange('typeDocumentId', e.target.value)}
                             >
@@ -346,10 +619,10 @@ function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
 
                         {/* Accès */}
                         <div className="filtre-field">
-                            <label htmlFor="acces-select" className="filtre-label">Accès</label>
                             <select
                                 id="acces-select"
                                 className="filter-input"
+                                aria-label="Filtrer par accès"
                                 value={filtres.access}
                                 onChange={e => handleFiltreChange('access', e.target.value)}
                             >
@@ -361,10 +634,10 @@ function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
 
                        {/* Statut */}
                         <div className="filtre-field">
-                            <label htmlFor="statut-select" className="filtre-label">Statut</label>
                             <select
                                 id="statut-select"
                                 className="filter-input"
+                                aria-label="Filtrer par statut"
                                 value={filtres.statut}
                                 onChange={e => handleFiltreChange('statut', e.target.value)}
                             >
@@ -377,28 +650,40 @@ function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
                         </div>
                         
                         {/* Date début */}
-                        <div className="filtre-field">
-                            <label htmlFor="date-debut" className="filtre-label">Archivé depuis</label>
+                        <div className="filtre-field filtre-field-date">
                             <input
                                 id="date-debut"
-                                type="date"
+                                type={filtres.dateDebut ? 'date' : 'text'}
+                                placeholder="Archivé depuis"
+                                aria-label="Archivé depuis"
                                 className="filter-input"
                                 value={filtres.dateDebut}
                                 max={filtres.dateFin || undefined}
                                 onChange={e => handleFiltreChange('dateDebut', e.target.value)}
+                                onFocus={e => {
+                                    e.target.type = 'date';
+                                    try { e.target.showPicker?.(); } catch { /* geste utilisateur requis */ }
+                                }}
+                                onBlur={e => { if (!e.target.value) e.target.type = 'text'; }}
                             />
                         </div>
                         
                         {/* Date fin */}
-                        <div className="filtre-field">
-                            <label htmlFor="date-fin" className="filtre-label">Archivé jusqu'au</label>
+                        <div className="filtre-field filtre-field-date">
                             <input
                                 id="date-fin"
-                                type="date"
+                                type={filtres.dateFin ? 'date' : 'text'}
+                                placeholder="Archivé jusqu'au"
+                                aria-label="Archivé jusqu'au"
                                 className="filter-input"
                                 value={filtres.dateFin}
                                 min={filtres.dateDebut || undefined}
                                 onChange={e => handleFiltreChange('dateFin', e.target.value)}
+                                onFocus={e => {
+                                    e.target.type = 'date';
+                                    try { e.target.showPicker?.(); } catch { /* geste utilisateur requis */ }
+                                }}
+                                onBlur={e => { if (!e.target.value) e.target.type = 'text'; }}
                             />
                         </div>
                     </div>
@@ -409,22 +694,19 @@ function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
                             type="button"
                             className="filtres-reset-btn"
                             onClick={reinitialiserFiltres}
-                            disabled={nbFiltresActifs === 0 && Object.values(filtres).every(v => v === '')}
+                            title="Réinitialiser les filtres"
+                            aria-label="Réinitialiser les filtres"
+                            disabled={nbFiltresActifs === 0}
                         >
-                            <i className="fa-solid fa-rotate-left" /> Réinitialiser
+                            <i className="fa-solid fa-rotate-left" />
                         </button>
-                        <button
-                            type="submit"
-                            className="form-submit-btn filtres-apply-btn"
-                            disabled={isLoading}
-                        >
-                            {isLoading
-                                ? <><i className="fa-solid fa-spinner fa-spin" /> Recherche...</>
-                                : <><i className="fa-solid fa-magnifying-glass" /> Appliquer</>
-                            }
-                        </button>
+                        {isLoading && (
+                            <span className="filtres-loading-hint" aria-live="polite">
+                                <i className="fa-solid fa-spinner fa-spin" /> Recherche...
+                            </span>
+                        )}
                     </div>
-                </form>
+                </div>
             )}
 
             {/* ── Résumé filtres actifs ── */}
@@ -434,29 +716,29 @@ function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
                         <i className="fa-solid fa-filter" />
                         {nbFiltresActifs} filtre{nbFiltresActifs > 1 ? 's' : ''} actif{nbFiltresActifs > 1 ? 's' : ''} —
                     </span>
-                    {filtresActifs.titre && (
-                        <span className="filtre-tag">Titre : «{filtresActifs.titre}»</span>
+                    {filtres.titre && (
+                        <span className="filtre-tag">Recherche : «{filtres.titre}»</span>
                     )}
-                    {filtresActifs.typeDocumentId && (
+                    {filtres.typeDocumentId && (
                         <span className="filtre-tag">
-                            Type : {typeDocuments.find(t => String(t.id) === filtresActifs.typeDocumentId)?.nom ?? filtresActifs.typeDocumentId}
+                            Type : {typeDocuments.find(t => String(t.id) === filtres.typeDocumentId)?.nom ?? filtres.typeDocumentId}
                         </span>
                     )}
-                    {filtresActifs.access && (
+                    {filtres.access && (
                         <span className="filtre-tag">
-                            Accès : {filtresActifs.access === 'PUBLIC' ? 'Public' : 'Privé'}
+                            Accès : {filtres.access === 'PUBLIC' ? 'Public' : 'Privé'}
                         </span>
                     )}
-                    {filtresActifs.statut && (
+                    {filtres.statut && (
                         <span className="filtre-tag">
-                            Statut : {STATUS_LABELS[filtresActifs.statut] ?? filtresActifs.statut}
+                            Statut : {STATUS_LABELS[filtres.statut] ?? filtres.statut}
                         </span>
                     )}
-                    {filtresActifs.dateDebut && (
-                        <span className="filtre-tag">Depuis : {filtresActifs.dateDebut}</span>
+                    {filtres.dateDebut && (
+                        <span className="filtre-tag">Depuis : {filtres.dateDebut}</span>
                     )}
-                    {filtresActifs.dateFin && (
-                        <span className="filtre-tag">Jusqu'au : {filtresActifs.dateFin}</span>
+                    {filtres.dateFin && (
+                        <span className="filtre-tag">Jusqu'au : {filtres.dateFin}</span>
                     )}
                     <button className="filtres-actifs-clear" onClick={reinitialiserFiltres}>
                         <i className="fa-solid fa-xmark" /> Tout effacer
@@ -464,14 +746,39 @@ function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
                 </div>
             )}
 
-            {error && <div className="up-alert up-alert-error">{error}</div>}
-
             {/* ── Compteur ── */}
             {!isLoading && (
                 <p className="users-count">
                     <span>{totalElements}</span> document{totalElements > 1 ? 's' : ''}
                     {nbFiltresActifs > 0 && ' trouvé' + (totalElements > 1 ? 's' : '')}
                 </p>
+            )}
+
+            {/* ── Barre de sélection multiple — n'apparaît que si au moins un
+                document est coché. ────────────────────────────────────────── */}
+            {selectedDocIds.size > 0 && (
+                <div className="selection-toolbar">
+                    <span className="selection-toolbar-count">
+                        {selectedDocIds.size} document{selectedDocIds.size > 1 ? 's' : ''} sélectionné{selectedDocIds.size > 1 ? 's' : ''}
+                    </span>
+                    <button
+                        type="button"
+                        className="details-close-btn"
+                        onClick={annulerSelection}
+                    >
+                        Annuler la sélection
+                    </button>
+                    <button
+                        type="button"
+                        className="action-button delete"
+                        onClick={handleEnvoyerCorbeilleMasse}
+                        disabled={suppressionMasseEnCours}
+                    >
+                        {suppressionMasseEnCours
+                            ? <><i className="fa-solid fa-spinner fa-spin" /> Envoi…</>
+                            : <><i className="fa-solid fa-trash" /> Envoyer à la corbeille</>}
+                    </button>
+                </div>
             )}
 
             {/* ── Tableau ── */}
@@ -489,12 +796,145 @@ function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
                         </button>
                     )}
                 </div>
+            ) : viewMode === 'grid' ? (
+                <>
+                    <div className="documents-grid">
+                        {documents.map(doc => (
+                            <div key={doc.documentId} className="doc-grid-card">
+                                <div
+                                    className="doc-grid-preview"
+                                    onClick={() => openPdfViewer(doc)}
+                                    role="button"
+                                    tabIndex={0}
+                                    onKeyDown={e => e.key === 'Enter' && openPdfViewer(doc)}
+                                    aria-label={`Lire ${doc.titre}`}
+                                >
+                                    {doc.peutGererCorbeille && (
+                                        <input
+                                            type="checkbox"
+                                            className="doc-grid-select"
+                                            checked={selectedDocIds.has(doc.documentId)}
+                                            onClick={e => e.stopPropagation()}
+                                            onChange={() => toggleDocSelection(doc.documentId)}
+                                            aria-label={`Sélectionner ${doc.titre}`}
+                                        />
+                                    )}
+                                    {previews[doc.documentId] ? (
+                                        <img
+                                            src={previews[doc.documentId]}
+                                            alt=""
+                                            className="doc-grid-preview-frame"
+                                        />
+                                    ) : previewsEchec.has(doc.documentId) ? (
+                                        <div className="doc-grid-preview-loading doc-grid-preview-echec">
+                                            <i className="fa-solid fa-file-pdf" />
+                                        </div>
+                                    ) : (
+                                        <div className="doc-grid-preview-loading">
+                                            <i className="fa-solid fa-spinner fa-spin" />
+                                        </div>
+                                    )}
+                                    <span className="doc-grid-tag">PDF</span>
+                                    <div className="doc-grid-preview-hint">
+                                        <i className="fa-solid fa-eye" /> Lire
+                                    </div>
+                                </div>
+
+                                <div className="doc-grid-body">
+                                    <p className="doc-grid-title" title={doc.titre}>
+                                        {doc.titre}
+                                        <VersionBadge label={doc.versionLabel} />
+                                    </p>
+                                    <p className="doc-grid-type">{doc.typeDocumentNom}</p>
+                                    {/* Statut, accès (public/privé) et date d'archivage retirés de la
+                                        carte — déjà visibles dans le détail (bouton "i" ci-dessous),
+                                        pas besoin de les dupliquer ici. */}
+
+                                    <div className="td-actions doc-grid-actions">
+                                        <button
+                                            className="action-button edit"
+                                            onClick={() => openDetail(doc)}
+                                            title="Détail"
+                                        >
+                                            <i className="fa-solid fa-circle-info" />
+                                        </button>
+                                        <button
+                                            className="action-button"
+                                            onClick={() => handleDownloadPdfA(doc)}
+                                            disabled={downloadingId === doc.documentId + '_pdfa'}
+                                            title="Télécharger PDF/A"
+                                        >
+                                            {downloadingId === doc.documentId + '_pdfa'
+                                                ? <i className="fa-solid fa-spinner fa-spin" />
+                                                : <i className="fa-solid fa-file-pdf" />
+                                            }
+                                        </button>
+                                        {doc.access === 'PRIVE' && (
+                                            <button
+                                                className="action-button"
+                                                onClick={() => openGroupe(doc)}
+                                                title="Voir qui a accès à ce document"
+                                            >
+                                                <i className="fa-solid fa-user-group" />
+                                            </button>
+                                        )}
+                                        {doc.peutGererCorbeille && (
+                                            <button
+                                                className="action-button delete"
+                                                onClick={() => handleEnvoyerCorbeilleRapide(doc)}
+                                                title="Envoyer à la corbeille"
+                                            >
+                                                <i className="fa-solid fa-trash" />
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* ── Pagination ── */}
+                    {totalPages > 1 && (
+                        <div className="pagination">
+                            <button
+                                className="pagination-btn pagination-nav"
+                                onClick={() => loadDocuments(filtres, page - 1)}
+                                disabled={page === 1 || isLoading}
+                            >‹</button>
+                            <span className="pagination-btn pagination-active">
+                                {page} / {totalPages}
+                            </span>
+                            <button
+                                className="pagination-btn pagination-nav"
+                                onClick={() => loadDocuments(filtres, page + 1)}
+                                disabled={page === totalPages || isLoading}
+                            >›</button>
+                        </div>
+                    )}
+                </>
             ) : (
                 <>
                     <div className="td-table-container">
                         <table className="td-table">
                             <thead>
                                 <tr>
+                                    {selectionModeActive && (
+                                        <th className="td-select-col">
+                                            {documents.some(d => d.peutGererCorbeille) && (
+                                                <input
+                                                    type="checkbox"
+                                                    checked={
+                                                        documents.some(d => d.peutGererCorbeille)
+                                                        && documents.filter(d => d.peutGererCorbeille).every(d => selectedDocIds.has(d.documentId))
+                                                    }
+                                                    onChange={toggleSelectAllDocs}
+                                                    onClick={e => e.stopPropagation()}
+                                                    aria-label="Tout sélectionner"
+                                                    title="Tout sélectionner"
+                                                />
+                                            )}
+                                        </th>
+                                    )}
                                     <th>Titre</th>
                                     <th>Type</th>
                                     <th>Accès</th>
@@ -505,8 +945,33 @@ function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
                                 </tr>
                             </thead>
                             <tbody>
+                                {/* Cases à cocher jamais visibles par défaut — seulement après
+                                    un clic droit ou un appui prolongé sur une ligne (voir
+                                    activateSelectionMode). Double-clic pour lire un document,
+                                    plus d'icône "œil" dédiée. */}
                                 {documents.map(doc => (
-                                    <tr key={doc.documentId}>
+                                    <tr
+                                        key={doc.documentId}
+                                        className={selectionModeActive ? 'td-row-selectable' : undefined}
+                                        onDoubleClick={() => openPdfViewer(doc)}
+                                        onClick={() => { if (selectionModeActive) toggleDocSelection(doc.documentId); }}
+                                        onContextMenu={e => { e.preventDefault(); activateSelectionMode(doc.documentId); }}
+                                        onTouchStart={() => handleRowTouchStart(doc.documentId)}
+                                        onTouchEnd={handleRowTouchEnd}
+                                        onTouchMove={handleRowTouchEnd}
+                                    >
+                                        {selectionModeActive && (
+                                            <td className="td-select-col" onClick={e => e.stopPropagation()}>
+                                                {doc.peutGererCorbeille && (
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedDocIds.has(doc.documentId)}
+                                                        onChange={() => toggleDocSelection(doc.documentId)}
+                                                        aria-label={`Sélectionner ${doc.titre}`}
+                                                    />
+                                                )}
+                                            </td>
+                                        )}
                                         <td className="td-nom">
                                             {doc.titre}
                                             <VersionBadge label={doc.versionLabel} />
@@ -523,18 +988,9 @@ function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
                                             </span>
                                         </td>
                                         <td>{formatDate(doc.createAt)}</td>
-                                        <td>{formatDate(doc.retentionUntil)}</td>
-                                        <td>
+                                        <td>{doc.retentionUntil ? formatDate(doc.retentionUntil) : 'Indéfinie'}</td>
+                                        <td onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>
                                             <div className="td-actions">
-                                                {/* Lire */}
-                                                <button
-                                                    className="action-button view"
-                                                    onClick={() => openPdfViewer(doc)}
-                                                    title="Lire le document"
-                                                >
-                                                    <i className="fa-solid fa-eye" />
-                                                </button>
-
                                                 {/* Détail */}
                                                 <button
                                                     className="action-button edit"
@@ -567,6 +1023,17 @@ function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
                                                         <i className="fa-solid fa-user-group" />
                                                     </button>
                                                 )}
+
+                                                {/* Envoyer à la corbeille */}
+                                                {doc.peutGererCorbeille && (
+                                                    <button
+                                                        className="action-button delete"
+                                                        onClick={() => handleEnvoyerCorbeilleRapide(doc)}
+                                                        title="Envoyer à la corbeille"
+                                                    >
+                                                        <i className="fa-solid fa-trash" />
+                                                    </button>
+                                                )}
                                             </div>
                                         </td>
                                     </tr>
@@ -580,7 +1047,7 @@ function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
                         <div className="pagination">
                             <button
                                 className="pagination-btn pagination-nav"
-                                onClick={() => loadDocuments(filtresActifs, page - 1)}
+                                onClick={() => loadDocuments(filtres, page - 1)}
                                 disabled={page === 1 || isLoading}
                             >‹</button>
                             <span className="pagination-btn pagination-active">
@@ -588,29 +1055,13 @@ function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
                             </span>
                             <button
                                 className="pagination-btn pagination-nav"
-                                onClick={() => loadDocuments(filtresActifs, page + 1)}
+                                onClick={() => loadDocuments(filtres, page + 1)}
                                 disabled={page === totalPages || isLoading}
                             >›</button>
                         </div>
                     )}
                 </>
             )}
-
-            {/* ── Modal lecteur PDF ── */}
-            <Modal isOpen={isPdfOpen} onClose={closePdfViewer} title="Lecture du document">
-                <div className="pdf-viewer-wrapper">
-                    {pdfLoading ? (
-                        <div className="pdf-viewer-loading">
-                            <i className="fa-solid fa-spinner fa-spin" />
-                            <span>Chargement du document...</span>
-                        </div>
-                    ) : pdfBlobUrl ? (
-                        <iframe src={pdfBlobUrl} className="pdf-viewer-iframe" title="Lecteur PDF" />
-                    ) : (
-                        <div className="td-empty"><p>Impossible de charger le document.</p></div>
-                    )}
-                </div>
-            </Modal>
 
             {/* ── Modal détail ── */}
             <Modal
@@ -624,7 +1075,8 @@ function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
                     <DocumentDetailPanel
                         detail={detail}
                         onSelectVersion={openDetailById}
-                        onSupprimer={handleSupprimerCorrompu}
+                        onSupprimer={handleEnvoyerCorbeille}
+                        onRestaurer={handleRestaurerCorbeille}
                         suppressionLoading={suppressionLoading}
                         onVoirAcces={() => {
                             setGroupeDoc({ id: detail.documentId, titre: detail.titre });
@@ -633,7 +1085,6 @@ function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
                         onGenererAttestation={handleGenererAttestation}
                         attestationUrl={attestationUrl}
                         attestationLoading={attestationLoading}
-                        attestationError={attestationError}
                         onEmplacementChange={setDetail}
                     />
                 ) : (
@@ -667,28 +1118,28 @@ function DocumentDetailPanel({
     detail,
     onSelectVersion,
     onSupprimer,
+    onRestaurer,
     suppressionLoading,
     onVoirAcces,
     onGenererAttestation,
     attestationUrl,
     attestationLoading,
-    attestationError,
     onEmplacementChange,
 }: {
     detail: DocumentDetailDto;
     onSelectVersion?: (documentId: string) => void;
     onSupprimer?: (documentId: string) => void;
+    onRestaurer?: (documentId: string) => void;
     suppressionLoading?: boolean;
     onVoirAcces?: () => void;
     onGenererAttestation?: (documentId: string) => void;
     attestationUrl?: string | null;
     attestationLoading?: boolean;
-    attestationError?: string;
     onEmplacementChange?: (updated: DocumentDetailDto) => void;
 }) {
     const STATUS_LABELS: Record<string, string> = {
         ACTIVE: 'Actif', PENDING: 'En attente',
-        ACTIVE_WARNING: 'Avertissement', CORRUPTED: 'Corrompu', DELETED: 'Supprimé',
+        ACTIVE_WARNING: 'Avertissement', CORRUPTED: 'Corrompu', CORBEILLE: 'Dans la corbeille', DELETED: 'Supprimé',
     };
     return (
         <div className="doc-detail">
@@ -704,6 +1155,47 @@ function DocumentDetailPanel({
                 </span>
             </div>
 
+            {/* Dans la corbeille — restaurable jusqu'à la purge définitive.
+                Reste identifiable comme "corrompu" s'il l'était avant d'y être
+                envoyé (statutAvantCorbeille), badge inclus. */}
+            {detail.status === 'CORBEILLE' && (
+                <div className="corruption-banner">
+                    <div className="corruption-banner-header">
+                        <i className="fa-solid fa-trash" />
+                        <span>
+                            Document dans la corbeille
+                            {detail.statutAvantCorbeille === 'CORRUPTED' && ' — corrompu'}
+                            {detail.corruptionRaison ? ` (${detail.corruptionRaison})` : ''}
+                        </span>
+                    </div>
+                    <p className="corruption-banner-note">
+                        Seuls les administrateurs ayant autorité sur son UO et les éditeurs y ayant accès
+                        peuvent encore consulter ou télécharger ce document.
+                    </p>
+                    {detail.suppressionPrevueLe && (
+                        <p className="corruption-banner-suppression">
+                            <i className="fa-solid fa-clock" /> Suppression définitive prévue le{' '}
+                            {new Date(detail.suppressionPrevueLe).toLocaleDateString('fr-FR')}.
+                        </p>
+                    )}
+                    {detail.peutGererCorbeille && (
+                        <div className="corruption-banner-actions">
+                            <button
+                                type="button"
+                                className="form-submit-btn up-submit"
+                                onClick={() => onRestaurer?.(detail.documentId)}
+                                disabled={suppressionLoading}
+                            >
+                                {suppressionLoading
+                                    ? <><i className="fa-solid fa-spinner fa-spin" /> …</>
+                                    : <><i className="fa-solid fa-clock-rotate-left" /> Restaurer</>}
+                            </button>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Corrompu, pas encore envoyé à la corbeille. */}
             {detail.status === 'CORRUPTED' && (
                 <div className="corruption-banner">
                     <div className="corruption-banner-header">
@@ -715,12 +1207,7 @@ function DocumentDetailPanel({
                         peuvent encore consulter ou télécharger ce document.
                     </p>
 
-                    {detail.suppressionPrevueLe ? (
-                        <p className="corruption-banner-suppression">
-                            <i className="fa-solid fa-clock" /> Suppression définitive prévue le{' '}
-                            {new Date(detail.suppressionPrevueLe).toLocaleDateString('fr-FR')}.
-                        </p>
-                    ) : detail.peutEtreSupprime && (
+                    {detail.peutGererCorbeille && (
                         <div className="corruption-banner-actions">
                             <button
                                 type="button"
@@ -730,10 +1217,28 @@ function DocumentDetailPanel({
                             >
                                 {suppressionLoading
                                     ? <><i className="fa-solid fa-spinner fa-spin" /> …</>
-                                    : <><i className="fa-solid fa-trash" /> Supprimer (définitif dans 3 jours)</>}
+                                    : <><i className="fa-solid fa-trash" /> Envoyer à la corbeille</>}
                             </button>
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* Document sain, pas dans la corbeille — suppression volontaire
+                disponible pour n'importe quel document, plus seulement un
+                corrompu. */}
+            {detail.status !== 'CORRUPTED' && detail.status !== 'CORBEILLE' && detail.peutGererCorbeille && (
+                <div className="details-row">
+                    <button
+                        type="button"
+                        className="corruption-delete-btn"
+                        onClick={() => onSupprimer?.(detail.documentId)}
+                        disabled={suppressionLoading}
+                    >
+                        {suppressionLoading
+                            ? <><i className="fa-solid fa-spinner fa-spin" /> …</>
+                            : <><i className="fa-solid fa-trash" /> Envoyer à la corbeille</>}
+                    </button>
                 </div>
             )}
 
@@ -751,10 +1256,12 @@ function DocumentDetailPanel({
             <div className="details-row">
                 <strong>Archivé le :</strong> {detail.createAt ? new Date(detail.createAt).toLocaleDateString('fr-FR') : '—'}
             </div>
-            <div className="details-row"><strong>Rétention :</strong> {detail.retentionUntil ?? '—'}</div>
+            <div className="details-row"><strong>Rétention :</strong> {detail.retentionUntil ?? 'Indéfinie'}</div>
             <div className="details-row"><strong>Version :</strong> {detail.version}</div>
 
             <EmplacementPhysiqueSection detail={detail} onUpdated={onEmplacementChange} />
+
+            <ProjetAttachSection detail={detail} onUpdated={onEmplacementChange} />
 
             {detail.pdfaSha256 && (
                 <div className="details-row">
@@ -762,19 +1269,11 @@ function DocumentDetailPanel({
                     <span className="up-hash">{detail.pdfaSha256.slice(0, 16)}…</span>
                 </div>
             )}
-            {detail.metaData.length > 0 && (
-                <div className="detail-meta-section">
-                    <p className="detail-meta-title">Métadonnées</p>
-                    <div className="detail-meta-grid">
-                        {detail.metaData.map((m, i) => (
-                            <div key={i} className="detail-meta-item">
-                                <span className="detail-meta-type">{m.typeValeur}</span>
-                                <span className="detail-meta-value">{m.valeur ?? '—'}</span>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
+            <MetaDataEditSection
+                detail={detail}
+                peutModifier={detail.peutModifierEmplacement}
+                onUpdated={onEmplacementChange}
+            />
             {detail.historiqueVersions.length > 0 && (
                 <div className="version-history">
                     <p className="version-history-title">Historique des versions</p>
@@ -824,9 +1323,123 @@ function DocumentDetailPanel({
                                 : <><i className="fa-solid fa-certificate" /> Générer une attestation</>}
                         </button>
                     )}
-                    {attestationError && <p className="attestation-erreur">{attestationError}</p>}
                 </div>
             )}
+        </div>
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sous-composant : métadonnées (affichage + correction)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function MetaDataEditSection({
+    detail,
+    peutModifier,
+    onUpdated,
+}: {
+    detail: DocumentDetailDto;
+    peutModifier?: boolean;
+    onUpdated?: (updated: DocumentDetailDto) => void;
+}) {
+    const notify = useNotify();
+    const [editing, setEditing] = useState(false);
+    const [typeDef, setTypeDef] = useState<TypeDocumentEditorDto | null>(null);
+    const [loadingType, setLoadingType] = useState(false);
+    const [values, setValues] = useState<Record<string, string>>({});
+    const [saving, setSaving] = useState(false);
+
+    const ouvrirEdition = async () => {
+        setEditing(true);
+        setLoadingType(true);
+        try {
+            const td = await getTypeDocumentById(detail.typeDocumentId);
+            setTypeDef(td);
+            // detail.metaData[i].typeValeur porte le NOM du champ (voir
+            // DocumentService.getDetail côté serveur), pas son type — on
+            // s'en sert ici pour retrouver la valeur actuelle de chaque champ.
+            const seed: Record<string, string> = {};
+            td.metaData.forEach(m => {
+                const actuel = detail.metaData.find(dm => dm.typeValeur === m.nom);
+                seed[m.nom] = actuel?.valeur ?? '';
+            });
+            setValues(seed);
+        } catch {
+            notify.error('Impossible de charger la définition des métadonnées de ce type');
+        } finally {
+            setLoadingType(false);
+        }
+    };
+
+    const enregistrer = async () => {
+        if (!typeDef) return;
+        setSaving(true);
+        try {
+            const payload = typeDef.metaData.map(m => ({ nom: m.nom, valeur: values[m.nom] ?? '' }));
+            const updated = await modifierMetaDataDocument(detail.documentId, payload);
+            onUpdated?.(updated);
+            setEditing(false);
+            notify.success('Métadonnées mises à jour');
+        } catch (err: any) {
+            notify.error(err.message ?? 'Erreur lors de l\'enregistrement');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    if (!editing) {
+        if (detail.metaData.length === 0 && !peutModifier) return null;
+        return (
+            <div className="detail-meta-section">
+                <div className="detail-meta-header-row">
+                    <p className="detail-meta-title">Métadonnées</p>
+                    {peutModifier && (
+                        <button type="button" className="details-close-btn" onClick={ouvrirEdition}>
+                            <i className="fa-solid fa-pen" /> Modifier
+                        </button>
+                    )}
+                </div>
+                {detail.metaData.length > 0 ? (
+                    <div className="detail-meta-grid">
+                        {detail.metaData.map((m, i) => (
+                            <div key={i} className="detail-meta-item">
+                                <span className="detail-meta-type">{m.typeValeur}</span>
+                                <span className="detail-meta-value">{m.valeur ?? '—'}</span>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <p className="td-detail-empty">Aucune métadonnée renseignée.</p>
+                )}
+            </div>
+        );
+    }
+
+    return (
+        <div className="detail-meta-section">
+            <p className="detail-meta-title">Modifier les métadonnées</p>
+            {loadingType ? (
+                <i className="fa-solid fa-spinner fa-spin" />
+            ) : typeDef ? (
+                <div className="meta-fields">
+                    {typeDef.metaData.map(m => (
+                        <MetaDataField
+                            key={m.nom}
+                            nom={m.nom}
+                            type={m.metaDataType}
+                            obligatoire={m.obligatoire}
+                            value={values[m.nom] ?? ''}
+                            onChange={v => setValues(prev => ({ ...prev, [m.nom]: v }))}
+                        />
+                    ))}
+                </div>
+            ) : null}
+            <div className="pl-form-actions">
+                <button type="button" className="attestation-generer-btn" disabled={saving} onClick={enregistrer}>
+                    {saving ? 'Enregistrement…' : 'Enregistrer'}
+                </button>
+                <button type="button" className="details-close-btn" onClick={() => setEditing(false)}>Annuler</button>
+            </div>
         </div>
     );
 }
@@ -842,16 +1455,15 @@ function EmplacementPhysiqueSection({
     detail: DocumentDetailDto;
     onUpdated?: (updated: DocumentDetailDto) => void;
 }) {
+    const notify = useNotify();
     const [editing, setEditing] = useState(false);
     const [options, setOptions] = useState<PhysicalLocationDto[]>([]);
     const [optionsLoading, setOptionsLoading] = useState(false);
     const [selected, setSelected] = useState('');
     const [saving, setSaving] = useState(false);
-    const [error, setError] = useState('');
 
     const ouvrirEdition = async () => {
         setEditing(true);
-        setError('');
         setSelected(detail.physicalLocationId ?? '');
         if (detail.uniteOrganisationnelleId == null) return;
         setOptionsLoading(true);
@@ -859,7 +1471,7 @@ function EmplacementPhysiqueSection({
             const data = await getEmplacementsDisponibles(detail.uniteOrganisationnelleId);
             setOptions(data);
         } catch {
-            setError('Impossible de charger les emplacements disponibles');
+            notify.error('Impossible de charger les emplacements disponibles');
         } finally {
             setOptionsLoading(false);
         }
@@ -867,13 +1479,13 @@ function EmplacementPhysiqueSection({
 
     const enregistrer = async () => {
         setSaving(true);
-        setError('');
         try {
             const updated = await modifierEmplacementPhysique(detail.documentId, selected || null);
             onUpdated?.(updated);
             setEditing(false);
+            notify.success('Emplacement physique mis à jour');
         } catch (err: any) {
-            setError(err.message ?? 'Erreur lors de l\'enregistrement');
+            notify.error(err.message ?? 'Erreur lors de l\'enregistrement');
         } finally {
             setSaving(false);
         }
@@ -902,12 +1514,126 @@ function EmplacementPhysiqueSection({
                         {saving ? '…' : 'Enregistrer'}
                     </button>
                     <button type="button" className="details-close-btn" onClick={() => setEditing(false)}>Annuler</button>
-                    {error && <p className="attestation-erreur">{error}</p>}
                 </div>
             ) : (
                 <>
                     <span>{detail.physicalLocationPath ?? '—'}</span>
                     {detail.peutModifierEmplacement && (
+                        <button type="button" className="details-close-btn" onClick={ouvrirEdition}>
+                            <i className="fa-solid fa-pen" /> Modifier
+                        </button>
+                    )}
+                </>
+            )}
+        </div>
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sous-composant : projet (rattacher, migrer, détacher un document après coup)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ProjetAttachSection({
+    detail,
+    onUpdated,
+}: {
+    detail: DocumentDetailDto;
+    onUpdated?: (updated: DocumentDetailDto) => void;
+}) {
+    const notify = useNotify();
+    const confirm = useConfirm();
+    const [editing, setEditing] = useState(false);
+    const [options, setOptions] = useState<ProjetDto[]>([]);
+    const [optionsLoading, setOptionsLoading] = useState(false);
+    const [selected, setSelected] = useState('');
+    const [saving, setSaving] = useState(false);
+
+    const ouvrirEdition = async () => {
+        setEditing(true);
+        setSelected(detail.projetId ? String(detail.projetId) : '');
+        if (detail.uniteOrganisationnelleId == null) return;
+        setOptionsLoading(true);
+        try {
+            const data = await getProjetsDeUO(detail.uniteOrganisationnelleId);
+            setOptions(data);
+        } catch {
+            notify.error('Impossible de charger les projets disponibles');
+        } finally {
+            setOptionsLoading(false);
+        }
+    };
+
+    const enregistrer = async () => {
+        const projetIdSelectionne = selected ? Number(selected) : null;
+        let fusionnerGroupes = false;
+
+        // Document privé rattaché à un projet privé : vérifier AVANT
+        // d'écrire si les deux groupes diffèrent, pour avertir l'éditeur
+        // qu'un rattachement les fusionnera (union des membres, lien
+        // permanent — voir DocumentService.modifierProjetDocument).
+        if (projetIdSelectionne && detail.access === 'PRIVE') {
+            try {
+                const verif = await verifierFusionGroupeProjet(detail.documentId, projetIdSelectionne);
+                if (verif.groupesDifferents) {
+                    const liste = verif.membresQuiSerontAjoutes.join(', ');
+                    const accepte = await confirm(
+                        'Le groupe de ce document et celui du projet n\'ont pas les mêmes membres. '
+                        + 'En continuant, les deux groupes seront fusionnés (union des membres)'
+                        + (liste ? ` — ${liste} sera${verif.membresQuiSerontAjoutes.length > 1 ? 'ont' : ''} `
+                            + `ajouté${verif.membresQuiSerontAjoutes.length > 1 ? 's' : ''} au groupe du projet.` : '.')
+                    );
+                    if (!accepte) return;
+                    fusionnerGroupes = true;
+                }
+            } catch (err: any) {
+                notify.error(err.message ?? 'Erreur lors de la vérification des groupes');
+                return;
+            }
+        }
+
+        setSaving(true);
+        try {
+            const updated = await modifierProjetDocument(
+                detail.documentId, projetIdSelectionne, fusionnerGroupes
+            );
+            onUpdated?.(updated);
+            setEditing(false);
+            notify.success('Projet mis à jour');
+        } catch (err: any) {
+            notify.error(err.message ?? 'Erreur lors de l\'enregistrement');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    if (!detail.peutModifierProjet && !detail.projetNom) {
+        return null;
+    }
+
+    return (
+        <div className="details-row emplacement-physique-row">
+            <strong>Projet :</strong>
+            {editing ? (
+                <div className="emplacement-edit">
+                    {optionsLoading ? (
+                        <i className="fa-solid fa-spinner fa-spin" />
+                    ) : (
+                        <select value={selected} onChange={(e) => setSelected(e.target.value)}>
+                            <option value="">— Aucun (hors projet) —</option>
+                            {options.map((p) => (
+                                <option key={p.id} value={p.id}>{p.nom}</option>
+                            ))}
+                        </select>
+                    )}
+                    <button type="button" className="attestation-generer-btn" disabled={saving} onClick={enregistrer}>
+                        {saving ? '…' : 'Enregistrer'}
+                    </button>
+                    <button type="button" className="details-close-btn" onClick={() => setEditing(false)}>Annuler</button>
+                </div>
+            ) : (
+                <>
+                    <span>{detail.projetNom ?? '—'}</span>
+                    {detail.peutModifierProjet && (
                         <button type="button" className="details-close-btn" onClick={ouvrirEdition}>
                             <i className="fa-solid fa-pen" /> Modifier
                         </button>

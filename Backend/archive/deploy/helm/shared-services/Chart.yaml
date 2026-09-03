@@ -1,0 +1,10 @@
+apiVersion: v2
+name: shared-services
+description: >
+  Services SANS ÉTAT partagés par toutes les sociétés (Gotenberg, Ollama) —
+  un seul `helm install`, une seule fois pour tout le cluster, jamais par
+  société. N'y mettez jamais rien qui retient de la donnée cliente : c'est
+  la seule raison pour laquelle ce namespace peut légitimement être partagé.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

@@ -1,4 +1,8 @@
+import { useState } from 'react';
 import type { TypeDocumentDto } from '../services/document/TypedocumentService';
+import { resetTypeDocumentRegex } from '../services/document/TypedocumentService';
+import { useNotify } from '../notifications/NotificationProvider';
+import { useConfirm } from '../notifications/ConfirmProvider';
 import '../Style/document/Typedocument.css';
 
 interface TypeDocumentDetailProps {
@@ -17,6 +21,37 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 function TypeDocumentDetail({ td }: TypeDocumentDetailProps) {
+    const notify = useNotify();
+    const confirm = useConfirm();
+    // État local (pas de refetch parent) : reflète le reset immédiatement
+    // sans dépendre d'un callback de rafraîchissement côté liste.
+    const [regexGenerated, setRegexGenerated] = useState(td.regexGenerated ?? false);
+    const [regexJson, setRegexJson] = useState(td.extractionRegexJson ?? null);
+    const [resetting, setResetting] = useState(false);
+
+    let regexMap: Record<string, string> = {};
+    try { regexMap = regexJson ? JSON.parse(regexJson) : {}; } catch { regexMap = {}; }
+
+    const handleReset = async () => {
+        if (!td.id) return;
+        if (!(await confirm(
+            "Réinitialiser les règles d'extraction OCR de ce type ? "
+            + "Elles seront régénérées automatiquement au prochain document archivé de ce type."
+        ))) return;
+
+        setResetting(true);
+        try {
+            await resetTypeDocumentRegex(td.id);
+            setRegexGenerated(false);
+            setRegexJson(null);
+            notify.success("Règles d'extraction réinitialisées");
+        } catch (err: any) {
+            notify.error(err.message ?? 'Erreur lors de la réinitialisation');
+        } finally {
+            setResetting(false);
+        }
+    };
+
     return (
         <div className="td-detail">
 
@@ -70,6 +105,51 @@ function TypeDocumentDetail({ td }: TypeDocumentDetailProps) {
                             ))}
                         </tbody>
                     </table>
+                )}
+            </div>
+
+            {/* Règles d'extraction OCR */}
+            <div className="td-detail-section">
+                <h4 className="td-detail-subtitle">Règles d'extraction OCR</h4>
+
+                {!regexGenerated ? (
+                    <p className="td-detail-empty">
+                        Pas encore générées — elles le seront automatiquement au premier document
+                        archivé de ce type (en arrière-plan, sans bloquer l'archivage).
+                    </p>
+                ) : (
+                    <>
+                        <p className="td-regex-hint">
+                            Générées à partir d'un document déjà archivé. Si les suggestions OCR
+                            se trompent systématiquement, réinitialise-les ci-dessous — elles
+                            seront régénérées au prochain document de ce type.
+                        </p>
+                        {Object.keys(regexMap).length > 0 && (
+                            <table className="td-meta-table">
+                                <thead>
+                                    <tr><th>Champ</th><th>Regex</th></tr>
+                                </thead>
+                                <tbody>
+                                    {Object.entries(regexMap).map(([champ, regex]) => (
+                                        <tr key={champ}>
+                                            <td>{champ}</td>
+                                            <td><code className="td-regex-code">{regex}</code></td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )}
+                        <button
+                            type="button"
+                            className="td-regex-reset-btn"
+                            onClick={handleReset}
+                            disabled={resetting}
+                        >
+                            {resetting
+                                ? <><i className="fa-solid fa-spinner fa-spin" /> Réinitialisation…</>
+                                : <><i className="fa-solid fa-rotate-left" /> Réinitialiser les règles d'extraction</>}
+                        </button>
+                    </>
                 )}
             </div>
         </div>

@@ -9,8 +9,8 @@ import made.archive.dto.BulkUploadReportDto;
 import made.archive.dto.DocumentUploadDto;
 import made.archive.dto.DocumentUploadResultDto;
 import made.archive.dto.FinalizeUploadRequestDto;
-import made.archive.dto.FtpImportRequestDto;
 import made.archive.dto.OcrPreviewResponseDto;
+import made.archive.dto.WebImportOcrRequestDto;
 import made.archive.entite.User;
 import made.archive.exception.BusinessException;
 import made.archive.exception.PdfAConversionException;
@@ -34,7 +34,7 @@ public class BulkUploadSameTypeService
     private final OcrSessionCache ocrSessionCache;
     private final TypeDocumentRepository typeDocumentRepository;
     private final UserRepository userRepository;
-    private final FtpImportService ftpImportService;
+    private final WebImportService webImportService;
 
     // ═══════════════════════════════════════════════════════════════
     // ÉTAPE 1 : OCR Preview sur N fichiers
@@ -69,13 +69,11 @@ public class BulkUploadSameTypeService
     }
 
     /**
-     * Variante "source distante" de la Phase 1 : télécharge d'abord chaque fichier
-     * retenu du dossier FTP/FTPS fourni (voir FtpImportService), puis applique
+     * Variante "lien web" de la Phase 1 : télécharge chaque fichier confirmé par
+     * l'utilisateur sur l'aperçu WebImportService.previewer, puis applique
      * exactement le même traitement OCR par fichier que l'upload navigateur.
-     * La Phase 2 (finalisation) qui suit est strictement identique et inchangée —
-     * une fois en session OCR, l'origine du fichier n'a plus d'importance.
      */
-    public BulkOcrPreviewResponseDto startOcrPreviewFromFtp(FtpImportRequestDto requete)
+    public BulkOcrPreviewResponseDto startOcrPreviewFromWeb(WebImportOcrRequestDto requete)
     {
         typeDocumentRepository.findById(requete.getTypeDocumentId())
             .orElseThrow(() -> new BusinessException(
@@ -84,11 +82,11 @@ public class BulkUploadSameTypeService
         User uploadedBy = userRepository.findById(requete.getUploadedById())
             .orElseThrow(() -> new BusinessException("Utilisateur introuvable : " + requete.getUploadedById()));
 
-        List<FtpImportService.FichierDistant> fichiers = ftpImportService.telechargerDossier(requete);
+        List<WebImportService.FichierDistant> fichiers = webImportService.telecharger(requete.getFichiersUrls());
 
         List<OcrPreviewResponseDto> previews = new ArrayList<>();
 
-        for (FtpImportService.FichierDistant fichier : fichiers)
+        for (WebImportService.FichierDistant fichier : fichiers)
         {
             previews.add(traiterUnFichier(fichier.nomFichier(),
                 () -> documentOcrService.processOcrPreview(

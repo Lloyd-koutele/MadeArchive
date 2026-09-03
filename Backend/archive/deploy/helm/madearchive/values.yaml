@@ -1,0 +1,107 @@
+# ─────────────────────────────────────────────────────────────────────────
+# Une société = une installation de ce chart, dans son propre namespace.
+#   helm install societe-a . -n societe-a --create-namespace \
+#     -f values.yaml --set societe.nom=SocieteA --set ingress.host=societe-a.madearchive.com
+# ─────────────────────────────────────────────────────────────────────────
+
+societe:
+  # Nom d'affichage — n'affecte aucune isolation technique, juste du texte
+  # (logs, éventuellement un futur en-tête de PDF). L'isolation vient du
+  # namespace + des Secrets + des NetworkPolicy, jamais de ce champ.
+  nom: "ChangeMe"
+
+image:
+  repository: ghcr.io/votre-org/madearchive-app
+  tag: "1.0.0"
+  pullPolicy: IfNotPresent
+
+app:
+  replicas: 1
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits:   { cpu: "1",  memory: 1Gi }
+  # URL publique du frontend pour cette société (CORS, liens dans les emails...)
+  frontendUrl: "https://societe-a.madearchive.com"
+  jwtExpiration: "3600000"
+  jwtRefreshExpiration: "604800000"
+
+ingress:
+  enabled: true
+  className: nginx
+  host: societe-a.madearchive.com
+  tlsSecretName: societe-a-tls   # généré par cert-manager, ou fourni
+
+# ── NetworkPolicy — c'est CECI qui rend l'isolation réelle, pas le namespace
+# seul (voir le schéma "Silo K8s"). ingressControllerNamespace doit pointer
+# vers le namespace où tourne réellement votre Ingress Controller — c'est
+# "ingress-nginx" par défaut avec le chart officiel ingress-nginx, mais
+# vérifiez sur votre cluster (`kubectl get pods -A | grep ingress`).
+networkPolicy:
+  enabled: true
+  ingressControllerNamespace: ingress-nginx
+
+# ── Services partagés (namespace shared-services, cluster-wide) ───────────
+shared:
+  namespace: shared-services
+  gotenbergUrl: http://gotenberg.shared-services.svc.cluster.local:3000
+  ollamaUrl: http://ollama.shared-services.svc.cluster.local:11434
+
+# ── Postgres (par société, 1 replica — voir README pour la voie HA) ───────
+postgres:
+  image: postgres:16-alpine
+  storageSize: 20Gi
+  storageClassName: ""   # "" = StorageClass par défaut du cluster
+  database: madearchive
+  username: madearchive
+  resources:
+    requests: { cpu: 200m, memory: 512Mi }
+    limits:   { cpu: "1",  memory: 1Gi }
+
+# ── MinIO (mode standalone — un noeud, un disque, par société) ────────────
+minio:
+  image: minio/minio:latest
+  storageSize: 100Gi
+  storageClassName: ""
+  bucket: pdfa
+  resources:
+    requests: { cpu: 200m, memory: 512Mi }
+    limits:   { cpu: "1",  memory: 1Gi }
+
+# ── Meilisearch (index de contenu — par société, jamais partagé) ──────────
+meilisearch:
+  image: getmeili/meilisearch:latest
+  storageSize: 10Gi
+  storageClassName: ""
+  resources:
+    requests: { cpu: 200m, memory: 512Mi }
+    limits:   { cpu: "1",  memory: 1Gi }
+
+# ── Redis (cache — par société, léger) ─────────────────────────────────────
+redis:
+  image: redis:7-alpine
+  resources:
+    requests: { cpu: 50m,  memory: 64Mi }
+    limits:   { cpu: 250m, memory: 256Mi }
+
+# ── HSM (clé privée de signature PKI des éditeurs) ─────────────────────────
+# Volontairement PAS auto-généré par ce chart, et le mot de passe n'a rien à
+# faire dans un values.yaml commité : le keystore PKCS12 ET son mot de passe
+# vivent UNIQUEMENT dans un Secret créé hors bande, avant `helm install` :
+#   kubectl create secret generic societe-a-hsm -n societe-a \
+#     --from-file=editors-keystore.p12=./editors-keystore.p12 \
+#     --from-literal=keystore-password='<mot de passe réel>'
+# Le chart ne fait que référencer ce Secret par son nom — jamais son contenu.
+hsm:
+  existingSecretName: societe-a-hsm
+  keystoreFilename: editors-keystore.p12
+
+# ── Ancrage blockchain Polygon (optionnel, désactivable) ──────────────────
+# Clé privée d'un wallet — à fournir explicitement, jamais générée en
+# aléatoire (un wallet auto-généré n'a pas de fonds et ne sert à rien).
+# Décidez d'abord si le wallet est PAR société ou partagé côté plateforme
+# avant de remplir ceci pour chaque installation.
+polygon:
+  enabled: false
+  rpcUrl: ""
+  contractAddress: ""
+  privateKey: ""

@@ -16,9 +16,6 @@ public class DocumentUploadDto
     private UUID uploadedById;
     private IntegrityLevel integrityLevel;
 
-    // Obligatoire si access == PRIVE
-    private String groupeNom;
-
     // Optionnel — l'uploadeur est toujours ajouté automatiquement
     private List<UUID> groupeMembresIds;
 

@@ -68,7 +68,7 @@ public class DocumentSearchService
             {
                 filterParts.add("typeDocumentId = " + request.getTypeDocumentId());
             }
-            filterParts.add("status != DELETED");
+            filterParts.add("status != DELETED AND status != CORBEILLE");
             body.put("filter", String.join(" AND ", filterParts));
 
             // ── 3. Appel WebClient vers Meilisearch ──────────────────────────

@@ -3,6 +3,7 @@ import Modal from '../Page/Modal';
 import TypeDocumentFormFields from './TypeDocumentFormFields';
 import { createTypeDocument } from '../services/document/TypedocumentService';
 import type { MetaDataDto, TypeDocumentDto } from '../services/document/TypedocumentService';
+import { useNotify } from '../notifications/NotificationProvider';
 
 interface QuickCreateTypeDocumentsModalProps {
     isOpen: boolean;
@@ -27,16 +28,15 @@ const toDraft = (td: TypeDocumentDto): DraftEntry => ({
 });
 
 function QuickCreateTypeDocumentsModal({ isOpen, targetUO, sourceTypeDocuments, onClose, onCreated }: QuickCreateTypeDocumentsModalProps) {
+    const notify = useNotify();
     const [drafts, setDrafts] = useState<DraftEntry[]>([]);
     const [activeIndex, setActiveIndex] = useState(0);
-    const [error, setError] = useState('');
     const [submitting, setSubmitting] = useState(false);
 
     useEffect(() => {
         if (isOpen) {
             setDrafts(sourceTypeDocuments.map(toDraft));
             setActiveIndex(0);
-            setError('');
         }
     }, [isOpen, sourceTypeDocuments]);
 
@@ -48,14 +48,13 @@ function QuickCreateTypeDocumentsModal({ isOpen, targetUO, sourceTypeDocuments, 
 
     const handleCreateAll = async () => {
         for (const d of drafts) {
-            if (!d.nom.trim()) { setError("Chaque type de document doit avoir un nom"); return; }
+            if (!d.nom.trim()) { notify.error("Chaque type de document doit avoir un nom"); return; }
             for (const m of d.metaData) {
-                if (!m.nom.trim()) { setError("Chaque métadonnée doit avoir un nom"); return; }
+                if (!m.nom.trim()) { notify.error("Chaque métadonnée doit avoir un nom"); return; }
             }
         }
 
         setSubmitting(true);
-        setError('');
         try {
             for (const d of drafts) {
                 const dto: TypeDocumentDto = {
@@ -69,7 +68,7 @@ function QuickCreateTypeDocumentsModal({ isOpen, targetUO, sourceTypeDocuments, 
             }
             onCreated();
         } catch (err: any) {
-            setError(err.message || "Erreur lors de la création");
+            notify.error(err.message || "Erreur lors de la création");
         } finally {
             setSubmitting(false);
         }
@@ -79,8 +78,6 @@ function QuickCreateTypeDocumentsModal({ isOpen, targetUO, sourceTypeDocuments, 
 
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={`Créer dans ${targetUO.nom}`}>
-            {error && <div className="td-alert td-alert-error">{error}</div>}
-
             {drafts.length > 1 && (
                 <div className="td-quickcreate-tabs">
                     {drafts.map((d, i) => (

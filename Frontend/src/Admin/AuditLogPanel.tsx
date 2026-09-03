@@ -1,16 +1,23 @@
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { rechercherAuditLogs, exporterAuditLogs } from '../services/admin/AuditLogService';
 import type { AuditAction, AuditCible, AuditLogDto, AuditLogFiltre, AuditLogExportFormat } from '../services/admin/AuditLogService';
 import { getAllUsers, getUsersByUO } from '../services/admin/AdminService';
-import { getMyUO } from '../services/organisation/UOService';
+import { getAllUOs, getMyUO, getSousArbre } from '../services/organisation/UOService';
 import { getCurrentUserInfo, hasRole } from '../auth/authService';
 import '../Style/Admin/AuditLogPanel.css';
+import { useNotify } from '../notifications/NotificationProvider';
+import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus';
 
 interface UtilisateurOption {
     id: string;
     nom: string;
     prenom: string;
     email: string;
+}
+
+interface UOOption {
+    id: number;
+    nom: string;
 }
 
 /** Libellés FR — tenus à jour manuellement en miroir de AuditAction (backend). */
@@ -69,23 +76,32 @@ function formatHorodatage(iso: string): string {
 }
 
 function AuditLogPanel() {
+    const notify = useNotify();
     const [logs, setLogs] = useState<AuditLogDto[]>([]);
     const [page, setPage] = useState(0);
     const [totalPages, setTotalPages] = useState(0);
     const [totalElements, setTotalElements] = useState(0);
     const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
     const [expandedId, setExpandedId] = useState<number | null>(null);
 
     const [utilisateurs, setUtilisateurs] = useState<UtilisateurOption[]>([]);
+    const [uos, setUos] = useState<UOOption[]>([]);
 
-    // ── Filtres ──────────────────────────────────────────────────────────────
+    // ── Filtres serveur ──────────────────────────────────────────────────────
     const [acteurId, setActeurId] = useState('');
     const [action, setAction] = useState<AuditAction | ''>('');
     const [cibleType, setCibleType] = useState<AuditCible | ''>('');
     const [dateDebut, setDateDebut] = useState('');
     const [dateFin, setDateFin] = useState('');
     const [texte, setTexte] = useState('');
+
+    // ── Filtre UO — CÔTÉ CLIENT UNIQUEMENT ──────────────────────────────────
+    // Aucun paramètre uoId n'existe côté serveur (voir AuditLogController) :
+    // ADMIN_UO est déjà restreint à son sous-arbre avant tout filtre, ADMIN
+    // voit tout. Ce filtre ne fait que réduire, dans le navigateur, la PAGE
+    // déjà chargée (25 entrées) — pas une nouvelle requête serveur, donc il ne
+    // retrouve pas des entrées d'autres pages tant qu'on ne les a pas chargées.
+    const [uoFiltre, setUoFiltre] = useState('');
 
     // ── Chargement de la liste d'utilisateurs pour le filtre ────────────────
     useEffect(() => {
@@ -108,6 +124,34 @@ function AuditLogPanel() {
         chargerUtilisateurs();
     }, []);
 
+    // ── Chargement de la liste d'UO pour le filtre — même périmètre que ce que
+    //    le serveur autorise déjà à voir (ADMIN : tout ; ADMIN_UO : son sous-arbre).
+    useEffect(() => {
+        const chargerUOs = async () => {
+            try {
+                if (hasRole('ADMIN')) {
+                    const data = await getAllUOs();
+                    setUos(data);
+                } else {
+                    const monUO = await getMyUO();
+                    if (monUO?.id) {
+                        const data = await getSousArbre(monUO.id);
+                        setUos(data);
+                    }
+                }
+            } catch {
+                // Non bloquant : le filtre "UO" reste juste vide.
+            }
+        };
+        chargerUOs();
+    }, []);
+
+    const uoNomParId = useMemo(() => new Map(uos.map(u => [u.id, u.nom])), [uos]);
+
+    const logsAffiches = uoFiltre
+        ? logs.filter(l => String(l.uoId) === uoFiltre)
+        : logs;
+
     /** Filtres actifs, communs à la recherche paginée et à l'export (mêmes critères). */
     const buildFiltre = useCallback((): Omit<AuditLogFiltre, 'page' | 'size'> => ({
         acteurId: acteurId || undefined,
@@ -121,7 +165,6 @@ function AuditLogPanel() {
 
     const charger = useCallback(async (pageDemandee: number) => {
         setLoading(true);
-        setError('');
         try {
             const result = await rechercherAuditLogs({ ...buildFiltre(), page: pageDemandee, size: 25 });
             setLogs(result.content);
@@ -129,14 +172,17 @@ function AuditLogPanel() {
             setTotalPages(result.totalPages);
             setTotalElements(result.totalElements);
         } catch (err: any) {
-            setError(err.message ?? 'Erreur lors du chargement du journal');
+            notify.error(err.message ?? 'Erreur lors du chargement du journal');
             setLogs([]);
         } finally {
             setLoading(false);
         }
-    }, [buildFiltre]);
+    }, [buildFiltre, notify]);
 
     useEffect(() => { charger(0); }, [charger]);
+    // Nouvelles entrées journalisées depuis une autre interface pendant qu'on
+    // reste sur cet écran → rechargées (page courante) au retour de focus.
+    useRefetchOnFocus(useCallback(() => charger(page), [charger, page]));
 
     const handleFiltrer = (e: React.FormEvent) => {
         e.preventDefault();
@@ -145,18 +191,17 @@ function AuditLogPanel() {
 
     const handleReset = () => {
         setActeurId(''); setAction(''); setCibleType('');
-        setDateDebut(''); setDateFin(''); setTexte('');
+        setDateDebut(''); setDateFin(''); setTexte(''); setUoFiltre('');
     };
 
     const [exportLoading, setExportLoading] = useState<AuditLogExportFormat | null>(null);
 
     const handleExporter = async (format: AuditLogExportFormat) => {
         setExportLoading(format);
-        setError('');
         try {
             await exporterAuditLogs(buildFiltre(), format);
         } catch (err: any) {
-            setError(err.message ?? "Erreur lors de l'export du journal");
+            notify.error(err.message ?? "Erreur lors de l'export du journal");
         } finally {
             setExportLoading(null);
         }
@@ -169,7 +214,9 @@ function AuditLogPanel() {
             <div className="audit-log-header">
                 <h3>Journal d'audit</h3>
                 <span className="audit-log-count">
-                    {totalElements} entrée{totalElements > 1 ? 's' : ''}
+                    {uoFiltre
+                        ? <>{logsAffiches.length} / {logs.length} entrée{logs.length > 1 ? 's' : ''} de cette page</>
+                        : <>{totalElements} entrée{totalElements > 1 ? 's' : ''}</>}
                     {!hasRole('ADMIN') && userInfo?.role === 'ADMIN_UO' && ' — restreint à votre UO'}
                 </span>
             </div>
@@ -213,6 +260,21 @@ function AuditLogPanel() {
                         <option value="">Cible(s)</option>
                         {(Object.keys(CIBLE_LABELS) as AuditCible[]).map(c => (
                             <option key={c} value={c}>{CIBLE_LABELS[c]}</option>
+                        ))}
+                    </select>
+                </div>
+
+                <div className="form-field">
+                    <select
+                        className="form-field-input up-select"
+                        value={uoFiltre}
+                        onChange={e => setUoFiltre(e.target.value)}
+                        aria-label="Filtrer par UO (dans la page affichée)"
+                        title="Filtre local — ne porte que sur la page déjà chargée"
+                    >
+                        <option value="">UO (page affichée)</option>
+                        {uos.map(u => (
+                            <option key={u.id} value={String(u.id)}>{u.nom}</option>
                         ))}
                     </select>
                 </div>
@@ -299,7 +361,6 @@ function AuditLogPanel() {
                 </button>
             </div>
 
-            {error && <div className="up-alert up-alert-error">{error}</div>}
 
             <div className="td-table-container">
                 <table className="td-table audit-log-table">
@@ -309,18 +370,21 @@ function AuditLogPanel() {
                             <th>Acteur</th>
                             <th>Action</th>
                             <th>Cible</th>
+                            <th>UO</th>
                             <th>Description</th>
                             <th>Résultat</th>
                         </tr>
                     </thead>
                     <tbody>
                         {loading ? (
-                            <tr><td colSpan={6} className="td-loading">
+                            <tr><td colSpan={7} className="td-loading">
                                 <i className="fa-solid fa-spinner fa-spin" /> Chargement...
                             </td></tr>
-                        ) : logs.length === 0 ? (
-                            <tr><td colSpan={6} className="td-empty">Aucune entrée trouvée.</td></tr>
-                        ) : logs.map(log => (
+                        ) : logsAffiches.length === 0 ? (
+                            <tr><td colSpan={7} className="td-empty">
+                                {uoFiltre ? 'Aucune entrée pour cette UO sur la page affichée.' : 'Aucune entrée trouvée.'}
+                            </td></tr>
+                        ) : logsAffiches.map(log => (
                             <Fragment key={log.id}>
                                 <tr
                                     className="audit-log-row"
@@ -333,6 +397,7 @@ function AuditLogPanel() {
                                     </td>
                                     <td>{ACTION_LABELS[log.action] ?? log.action}</td>
                                     <td>{log.cibleType ? CIBLE_LABELS[log.cibleType] : '—'}</td>
+                                    <td>{log.uoId != null ? (uoNomParId.get(log.uoId) ?? `#${log.uoId}`) : '—'}</td>
                                     <td className="audit-log-description">{log.description}</td>
                                     <td>
                                         <span className={`status-tag ${log.succes ? 'active' : 'inactive'}`}>
@@ -342,11 +407,14 @@ function AuditLogPanel() {
                                 </tr>
                                 {expandedId === log.id && (
                                     <tr className="audit-log-detail-row">
-                                        <td colSpan={6}>
+                                        <td colSpan={7}>
                                             <div className="audit-log-detail-grid">
                                                 <span><strong>IP :</strong> {log.adresseIp ?? '—'}</span>
                                                 <span><strong>Cible ID :</strong> {log.cibleId ?? '—'}</span>
-                                                <span><strong>UO :</strong> {log.uoId ?? '—'}</span>
+                                                <span>
+                                                    <strong>UO :</strong>{' '}
+                                                    {log.uoId != null ? (uoNomParId.get(log.uoId) ?? `#${log.uoId}`) : '—'}
+                                                </span>
                                                 {log.details && (
                                                     <pre className="audit-log-details-json">{
                                                         (() => {

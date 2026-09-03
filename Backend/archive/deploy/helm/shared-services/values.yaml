@@ -1,0 +1,19 @@
+namespace: shared-services
+
+gotenberg:
+  image: gotenberg/gotenberg:8
+  resources:
+    requests: { cpu: 200m, memory: 256Mi }
+    limits:   { cpu: "1",  memory: 512Mi }
+
+ollama:
+  # ⚠ Vérifiez avant de compter dessus : Ollama doit rester sans état entre
+  # deux requêtes (pas de contexte de conversation mis en cache côté serveur
+  # entre sociétés différentes) pour justifier d'être ici plutôt que dans
+  # chaque namespace société. Si un doute subsiste, dupliquez-le par société
+  # à la place — le coût est faible comparé au risque de fuite de contenu.
+  image: ollama/ollama:latest
+  model: qwen2.5-coder:7b
+  resources:
+    requests: { cpu: 500m, memory: 2Gi }
+    limits:   { cpu: "2",  memory: 4Gi }

@@ -2,30 +2,23 @@ import { useState, useEffect } from 'react';
 import Sidebar from '../Page/Sidebar';
 import Profile from '../Page/Profil';
 import Modal from '../Page/Modal';
-import UploadSimple from '../document/UploadSimple';
-import UploadBulkSameType from '../document/UploadeBlukSameType';
-import DownloadTemplate from '../document/DownloadTemplate';
+import ImportDocuments from '../document/ImportDocuments';
 import MesDocumentsEditor from './MesDocumentsEditor';
 import DocumentsAccessibles from '../document/DocumentsAccessible';
+import Corbeille from '../document/Corbeille';
 import ProjetsPanel from '../organisation/ProjetsPanel';
 import { getCurrentUserInfo } from '../auth/authService';
 import { getMyUO } from '../services/organisation/UOService';
 import '../Style/Editor/Editor.css';
+import { useNotify } from '../notifications/NotificationProvider';
 
-// L'import en masse multi-type (UploadeBlukMultiType.tsx) appelait
-// POST /api/editor/docs/bulk/multi-type, qui n'a jamais existé côté backend
-// (seul /docs/bulk/same-type/* existe) — bouton retiré tant que cette
-// fonctionnalité n'a pas de véritable implémentation serveur. Le composant
-// reste dans le repo (document/UploadeBlukMultiType.tsx) si besoin de le
-// reprendre plus tard.
-type EditorView  = 'documents' | 'accessibles' | 'projets' | 'profile';
-type UploadMode  = 'simple' | 'bulk-same';
+type EditorView  = 'documents' | 'accessibles' | 'corbeille' | 'projets' | 'profile';
 
 function EditorDashboard() {
     const userInfo = getCurrentUserInfo();
+    const notify = useNotify();
 
     const [currentView, setCurrentView] = useState<EditorView>('documents');
-    const [uploadMode,  setUploadMode]  = useState<UploadMode>('simple');
 
     // Nom + id de l'UO de rattachement — affichés dans le titre du Sidebar,
     // et l'id sert de scope pour le panneau Projets ci-dessous.
@@ -33,8 +26,7 @@ function EditorDashboard() {
     const [uoId,  setUoId]  = useState<number | null>(null);
 
     // Modales sidebar
-    const [isUploadModalOpen,   setIsUploadModalOpen]   = useState(false);
-    const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+    const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
 
     // Refresh de la grille après upload
     const [refreshDocs, setRefreshDocs] = useState(0);
@@ -42,10 +34,6 @@ function EditorDashboard() {
     // Type pré-sélectionné transmis depuis la grille (bouton "+")
     // null = pas de pré-sélection, undefined = consommé
     const [preselectedTypeId, setPreselectedTypeId] = useState<number | null>(null);
-
-    // Alertes sidebar
-    const [success, setSuccess] = useState('');
-    const [error,   setError]   = useState('');
 
     useEffect(() => {
         getMyUO().then(uo => { setUoNom(uo.nom); setUoId(uo.id); }).catch(() => {});
@@ -55,20 +43,8 @@ function EditorDashboard() {
 
     const handleUploadSuccess = () => {
         setIsUploadModalOpen(false);
-        setSuccess("Document(s) uploadé(s) avec succès");
+        notify.success("Document(s) uploadé(s) avec succès");
         setRefreshDocs(r => r + 1);
-        setTimeout(() => setSuccess(''), 3000);
-    };
-
-    /** Ouvre le modal d'upload depuis la sidebar (sans pré-sélection de type) */
-    const openUpload = (mode: UploadMode) => {
-        setUploadMode(mode);
-        setIsUploadModalOpen(true);
-    };
-
-    const UPLOAD_TITLES: Record<UploadMode, string> = {
-        'simple':     'Uploader un document',
-        'bulk-same':  'Import en masse — même type',
     };
 
     const sidebarTitle = `${userInfo?.role || "ÉDITEUR"}${uoNom ? ` — ${uoNom}` : ''}`;
@@ -90,16 +66,11 @@ function EditorDashboard() {
                                 </button>
                             </div>
 
-                            {/* Upload */}
-                            <div className="sidebar-section-label">Upload</div>
+                            {/* Import */}
+                            <div className="sidebar-section-label">Import</div>
                             <div className="main-header">
-                                <button className="sidebar-btn" onClick={() => openUpload('simple')}>
-                                    <i className="fa-solid fa-file-arrow-up" /> Uploader un document
-                                </button>
-                            </div>
-                            <div className="main-header">
-                                <button className="sidebar-btn" onClick={() => openUpload('bulk-same')}>
-                                    <i className="fa-solid fa-layer-group" /> Import masse — même type
+                                <button className="sidebar-btn" onClick={() => setIsUploadModalOpen(true)}>
+                                    <i className="fa-solid fa-file-arrow-up" /> Archiver
                                 </button>
                             </div>
 
@@ -118,15 +89,7 @@ function EditorDashboard() {
                                     className={`sidebar-btn ${currentView === 'accessibles' ? 'active-tab' : ''}`}
                                     onClick={() => setCurrentView('accessibles')}
                                 >
-                                    <i className="fa-solid fa-folder-open" /> Documents accessibles
-                                </button>
-                            </div>
-                            <div className="main-header">
-                                <button
-                                    className="sidebar-btn"
-                                    onClick={() => setIsTemplateModalOpen(true)}
-                                >
-                                    <i className="fa-solid fa-file-export" /> Télécharger template
+                                    <i className="fa-solid fa-folder-open" /> Documents
                                 </button>
                             </div>
                             <div className="main-header">
@@ -137,10 +100,15 @@ function EditorDashboard() {
                                     <i className="fa-solid fa-folder-tree" /> Projets
                                 </button>
                             </div>
+                            <div className="main-header">
+                                <button
+                                    className={`sidebar-btn ${currentView === 'corbeille' ? 'active-tab' : ''}`}
+                                    onClick={() => setCurrentView('corbeille')}
+                                >
+                                    <i className="fa-solid fa-trash-can" /> Corbeille
+                                </button>
+                            </div>
 
-                            {/* Alertes */}
-                            {error   && <div className="alert alert-error">{error}</div>}
-                            {success && <div className="alert alert-success">{success}</div>}
                         </div>
                     </nav>
                 </Sidebar>
@@ -163,30 +131,26 @@ function EditorDashboard() {
                     {currentView === 'projets' && (
                         <ProjetsPanel uoId={uoId} />
                     )}
+                    {currentView === 'corbeille' && (
+                        <Corbeille />
+                    )}
+
+                    {/* Modal import sidebar — DANS .main-content, pas à côté :
+                        c'est cette imbrication qui fait que le modal se centre
+                        par rapport à la zone de contenu (voir le transform sur
+                        .main-content dans AdminDashboard.css), pas sur toute la
+                        fenêtre sidebar comprise. Un modal frère de .main-content
+                        au lieu d'un descendant perdait ce centrage — c'était le
+                        bug ici. */}
+                    <Modal
+                        isOpen={isUploadModalOpen}
+                        onClose={() => setIsUploadModalOpen(false)}
+                        title="Importer des documents"
+                        size="large"
+                    >
+                        <ImportDocuments onsuccess={handleUploadSuccess} />
+                    </Modal>
                 </div>
-
-                {/* Modal upload sidebar */}
-                <Modal
-                    isOpen={isUploadModalOpen}
-                    onClose={() => setIsUploadModalOpen(false)}
-                    title={UPLOAD_TITLES[uploadMode]}
-                >
-                    {uploadMode === 'simple' && (
-                        <UploadSimple onsuccess={handleUploadSuccess} />
-                    )}
-                    {uploadMode === 'bulk-same' && (
-                        <UploadBulkSameType onsuccess={handleUploadSuccess} />
-                    )}
-                </Modal>
-
-                {/* Modal template */}
-                <Modal
-                    isOpen={isTemplateModalOpen}
-                    onClose={() => setIsTemplateModalOpen(false)}
-                    title="Télécharger un template d'import"
-                >
-                    <DownloadTemplate />
-                </Modal>
             </div>
         </div>
     );

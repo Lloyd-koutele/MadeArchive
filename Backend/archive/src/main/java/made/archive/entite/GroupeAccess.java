@@ -31,8 +31,10 @@ public class GroupeAccess
    @GeneratedValue
    private Long id;
 
-   @Column(nullable = false, length = 100)
-   private String nom;
+   // Pas de nom — un GroupeAccess n'est identifié que par son id, jamais
+   // affiché ni utilisé nulle part (le document/projet auquel il est
+   // rattaché a déjà son propre nom ; voir GestionGroupe.tsx côté client,
+   // qui ne montre jamais que la liste des MEMBRES).
 
    // @JsonIgnore : évite le cycle GroupeAccess → documents → Document → groupe → ...
    @OneToMany(mappedBy = "groupe", fetch = FetchType.LAZY)

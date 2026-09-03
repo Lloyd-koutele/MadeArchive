@@ -4,28 +4,29 @@
 
 /* Bouton toggle filtres */
 .filtres-toggle-btn {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: 0.4rem;
-    background: none;
-    border: 1px solid var(--border, #e0e0e0);
-    border-radius: 8px;
-    padding: 0.4rem 0.85rem;
-    font-size: 0.82rem;
+    background: rgba(255, 255, 255, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    border-radius: 999px;
+    padding: 0.45rem 0.95rem;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.8rem;
     font-weight: 600;
-    color: var(--text-primary, #222);
+    color: var(--dark-soft);
     cursor: pointer;
-    transition: background 0.15s;
-    position: relative;
+    transition: background var(--transition), border-color var(--transition);
 }
 
 .filtres-toggle-btn:hover {
-    background: var(--hover-bg, rgba(0,0,0,0.04));
+    background: var(--white-choc);
+    border-color: var(--accent);
 }
 
 .filtres-badge {
-    background: var(--accent, #4A90D9);
-    color: #fff;
+    background: var(--accent);
+    color: var(--white-choc);
     font-size: 0.65rem;
     font-weight: 700;
     border-radius: 999px;
@@ -36,66 +37,110 @@
 
 .filtres-chevron {
     font-size: 0.65rem;
-    color: var(--text-muted, #888);
+    color: var(--text-light);
     margin-left: 0.1rem;
 }
 
-/* Panneau filtres */
+/* ─── Barre de filtres : une seule ligne, fond verre glacé ─── */
 .filtres-panel {
-    background: var(--surface-alt, #f8f9fa);
-    border: 1px solid var(--border, #e0e0e0);
-    border-radius: 10px;
-    padding: 1.1rem 1.25rem;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.5rem 0.65rem;
     margin-bottom: 1rem;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.55), rgba(253, 248, 243, 0.32));
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    border-radius: 999px;
+    box-shadow:
+        0 8px 28px rgba(44, 26, 14, 0.10),
+        inset 0 1px 0 rgba(255, 255, 255, 0.8),
+        inset 0 -1px 0 rgba(232, 217, 197, 0.35);
 }
 
 .filtres-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 0.85rem;
-    margin-bottom: 1rem;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.45rem;
+    flex: 1 1 0;
+    min-width: 0;
+    margin: 0;
 }
 
 .filtre-field {
+    flex: 1 1 0;
+    min-width: 0;
     display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
 }
 
-.filtre-label {
-    font-size: 0.73rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-muted, #888);
-}
+/* Le titre est le champ le plus utilisé : il prend plus de place */
+.filtre-field-titre { flex: 1.4 1 0; }
 
-/* Actions du panneau */
-.filtres-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.6rem;
-    padding-top: 0.75rem;
-    border-top: 1px solid var(--border, #e8e8e8);
-}
+/* Les champs date ont besoin d'une largeur fixe (libellé + calendrier natif) */
+.filtre-field-date { flex: 0 0 8.6rem; }
 
-.filtres-reset-btn {
-    background: none;
-    border: 1px solid var(--border, #e0e0e0);
-    border-radius: 8px;
-    padding: 0.45rem 1rem;
-    font-size: 0.82rem;
-    font-weight: 600;
-    color: var(--text-muted, #666);
+.filtres-panel .filter-input {
+    width: 100%;
+    min-width: 0;
+    padding: 0.5rem 0.85rem;
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.55);
+    color: var(--dark-choc);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.8rem;
+    outline: none;
     cursor: pointer;
+    text-overflow: ellipsis;
+    transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
+}
+
+.filtres-panel input.filter-input { cursor: text; }
+
+.filtres-panel .filter-input::placeholder {
+    color: var(--dark-choc);
+    opacity: 0.7;
+}
+
+.filtres-panel .filter-input:focus {
+    background: var(--white-choc);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(139, 94, 60, 0.14);
+}
+
+/* Actions : collées à la suite des champs, sans filet de séparation */
+.filtres-actions {
     display: flex;
     align-items: center;
     gap: 0.35rem;
-    transition: background 0.15s;
+    flex: 0 0 auto;
+    padding: 0;
+    border: none;
+}
+
+.filtres-reset-btn {
+    flex: 0 0 auto;
+    width: 2.1rem;
+    height: 2.1rem;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    background: rgba(255, 255, 255, 0.55);
+    color: var(--dark-soft);
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: background var(--transition), border-color var(--transition);
 }
 
 .filtres-reset-btn:hover:not(:disabled) {
-    background: var(--hover-bg, rgba(0,0,0,0.04));
+    background: var(--white-choc);
+    border-color: var(--accent);
 }
 
 .filtres-reset-btn:disabled {
@@ -103,9 +148,27 @@
     cursor: default;
 }
 
-.filtres-apply-btn {
-    padding: 0.45rem 1.25rem !important;
-    font-size: 0.82rem !important;
+/* Recherche live — plus de bouton "Appliquer", juste un indicateur discret
+   pendant qu'une requête est en vol (debounce, voir DocumentsAccessible.tsx). */
+.filtres-loading-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.78rem;
+    color: var(--text-light);
+    white-space: nowrap;
+}
+
+/* Sous ~1250px la ligne unique devient illisible : on laisse retomber */
+@media (max-width: 1250px) {
+    .filtres-panel {
+        flex-wrap: wrap;
+        border-radius: var(--radius);
+        padding: 0.75rem 0.9rem;
+    }
+    .filtres-grid { flex: 1 1 100%; flex-wrap: wrap; }
+    .filtre-field { flex: 1 1 170px; }
+    .filtres-actions { flex: 1 1 100%; justify-content: flex-end; }
 }
 
 /* ── Barre filtres actifs ─────────────────────────────────────────────── */
@@ -117,9 +180,9 @@
     gap: 0.4rem;
     margin-bottom: 0.75rem;
     padding: 0.5rem 0.75rem;
-    background: #EFF6FF;
-    border: 1px solid #BFDBFE;
-    border-radius: 8px;
+    background: rgba(139, 94, 60, 0.07);
+    border: 1px solid rgba(139, 94, 60, 0.18);
+    border-radius: 999px;
     font-size: 0.8rem;
 }
 
@@ -127,13 +190,13 @@
     display: flex;
     align-items: center;
     gap: 0.3rem;
-    color: #1D4ED8;
+    color: var(--accent);
     font-weight: 600;
 }
 
 .filtre-tag {
-    background: #DBEAFE;
-    color: #1E40AF;
+    background: rgba(139, 94, 60, 0.14);
+    color: var(--dark-soft);
     border-radius: 999px;
     padding: 2px 10px;
     font-size: 0.75rem;
@@ -144,7 +207,7 @@
     margin-left: auto;
     background: none;
     border: none;
-    color: #1D4ED8;
+    color: var(--accent);
     font-size: 0.78rem;
     font-weight: 600;
     cursor: pointer;

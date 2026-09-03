@@ -1,0 +1,10 @@
+apiVersion: v2
+name: madearchive
+description: >
+  Pile complète MadeArchive (app + Postgres + MinIO + Meilisearch + Redis)
+  pour UNE société — un `helm install` = un namespace isolé. Le namespace
+  partagé "shared-services" (Gotenberg, Ollama) se déploie séparément, une
+  seule fois pour tout le cluster (voir deploy/helm/shared-services/).
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

@@ -132,10 +132,13 @@
     gap: 0.75rem;
 }
 
+/* Radiogroup Public/Privé — centré en tant que paire (pas étiré sur deux
+   colonnes pleine largeur, qui ancrait chaque option à gauche de sa moitié
+   plutôt que de les regrouper visuellement au centre). */
 .up-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.75rem;
+    display: flex;
+    justify-content: center;
+    gap: 2.5rem;
 }
 
 .up-select {
@@ -192,7 +195,7 @@
 }
 
 /* ── Bulk file list ── */
-/* ── Choix de la source (local vs FTP) ── */
+/* ── Choix de la source (local vs lien) ── */
 .bulk-source-tabs {
     display: flex;
     gap: 0.5rem;
@@ -243,8 +246,8 @@
 
 .bulk-folder-btn:hover { background: rgba(139, 94, 60, 0.08); }
 
-/* ── Formulaire FTP ── */
-.ftp-form {
+/* ── Formulaire lien web ── */
+.lien-form {
     display: flex;
     flex-direction: column;
     gap: 0.85rem;
@@ -254,16 +257,7 @@
     padding: 1rem;
 }
 
-.ftp-secure-toggle {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.85rem;
-    color: var(--dark-choc);
-    cursor: pointer;
-}
-
-.ftp-hint {
+.lien-hint {
     display: flex;
     align-items: flex-start;
     gap: 0.4rem;
@@ -304,6 +298,9 @@
     background: var(--white-choc);
     border: 1px solid var(--border);
 }
+
+/* Variante <label> avec case à cocher (aperçu lien web à confirmer) */
+label.bulk-file-item { cursor: pointer; }
 
 .bulk-file-icon { color: var(--accent); font-size: 0.85rem; }
 
@@ -692,6 +689,48 @@
     flex-wrap: wrap;
     gap: 0.75rem;
     margin-bottom: 1.1rem;
+}
+
+.docs-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+/* Bascule vue liste / vue grille */
+.docs-view-toggle {
+    display: flex;
+    border: 1px solid var(--border-color, #e0e0e0);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.view-toggle-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted, #888);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+.view-toggle-btn + .view-toggle-btn {
+    border-left: 1px solid var(--border-color, #e0e0e0);
+}
+
+.view-toggle-btn:hover {
+    background: var(--hover-bg, rgba(0,0,0,0.04));
+    color: var(--text-primary, #222);
+}
+
+.view-toggle-btn.active {
+    background: var(--accent, #4A90D9);
+    color: #fff;
 }
 
 .mes-docs-title {
@@ -1199,8 +1238,60 @@
     text-align: center;
 }
 
+/* ── Écran de validation : visionneuse + champs côte à côte ─────────────────── */
+.import-validate-split {
+    display: flex;
+    gap: 1rem;
+    align-items: stretch;
+    min-height: 420px;
+}
+
+.import-preview-pane {
+    flex: 1 1 50%;
+    min-width: 0;
+    background: var(--cream);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    display: flex;
+}
+
+.import-preview-iframe {
+    width: 100%;
+    height: 100%;
+    min-height: 420px;
+    border: none;
+}
+
+.import-preview-loading {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    color: var(--text-light);
+    font-size: 0.85rem;
+}
+
+.import-preview-loading i { font-size: 1.5rem; }
+
+/* En dessous de ~900px, la visionveuse passe au-dessus des champs plutôt que
+   côte à côte — deux colonnes étroites nuiraient à la lecture des deux. */
+@media (max-width: 900px) {
+    .import-validate-split {
+        flex-direction: column;
+        min-height: 0;
+    }
+    .import-preview-pane {
+        min-height: 320px;
+    }
+}
+
 /* ── Panneau métadonnées d'un fichier ───────────────────────────────────────── */
 .bulk-meta-panel {
+    flex: 1 1 50%;
+    min-width: 0;
     background: var(--white-choc);
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -1208,6 +1299,7 @@
     display: flex;
     flex-direction: column;
     gap: 0.85rem;
+    overflow-y: auto;
 }
 
 .bulk-meta-header {
@@ -1368,47 +1460,50 @@
 
 .folders-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-    gap: 1.5rem;
+    /* min(100%, 130px) plutôt que 130px fixe : sur un écran plus étroit que
+       130px (petit téléphone), la colonne retombe à 100% au lieu de forcer
+       un débordement horizontal de la grille. */
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 130px), 1fr));
+    gap: 1.75rem 1.25rem;
     padding: 1.25rem 0;
 }
 
-/* Carte dossier */
+/* Carte dossier — pas de panneau propre : reprend le modèle de référence
+   (.item-card), où c'est UNIQUEMENT la pochette de verre à l'intérieur de
+   l'icône (.glass-pocket) qui porte l'effet givré, pas la carte entière. */
 .folder-card {
     position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.5rem;
-    padding: 1rem 0.75rem 0.85rem;
-    border-radius: 12px;
+    gap: 0.6rem;
     cursor: pointer;
-    transition: background 0.15s, transform 0.15s;
+    transition: transform 0.2s ease;
     -webkit-user-select: none;
     user-select: none;
 }
 
 .folder-card:hover {
-    background: var(--hover-bg, rgba(0,0,0,0.04));
-    transform: translateY(-2px);
+    transform: translateY(-4px);
 }
 
 .folder-card:focus-visible {
     outline: 2px solid var(--accent);
-    outline-offset: 2px;
+    outline-offset: 4px;
+    border-radius: 10px;
 }
 
-/* Bouton "+" superposé */
+/* Bouton "+" superposé — coin haut-gauche, au-dessus de l'onglet du dossier. */
 .folder-add-btn {
     position: absolute;
-    top: 8px;
-    right: 8px;
+    top: 4px;
+    left: 4px;
     width: 22px;
     height: 22px;
     border-radius: 50%;
     border: none;
-    background: var(--accent, #4A90D9);
-    color: #fff;
+    background: var(--accent);
+    color: var(--white-choc);
     font-size: 0.7rem;
     display: flex;
     align-items: center;
@@ -1416,7 +1511,7 @@
     cursor: pointer;
     opacity: 0;
     transition: opacity 0.15s, transform 0.15s;
-    z-index: 2;
+    z-index: 3;
 }
 
 .folder-card:hover .folder-add-btn {
@@ -1427,45 +1522,156 @@
     transform: scale(1.15);
 }
 
-/* SVG dossier */
+/* ── Icône dossier — reproduction du modèle de référence, en tailles
+   DYNAMIQUES ──
+   Dossier plein (onglet + pochette arrière) → page nette qui dépasse par-
+   dessus → pochette en verre dépoli (backdrop-filter) posée par-dessus le
+   bas de l'ensemble, DERNIÈRE dans l'ordre du DOM pour flouter optiquement
+   ce qu'il y a en dessous (le dossier, le bas de la page).
+
+   Le conteneur suit la largeur de la colonne de grille (donc de l'écran —
+   téléphone/tablette/PC) via width:100%, plafonné à 130px pour ne pas
+   grossir sans limite sur un grand écran ; aspect-ratio garde les
+   proportions 180:130 du modèle. Chaque élément interne est positionné en
+   POURCENTAGE de ce conteneur (et non plus en px fixes) pour suivre le
+   redimensionnement sans jamais se désaligner. */
 .folder-icon-wrap {
     position: relative;
-    width: 80px;
-    height: 65px;
-}
-
-.folder-svg {
     width: 100%;
-    height: 100%;
-    filter: drop-shadow(0 3px 6px rgba(0,0,0,0.18));
+    max-width: 130px;
+    aspect-ratio: 180 / 130;
+    margin: 0 auto;
 }
 
-/* Compteur de documents sur le dossier */
+.folder-tab {
+    position: absolute;
+    top: 9.2%;
+    left: 4.4%;
+    width: 33.3%;
+    height: 15.4%;
+    background: var(--accent);
+    border-radius: 6px 6px 0 0;
+}
+
+.folder-back {
+    position: absolute;
+    bottom: 0;
+    left: 4.4%;
+    width: 91.1%;
+    height: 81.5%;
+    background: var(--accent);
+    border-radius: 10px;
+    box-shadow: 0 6px 16px rgba(44, 26, 14, 0.14);
+}
+
+.document-sheet {
+    position: absolute;
+    top: -6.2%;
+    left: 20%;
+    width: 60%;
+    height: 88.5%;
+    background: var(--white-choc);
+    border-radius: 5px 12px 5px 5px;
+    box-shadow: 0 3px 10px rgba(44, 26, 14, 0.10);
+    padding: 9% 8%;
+    display: flex;
+    flex-direction: column;
+    gap: 5%;
+    transition: transform 0.2s ease;
+}
+
+.folder-card:hover .document-sheet {
+    transform: translateY(-6%);
+}
+
+.doc-line {
+    height: 2px;
+    background: var(--border);
+    border-radius: 2px;
+    width: 100%;
+}
+
+.doc-line.short { width: 55%; }
+
+/* La pochette de verre — seul élément réellement flouté : elle floute
+   optiquement le dossier et le bas de la page derrière elle via
+   backdrop-filter, sans qu'aucune forme ne soit elle-même floutée. */
+.glass-pocket {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 76.9%;
+    background: rgba(255, 255, 255, 0.35);
+    backdrop-filter: blur(14px) saturate(160%);
+    -webkit-backdrop-filter: blur(14px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    border-radius: 14px;
+    box-shadow: 0 8px 24px rgba(44, 26, 14, 0.08), inset 0 1px 2px rgba(255, 255, 255, 0.8);
+    /* Centre l'icône-filigrane des dossiers "projet" (voir
+       .folder-type-watermark) — sans effet quand la pochette est vide
+       (Mes documents, cartes type de document). */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Icône en filigrane distinguant un dossier "PROJET" d'un dossier "TYPE DE
+   DOCUMENT" (à l'intérieur d'un projet) — les deux niveaux partagent
+   maintenant le même habillage carte-dossier, ce repère évite de les
+   confondre. Posée sur la pochette de verre (pas derrière) : elle reste
+   nette, seul le fond qu'elle recouvre est flouté. */
+.folder-type-watermark {
+    font-size: 1.7rem;
+    color: rgba(255, 255, 255, 0.6);
+    pointer-events: none;
+}
+
+/* Compteur de documents — pastille en coin haut-droit de l'icône. */
 .folder-count {
     position: absolute;
-    bottom: 10px;
-    right: 6px;
-    background: rgba(255,255,255,0.92);
-    color: #333;
+    top: 4px;
+    right: 4px;
+    z-index: 3;
+    min-width: 20px;
+    height: 20px;
+    background: var(--white-choc);
+    color: var(--dark-choc);
     font-size: 0.65rem;
     font-weight: 700;
-    padding: 1px 5px;
-    border-radius: 6px;
-    line-height: 1.4;
+    padding: 0 5px;
+    border-radius: 10px;
+    line-height: 20px;
+    text-align: center;
+    box-shadow: 0 1px 4px rgba(44, 26, 14, 0.22);
     pointer-events: none;
 }
 
 /* Nom du type sous le dossier */
 .folder-name {
-    font-size: 0.78rem;
-    font-weight: 600;
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 0.92rem;
+    font-weight: 700;
+    letter-spacing: 0.2px;
     text-align: center;
-    color: var(--text-primary, #222);
-    max-width: 120px;
+    color: var(--dark-choc);
+    max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     line-height: 1.3;
+}
+
+/* Légende secondaire sous le nom — créateur/date (cartes projet). */
+.folder-meta {
+    font-size: 0.68rem;
+    color: var(--text-light, #9E8878);
+    text-align: center;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-top: -0.3rem;
 }
 
 /* Hint "X autres types" */
@@ -1495,7 +1701,238 @@
 
 .folder-search-input {
     padding-left: 2rem !important;
-    width: 200px;
+    padding-right: 1.75rem;
+    width: 220px;
+}
+
+.folder-search-clear {
+    position: absolute;
+    right: 6px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   VUE GRILLE — documents accessibles (aperçu PDF "entrouvert")
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.documents-grid {
+    display: grid;
+    /* min(100%, 170px) plutôt qu'un simple 170px fixe : sur un écran plus
+       étroit que 170px (petit téléphone), auto-fill/minmax seul peut encore
+       forcer une colonne trop large et faire déborder la grille — min()
+       laisse la colonne retomber à 100% de la largeur disponible. */
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 170px), 1fr));
+    gap: 1.25rem;
+    padding: 0.25rem 0 1rem;
+}
+
+/* Carte "fiche" — coin corné (comme une feuille qu'on aurait pliée), reprend
+   le modèle de référence (.file-container) plutôt qu'une carte rectangulaire
+   générique. */
+.doc-grid-card {
+    display: flex;
+    flex-direction: column;
+    border-radius: 8px 18px 8px 8px;
+    overflow: hidden;
+    background: var(--white-choc);
+    border: 1px solid var(--border);
+    box-shadow: 0 4px 14px rgba(44, 26, 14, 0.08);
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.doc-grid-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 24px rgba(44, 26, 14, 0.14);
+}
+
+/* Aperçu — un vrai fragment RASTERISÉ de la première page du PDF (voir
+   PdfThumbnail.ts), recadré pour ne montrer QUE l'en-tête du document :
+   image alignée en haut (object-position: top) dans un cadre plus bas que
+   la page entière, jamais le lecteur PDF natif du navigateur (barre
+   d'outils, pagination...) qu'un <embed>/<iframe> imposerait.
+   Hauteur en aspect-ratio (pas un px fixe) : elle suit la largeur RÉELLE
+   de la carte, qui elle-même dépend de la colonne de grille — donc de la
+   taille d'écran (téléphone/tablette/PC) — plutôt que d'imposer toujours
+   la même hauteur, ce qui déformait le ratio sur les colonnes étroites et
+   allongeait la carte inutilement sur les larges. Ratio large (2/1) : on
+   ne montre volontairement qu'un bandeau d'en-tête, pas toute la page. */
+.doc-grid-preview {
+    position: relative;
+    aspect-ratio: 2 / 1;
+    background: var(--cream);
+    cursor: pointer;
+    overflow: hidden;
+}
+
+.doc-grid-preview-frame {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: top;
+}
+
+.doc-grid-preview-loading {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-light);
+    font-size: 1.2rem;
+}
+
+/* Aperçu indisponible (échec de génération) — icône statique, PAS le spinner,
+   pour ne jamais laisser croire qu'un chargement est encore en cours. */
+.doc-grid-preview-echec {
+    font-size: 1.8rem;
+    color: var(--text-light);
+    opacity: 0.35;
+}
+
+/* Pastille "PDF" en verre dépoli, coin de l'aperçu — cf. .file-glass-tag du
+   modèle de référence. */
+.doc-grid-tag {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    background: rgba(255, 255, 255, 0.55);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    padding: 2px 7px;
+    border-radius: 6px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    color: var(--dark-soft);
+    pointer-events: none;
+}
+
+.doc-grid-preview-hint {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    background: rgba(44, 26, 14, 0.55);
+    color: var(--white-choc);
+    font-weight: 600;
+    font-size: 0.85rem;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.doc-grid-preview:hover .doc-grid-preview-hint {
+    opacity: 1;
+}
+
+/* Corps resserré (moins de gap/padding qu'avant) — la carte entière doit
+   rester compacte, le détail complet reste à un clic (icône "i"). */
+.doc-grid-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.55rem 0.7rem 0.6rem;
+}
+
+.doc-grid-title {
+    font-family: 'Cormorant Garamond', serif;
+    font-weight: 700;
+    font-size: 0.92rem;
+    color: var(--dark-choc);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.doc-grid-type {
+    font-size: 0.7rem;
+    color: var(--text-light);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Sur une ligne unique, jamais sur deux — les boutons ".action-button"
+   viennent du style global (pensé pour une ligne de table, plus large :
+   padding 0.45rem 1.2rem) et ne tiennent pas 3-4 à la fois sur la largeur
+   étroite d'une carte ; on les réduit ici en icônes carrées compactes pour
+   qu'ils restent tous alignés. */
+.doc-grid-actions {
+    margin-top: 0.2rem;
+    padding-top: 0.4rem;
+    border-top: 1px solid var(--border);
+    flex-wrap: nowrap;
+    justify-content: center;
+}
+
+/* ".action-button.action-button" (classe répétée) plutôt que
+   ".action-button" seul : ".action-button.edit"/".action-button.view"
+   (UserTable.css) ont la même spécificité qu'un simple ".doc-grid-actions
+   .action-button" et gagneraient selon l'ordre d'import des fichiers CSS —
+   la classe doublée ajoute un point de spécificité pour ne plus en dépendre. */
+.doc-grid-actions .action-button.action-button {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    font-size: 0.78rem;
+}
+
+/* Envoi à la corbeille — même palette rouge que .action-button.leave-uo-admin
+   (UserTable.css) et .td-delete-btn (Typedocument.css), pour rester cohérent
+   avec les autres actions destructrices de l'application. */
+.action-button.delete {
+    background: rgba(155, 58, 58, 0.08);
+    color: var(--error);
+    border: 1px solid rgba(155, 58, 58, 0.25);
+}
+
+.action-button.delete:hover:not(:disabled) {
+    background: rgba(155, 58, 58, 0.15);
+}
+
+/* ── Sélection multiple de documents (grille + tableau) ────────────────── */
+
+.doc-grid-select {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 2;
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+}
+
+.td-select-col {
+    width: 2rem;
+    text-align: center;
+}
+
+.selection-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 0.9rem;
+    margin-bottom: 0.75rem;
+    background: rgba(155, 58, 58, 0.06);
+    border: 1px solid rgba(155, 58, 58, 0.2);
+    border-radius: var(--radius-sm);
+}
+
+.selection-toolbar-count {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--dark-choc);
+    margin-right: auto;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1592,7 +2029,7 @@
     display: flex;
     flex-direction: column;
     width: 100%;
-    height: 75vh;
+    height: 84vh;
     min-height: 400px;
 }
 
@@ -1676,6 +2113,15 @@
     border-top: 1px solid var(--border, #e5e5e5);
     padding-top: 1rem;
 }
+
+.detail-meta-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+}
+
+.detail-meta-header-row .detail-meta-title { margin-bottom: 0; }
 
 .attestation-generer-btn {
     display: inline-flex;
@@ -1764,7 +2210,7 @@
 
 /* Responsive */
 @media (max-width: 768px) {
-    .up-row { grid-template-columns: 1fr; }
+    .up-row { flex-direction: column; align-items: center; gap: 0.75rem; }
     .multitype-files { grid-template-columns: 1fr; }
     .template-actions { flex-direction: column; }
     .groupe-add-row { flex-direction: column; }

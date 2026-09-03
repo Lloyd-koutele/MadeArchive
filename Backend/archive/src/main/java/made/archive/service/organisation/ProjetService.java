@@ -113,7 +113,6 @@ public class ProjetService
         if (access == TypeAccess.PRIVE)
         {
             GroupeAccess g = new GroupeAccess();
-            g.setNom("Accès — " + dto.getNom());
             g.setCreateAt(LocalDate.now());
 
             List<User> membres = new ArrayList<>();
@@ -149,6 +148,41 @@ public class ProjetService
             "Création du projet " + saved.getNom() + " dans l'UO " + uo.getNom(), true);
 
         notifierCreationProjet(saved, uo, createur, access, groupe);
+
+        return saved;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Modification — nom/description uniquement (les types attendus se
+    // gèrent via ajouterTypesAttendus/retirerTypeAttendu ci-dessous, l'accès
+    // via ProjetGroupeAccessController — jamais mélangés dans le même appel).
+    // ═══════════════════════════════════════════════════════════════════
+
+    @Transactional
+    public Projet modifierProjet(Long projetId, String nom, String description, User acteur)
+    {
+        Projet projet = projetRepository.findById(projetId)
+            .orElseThrow(() -> new BusinessException("Projet introuvable : " + projetId));
+
+        verifierPeutGererProjet(projet, acteur);
+
+        if (nom == null || nom.isBlank())
+        {
+            throw new BusinessException("Le nom du projet est obligatoire");
+        }
+
+        Long uoId = projet.getUniteOrganisationnelle().getId();
+        if (projetRepository.existsByNomIgnoreCaseAndUniteOrganisationnelleIdAndIdNot(nom, uoId, projetId))
+        {
+            throw new BusinessException("Un projet avec ce nom existe déjà dans cette UO");
+        }
+
+        projet.setNom(nom);
+        projet.setDescription(description);
+        Projet saved = projetRepository.save(projet);
+
+        auditLogService.log(acteur, AuditAction.PROJET_MODIFIE, AuditCible.PROJET,
+            projetId.toString(), uoId, "Modification du projet " + saved.getNom(), true);
 
         return saved;
     }

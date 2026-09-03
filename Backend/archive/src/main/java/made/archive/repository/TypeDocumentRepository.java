@@ -2,6 +2,7 @@ package made.archive.repository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -40,5 +41,19 @@ public interface TypeDocumentRepository extends JpaRepository<TypeDocument, Long
            "LEFT JOIN FETCH t.metaData " +
            "WHERE t.uniteOrganisationnelle.id = :uoId")
     List<TypeDocument> findByUniteOrganisationnelleIdWithRetentionAndMetaData(@Param("uoId") Long uoId);
+
+    /**
+     * Même requête que ci-dessus, mais sur un ENSEMBLE d'UO — sert au
+     * filtre "Type de document" de "Documents accessibles" (voir
+     * TypeDocumentService.getTypeDocumentsVisibles) : un éditeur/utilisateur
+     * simple doit voir les types de sa propre UO, un ADMIN_UO ceux de tout
+     * son sous-arbre — jamais un seul appel par UO.
+     */
+    @Query("SELECT DISTINCT t FROM TypeDocument t " +
+           "LEFT JOIN FETCH t.retention " +
+           "LEFT JOIN FETCH t.metaData " +
+           "WHERE t.uniteOrganisationnelle.id IN :uoIds " +
+           "ORDER BY t.nom")
+    List<TypeDocument> findByUniteOrganisationnelleIdInWithRetentionAndMetaData(@Param("uoIds") Set<Long> uoIds);
 
 }

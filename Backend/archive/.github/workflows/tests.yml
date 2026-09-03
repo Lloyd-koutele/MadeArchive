@@ -1,0 +1,109 @@
+name: Tests
+
+# Voir 5.10 du mémoire — trois catégories de test, séparées par tag JUnit 5
+# (build.gradle : tasks 'test' / 'integrationTest' / 'performanceTest'), donc
+# trois jobs distincts ici avec leur propre résumé visible dans l'onglet
+# Actions et dans les checks de la pull request.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  checks: write        # requis par dorny/test-reporter pour publier le résumé
+  pull-requests: write
+
+jobs:
+  tests-unitaires:
+    name: Tests unitaires
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Exécuter les tests unitaires
+        run: ./gradlew test
+
+      - name: Publier le résumé (visible dans l'onglet Checks de la PR)
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: Résultats — Tests unitaires
+          path: build/test-results/test/*.xml
+          reporter: java-junit
+
+      - name: Archiver le rapport HTML détaillé
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rapport-tests-unitaires
+          path: build/reports/tests/test/
+
+  tests-integration:
+    name: Tests d'intégration
+    runs-on: ubuntu-latest
+    # Docker est déjà installé et démarré sur les runners ubuntu-latest
+    # hébergés par GitHub — Testcontainers s'y connecte sans configuration
+    # supplémentaire (voir DocumentExportIntegrationTest).
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Exécuter les tests d'intégration (Testcontainers)
+        run: ./gradlew integrationTest
+
+      - name: Publier le résumé
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: Résultats — Tests d'intégration
+          path: build/test-results/integrationTest/*.xml
+          reporter: java-junit
+
+      - name: Archiver le rapport HTML détaillé
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rapport-tests-integration
+          path: build/reports/tests/integrationTest/
+
+  tests-performance:
+    name: Tests de performance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Exécuter les tests de performance/charge
+        run: ./gradlew performanceTest
+
+      - name: Publier le résumé
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: Résultats — Tests de performance
+          path: build/test-results/performanceTest/*.xml
+          reporter: java-junit
+
+      - name: Archiver le rapport HTML détaillé
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rapport-tests-performance
+          path: build/reports/tests/performanceTest/

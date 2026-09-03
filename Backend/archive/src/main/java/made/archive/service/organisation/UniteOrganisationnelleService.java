@@ -23,6 +23,7 @@ import made.archive.dto.UniteOrganisationnelleDto;
 import made.archive.entite.AuditAction;
 import made.archive.entite.AuditCible;
 import made.archive.entite.MembreUniteOrganisationnelle;
+import made.archive.entite.NotificationType;
 import made.archive.entite.Role_Name;
 import made.archive.entite.UniteOrganisationnelle;
 import made.archive.entite.User;
@@ -38,10 +39,15 @@ import made.archive.repository.UniteOrganisationnelleRepository;
 import made.archive.repository.UniteOrganisationnelleRepository.UOParentProjection;
 import made.archive.repository.UserRepository;
 import made.archive.service.audit.AuditLogService;
+import made.archive.service.notification.NotificationService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class UniteOrganisationnelleService
 {
+    private static final Logger log = LoggerFactory.getLogger(UniteOrganisationnelleService.class);
+
     private final UniteOrganisationnelleRepository uoRepository;
     private final UserRepository userRepository;
     private final TypeDocumentRepository typeDocumentRepository;
@@ -51,8 +57,10 @@ public class UniteOrganisationnelleService
     // sens d'appel (écriture des logs) existe.
     private final AuditLogService auditLogService;
     private final UOTreeCacheService uoTreeCacheService;
+    // Idem : NotificationService (écriture seule ici) ne dépend pas de ce service.
+    private final NotificationService notificationService;
 
-    public UniteOrganisationnelleService(UniteOrganisationnelleRepository uoRepository, UserRepository userRepository, TypeDocumentRepository typeDocumentRepository, MembreUORepository membreUORepository, AuditLogService auditLogService, UOTreeCacheService uoTreeCacheService)
+    public UniteOrganisationnelleService(UniteOrganisationnelleRepository uoRepository, UserRepository userRepository, TypeDocumentRepository typeDocumentRepository, MembreUORepository membreUORepository, AuditLogService auditLogService, UOTreeCacheService uoTreeCacheService, NotificationService notificationService)
     {
         this.uoRepository = uoRepository;
         this.userRepository = userRepository;
@@ -60,6 +68,7 @@ public class UniteOrganisationnelleService
         this.membreUORepository = membreUORepository;
         this.auditLogService = auditLogService;
         this.uoTreeCacheService = uoTreeCacheService;
+        this.notificationService = notificationService;
     }
 
     @Transactional
@@ -96,7 +105,44 @@ public class UniteOrganisationnelleService
             "Création de l'UO " + saved.getNom()
                 + (parent != null ? " (sous " + parent.getNom() + ")" : " (racine)"), true);
 
+        notifierCreationUO(saved, parent, createBy);
+
         return toDTOAvecChemin(saved);
+    }
+
+    /**
+     * Notifie la création d'une UO — best-effort, ne doit jamais faire
+     * échouer la création elle-même. UO racine : uniquement les ADMIN
+     * globaux. UO enfant : les ADMIN globaux + les ADMIN_UO ayant autorité
+     * sur l'UO parente (elle-même ou un ancêtre — voir getAdminUOAvecAutoriteSur).
+     */
+    private void notifierCreationUO(UniteOrganisationnelle nouvelleUO, UniteOrganisationnelle parent, User createur)
+    {
+        try
+        {
+            List<User> destinataires = new ArrayList<>(userRepository.findByRoleName(Role_Name.ADMIN));
+            String message;
+
+            if (parent == null)
+            {
+                message = "Une nouvelle unité organisationnelle racine \"" + nouvelleUO.getNom()
+                    + "\" a été créée par " + createur.getPrenom() + " " + createur.getNom() + ".";
+            }
+            else
+            {
+                destinataires.addAll(getAdminUOAvecAutoriteSur(parent.getId()));
+                message = "Une nouvelle unité organisationnelle \"" + nouvelleUO.getNom()
+                    + "\" a été créée sous \"" + parent.getNom() + "\" par "
+                    + createur.getPrenom() + " " + createur.getNom() + ".";
+            }
+
+            notificationService.notifier(destinataires, NotificationType.UO_CREEE, message);
+        }
+        catch (Exception e)
+        {
+            log.warn("[UO] Notification (best-effort) échouée pour l'UO {} : {}",
+                nouvelleUO.getId(), e.getMessage());
+        }
     }
 
     @Transactional
