@@ -22,6 +22,7 @@ import org.springframework.boot.data.redis.autoconfigure.DataRedisReactiveAutoCo
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -90,6 +91,32 @@ class DocumentExportIntegrationTest
     @EnableJpaRepositories(basePackages = "made.archive.repository")
     static class TestJpaConfig
     {
+        // DocumentExportService DOIT être un vrai bean Spring, pas construit à
+        // la main (new DocumentExportService(...)) : son @Transactional(readOnly)
+        // ne s'applique qu'à travers le proxy Spring — sans lui, la session
+        // Hibernate se referme dès le retour de documentRepository.findForExport(),
+        // et l'accès lazy à groupe.getMembres() dans estMembre() lève
+        // LazyInitializationException. Repéré via ce troisième run CI (5.10.3).
+        @Bean
+        UniteOrganisationnelleService uniteOrganisationnelleService()
+        {
+            return org.mockito.Mockito.mock(UniteOrganisationnelleService.class);
+        }
+
+        @Bean
+        DocumentExportService documentExportService(
+            DocumentRepository documentRepository,
+            UniteOrganisationnelleService uniteOrganisationnelleService)
+        {
+            return new DocumentExportService(
+                documentRepository,
+                org.mockito.Mockito.mock(made.archive.repository.ExportJobRepository.class),
+                uniteOrganisationnelleService,
+                org.mockito.Mockito.mock(NotificationService.class),
+                org.mockito.Mockito.mock(AuditLogService.class),
+                new DocumentExportProperties(),
+                org.mockito.Mockito.mock(DocumentExportGenerationService.class));
+        }
     }
 
     @Container
@@ -102,6 +129,8 @@ class DocumentExportIntegrationTest
     @Autowired private RoleRepository roleRepository;
     @Autowired private TypeDocumentRepository typeDocumentRepository;
     @Autowired private GroupeAccessRepository groupeAccessRepository;
+    @Autowired private DocumentExportService documentExportService;
+    @Autowired private UniteOrganisationnelleService uniteOrganisationnelleServiceMock;
 
     @Test
     void lApercuNeRenvoieQueLesDocumentsDuPerimetreVisiblesEtVivants()
@@ -132,24 +161,16 @@ class DocumentExportIntegrationTest
         documentRepository.save(
             nouveauDocument("Public UO2", TypeAccess.PUBLIC, uo2, type, admin, null, DocumentStatus.ACTIVE));
 
-        // ── Service réel, dépendances hors couche données simulées ──────────
-        UniteOrganisationnelleService uoServiceMock = mock(UniteOrganisationnelleService.class);
-        when(uoServiceMock.getUoIdsSousAutorite(admin)).thenReturn(null); // ADMIN global
-
-        DocumentExportService service = new DocumentExportService(
-            documentRepository,
-            mock(made.archive.repository.ExportJobRepository.class),
-            uoServiceMock,
-            mock(NotificationService.class),
-            mock(AuditLogService.class),
-            new DocumentExportProperties(),
-            mock(DocumentExportGenerationService.class));
+        // ── Service RÉEL (bean Spring, voir TestJpaConfig) — son @Transactional
+        //    doit passer par le proxy Spring pour garder la session Hibernate
+        //    ouverte jusqu'à l'accès lazy à groupe.getMembres() ──────────────
+        when(uniteOrganisationnelleServiceMock.getUoIdsSousAutorite(admin)).thenReturn(null); // ADMIN global
 
         ExportApercuRequestDto requete = new ExportApercuRequestDto();
         requete.setUoIds(List.of(uo1.getId()));
         requete.setExcludeCorbeille(false);
 
-        List<ExportApercuDocumentDto> resultat = service.apercu(requete, admin);
+        List<ExportApercuDocumentDto> resultat = documentExportService.apercu(requete, admin);
 
         // Public UO1 visible ; privé UO1 EXCLU (admin n'en est pas membre,
         // pas d'élévation demandée) ; supprimé EXCLU ; UO2 EXCLU (hors périmètre).
