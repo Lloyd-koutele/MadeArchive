@@ -44,19 +44,31 @@ http:
       tls: {}
       service: frontend
 
-    # Routeurs de secours SANS contrainte de Host — pour accéder à
-    # l'application depuis un autre appareil du même réseau local (ex: un
-    # téléphone) sans lui faire résoudre "madearchive.sn" (ce qui exigerait
-    # un DNS local ou un fichier hosts, impossible à éditer simplement sur
-    # iOS/Android sans root). Priorité volontairement BASSE : si le Host
-    # envoyé est bien "madearchive.sn", les routeurs ci-dessus (10 et 1)
-    # gagnent toujours et rien ne change pour cet usage. Le client verra un
-    # avertissement de certificat (le certificat mkcert ne couvre que le nom
-    # "madearchive.sn", pas une IP) — normal et sans risque en LAN de test ;
-    # à retirer ou restreindre par IP source avant tout usage au-delà d'une
-    # répétition locale.
+    # Routeurs de secours — pour accéder à l'application depuis un autre
+    # appareil du même réseau local (ex: un téléphone) sans lui faire
+    # résoudre "madearchive.sn" (ce qui exigerait un DNS local ou un fichier
+    # hosts, impossible à éditer simplement sur iOS/Android sans root).
+    #
+    # "!Host(...)" plutôt qu'une simple priorité plus basse : un essai
+    # initial avec juste "PathPrefix(`/`)" (sans condition de Host) et une
+    # priorité à 0 a cassé le routage même pour madearchive.sn — constaté en
+    # direct (POST /api/login répondait 405, servi par nginx/frontend au
+    # lieu du backend). Traefik ne semble pas garantir qu'un router au
+    # rule plus restrictive (Host + PathPrefix, priorité 10) batte
+    # systématiquement un router "attrape-tout" (PathPrefix("/") seul) rien
+    # qu'avec la priorité — cause exacte non confirmée (bug ou subtilité du
+    # moteur de règles de Traefik v3.2), mais le correctif retenu supprime
+    # complètement le chevauchement plutôt que d'en dépendre : ces routeurs
+    # ne matchent JAMAIS une requête pour madearchive.sn (le "!Host" les en
+    # exclut), donc aucune ambiguïté de priorité n'est plus possible entre
+    # eux et les routeurs "api"/"frontend" ci-dessus.
+    #
+    # Le client verra un avertissement de certificat sur ce chemin (le
+    # certificat mkcert ne couvre que le nom "madearchive.sn", pas une IP)
+    # — normal et sans risque en LAN de test ; à retirer ou restreindre par
+    # IP source avant tout usage au-delà d'une répétition locale.
     api-lan:
-      rule: "PathPrefix(`/api`)"
+      rule: "!Host(`madearchive.sn`) && PathPrefix(`/api`)"
       priority: 5
       entryPoints:
         - websecure
@@ -64,8 +76,8 @@ http:
       service: app
 
     frontend-lan:
-      rule: "PathPrefix(`/`)"
-      priority: 0
+      rule: "!Host(`madearchive.sn`)"
+      priority: 1
       entryPoints:
         - websecure
       tls: {}
