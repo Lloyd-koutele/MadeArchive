@@ -227,10 +227,45 @@
     border-color: rgba(155,58,58,0.3);
 }
 
-/* Responsive */
+/* Responsive — même seuil que MOBILE_BREAKPOINT dans Sidebar.tsx.
+   Sous ce seuil, la sidebar devient un TIROIR superposé (position: fixed +
+   fond assombri cliquable) plutôt qu'un bloc pleine largeur qui poussait le
+   contenu vers le bas — même logique que le menu burger de la page d'accueil
+   (Page/Home.css), fermé par défaut (voir Sidebar.tsx). */
 @media (max-width: 768px) {
-    .sidebar-open  { width: 100%; height: auto; position: relative; }
-    .sidebar-closed { width: 52px; height: 52px; }
+    /* Fermée : inchangée par rapport au desktop — un rail de 52px reste
+       dans le flux normal (toujours la règle .sidebar de base, sticky),
+       c'est le moyen permanent et discret de rouvrir le menu. Seule
+       "ouverte" a besoin d'un traitement différent sur mobile. */
+    .sidebar-open {
+        position: fixed;
+        top: 0;
+        left: 0;
+        height: 100vh;
+        width: min(280px, 85vw);
+        border-radius: 0;
+        z-index: 200;
+    }
+}
+
+.sidebar-backdrop {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .sidebar-backdrop {
+        display: block;
+        position: fixed;
+        inset: 0;
+        background: rgba(44, 26, 14, 0.45);
+        z-index: 150;
+        animation: sidebar-backdrop-in 0.2s ease;
+    }
+}
+
+@keyframes sidebar-backdrop-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
 }
 
 /* Recouvre tout l'écran pendant le VRAI temps de chargement de la nouvelle
