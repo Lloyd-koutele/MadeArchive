@@ -81,6 +81,17 @@ public class SecurityConfig
                     {
                         origines.add(appProperties.getFrontendUrl());
                     }
+                    // Origines supplémentaires (CORS_ADDITIONAL_ORIGINS, ex.
+                    // test depuis un téléphone via l'IP du serveur) — voir
+                    // AppProperties. Vide par défaut, sans effet.
+                    if (appProperties.getCorsAdditionalOrigins() != null
+                            && !appProperties.getCorsAdditionalOrigins().isBlank())
+                    {
+                        Arrays.stream(appProperties.getCorsAdditionalOrigins().split(","))
+                                .map(String::trim)
+                                .filter(origine -> !origine.isBlank())
+                                .forEach(origines::add);
+                    }
                     config.setAllowedOrigins(origines);
                     config.setAllowedMethods(Arrays.asList(
                             "GET", "POST", "PUT", "DELETE", "OPTIONS"));

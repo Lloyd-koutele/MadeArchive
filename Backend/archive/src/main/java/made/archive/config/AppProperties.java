@@ -18,4 +18,13 @@ import org.springframework.stereotype.Component;
 public class AppProperties
 {
     private String frontendUrl;
+
+    // Origines CORS supplémentaires (en plus de frontendUrl et des ports Vite
+    // locaux, voir SecurityConfig), séparées par des virgules — pour tester
+    // depuis un autre appareil du réseau local (ex: téléphone via une IP:port
+    // qui n'est pas le domaine canonique de frontendUrl) sans avoir à
+    // reconstruire l'image à chaque fois. Distinct de frontendUrl : celui-ci
+    // reste l'URL canonique unique utilisée dans les liens de QR code
+    // (AttestationService) — jamais une liste.
+    private String corsAdditionalOrigins;
 }
