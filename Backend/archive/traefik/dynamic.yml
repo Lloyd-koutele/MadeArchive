@@ -28,8 +28,12 @@ http:
       priority: 10
       entryPoints:
         - websecure
-      tls:
-        certResolver: letsencrypt
+      # tls: {} (pas de certResolver) — Traefik choisit automatiquement le
+      # certificat mkcert déclaré ci-dessous (tls.certificates) via SNI, dès
+      # que le nom demandé correspond. Pour repasser sur Let's Encrypt (vrai
+      # déploiement, domaine public) : remettre "certResolver: letsencrypt"
+      # ici ET retirer la section tls.certificates plus bas.
+      tls: {}
       service: app
 
     frontend:
@@ -37,8 +41,7 @@ http:
       priority: 1
       entryPoints:
         - websecure
-      tls:
-        certResolver: letsencrypt
+      tls: {}
       service: frontend
 
   services:
