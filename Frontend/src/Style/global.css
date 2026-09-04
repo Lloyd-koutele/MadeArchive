@@ -23,6 +23,25 @@
 }
 
 /* ─────────────────────────────────────────
+   CONVENTION — Seuils de rupture (breakpoints)
+   Une variable CSS native n'est PAS utilisable à l'intérieur d'un
+   @media (limite du langage, pas de ce projet) — cette échelle est donc
+   documentée ici pour référence et à recopier en dur dans chaque nouveau
+   @media, plutôt que d'inventer une valeur au cas par cas :
+     480px  — petit téléphone (formulaires, cartes empilées)
+     768px  — bascule mobile ↔ desktop (sidebar, navbars, la plupart des
+              panneaux) — LE seuil par défaut si aucune raison précise
+              n'impose une autre valeur
+    1024px  — tablette / petit portable (mise en page à colonnes larges)
+   Des seuils plus larges et spécifiques à un composant précis (ex. une
+   table dense qui a besoin de plus de place, voir AuditLogPanel.css ou
+   document/Filtre.css) restent légitimes — cette échelle n'a pas vocation
+   à forcer TOUT le monde dans 3 valeurs, seulement à éviter d'empiler des
+   seuils voisins et arbitraires (700 à un endroit, 768 à un autre) pour
+   un même comportement mobile générique.
+───────────────────────────────────────── */
+
+/* ─────────────────────────────────────────
    Reset
 ───────────────────────────────────────── */
 *, *::before, *::after {
@@ -234,8 +253,12 @@ main section p {
 
 /* ─────────────────────────────────────────
    Responsive
+   768px : seuil "mobile" commun à l'application (même valeur que la
+   sidebar des tableaux de bord, Page/Sidebar.css) — pour qu'un
+   redimensionnement fasse basculer toute l'interface au même point
+   plutôt que morceau par morceau.
 ───────────────────────────────────────── */
-@media (max-width: 700px) {
+@media (max-width: 768px) {
     header { background-color: rgba(44,26,14,0.95); }
     .navbar .links,
     .navbar .buttons { display: none; }

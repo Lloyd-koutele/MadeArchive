@@ -39,9 +39,31 @@ const PANEL_INITIALES: Record<string, string> = {
     USER:     'U'
 };
 
+// Même seuil que le tiroir mobile défini dans Sidebar.css (@media max-width) —
+// une seule valeur, référencée des deux côtés (JS et CSS ne peuvent pas
+// partager une variable native pour un media query), pour ne jamais les
+// désynchroniser.
+const MOBILE_BREAKPOINT = '(max-width: 768px)';
+
 function Sidebar({ title, children }: SidebarProps) {
-    const [open, setOpen] = useState(true);
+    // Fermée par défaut sur petit écran (comme le menu burger de la page
+    // d'accueil), ouverte par défaut ailleurs — évalué au premier rendu, pas
+    // après coup, pour ne jamais afficher la sidebar grande ouverte une
+    // fraction de seconde sur mobile avant de se refermer.
+    const [open, setOpen] = useState(() => !window.matchMedia(MOBILE_BREAKPOINT).matches);
     const [switching, setSwitching] = useState(false);
+
+    // Re-synchronise l'état ouvert/fermé quand on FRANCHIT le seuil (rotation
+    // d'écran, redimensionnement de fenêtre) — pas à chaque pixel de
+    // redimensionnement : matchMedia ne déclenche 'change' qu'au passage du
+    // seuil, donc ça ne vient jamais écraser un choix manuel de
+    // l'utilisateur tant qu'il reste dans le même palier.
+    useEffect(() => {
+        const mql = window.matchMedia(MOBILE_BREAKPOINT);
+        const handleChange = (e: MediaQueryListEvent) => setOpen(!e.matches);
+        mql.addEventListener('change', handleChange);
+        return () => mql.removeEventListener('change', handleChange);
+    }, []);
 
     const roles = getUserRoles();
     const currentPath = window.location.pathname;
@@ -98,6 +120,16 @@ function Sidebar({ title, children }: SidebarProps) {
 
     return (
         <>
+        {/* Fond assombri derrière le tiroir — uniquement visible/cliquable sur
+            mobile (voir Sidebar.css) : sur desktop la sidebar pousse déjà le
+            contenu plutôt que de le recouvrir, aucun fond n'est nécessaire. */}
+        {open && (
+            <div
+                className='sidebar-backdrop'
+                onClick={() => setOpen(false)}
+                aria-hidden='true'
+            />
+        )}
         {switching && (
             <div className='sidebar-switching-overlay'>
                 <i className='fa-solid fa-spinner fa-spin' />

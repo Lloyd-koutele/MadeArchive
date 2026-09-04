@@ -42,6 +42,14 @@
        top / left sont posés en inline par NotificationBell.tsx. */
     position: fixed;
     width: 320px;
+    /* Le calage horizontal (voir NotificationBell.tsx, placerPanneau) mise
+       sur une largeur de 320px pour rester dans le viewport — au-delà d'un
+       certain point (écran < ~336px, ex. iPhone SE 1ère génération à 320px)
+       ce calcul devient négatif et le panneau déborderait à droite malgré
+       tout. max-width prend le relais : la largeur RÉELLE ne dépasse jamais
+       le viewport moins les mêmes marges (8px de chaque côté) que le JS
+       utilise déjà pour la position. */
+    max-width: calc(100vw - 16px);
     max-height: 420px;
     display: flex;
     flex-direction: column;
