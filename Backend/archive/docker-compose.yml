@@ -129,7 +129,13 @@ services:
       # au navigateur distant. À définir dans .env, ex. CHROMIUM_TOKEN=un-secret-long-et-aleatoire
       TOKEN: ${CHROMIUM_TOKEN}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/pressure"]
+      # CMD-SHELL (pas CMD) : nécessaire pour que $TOKEN soit substitué par le
+      # shell du conteneur — browserless exige ce jeton sur TOUTE requête, y
+      # compris /pressure. Invisible tant que CHROMIUM_TOKEN restait vide
+      # (warning "variable is not set" en local) ; dès qu'un vrai jeton est
+      # renseigné dans .env (comme il se doit), le healthcheck sans jeton se
+      # prenait un 401 systématique — repéré sur un vrai déploiement VM.
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/pressure?token=$$TOKEN"]
       interval: 30s
       timeout: 20s
       retries: 3
