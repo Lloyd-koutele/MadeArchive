@@ -124,6 +124,58 @@ doit être un vrai certificat Let's Encrypt (pas d'avertissement), à
 condition que le DNS pointe déjà vers le VPS et que le port 80 soit
 joignable publiquement au moment du premier démarrage de Traefik.
 
+## 9. Mettre à jour un déploiement existant
+
+Point souvent mal compris : **pousser du code sur GitHub ne met à jour
+ni les images Docker déjà publiées, ni un serveur déjà déployé.** Ce sont
+deux artefacts séparés :
+
+| Artefact | Où il vit | Mis à jour par |
+|---|---|---|
+| Code source (`.java`, `.tsx`, etc.) | dépôt GitHub | `git push` |
+| Images construites (`app`, `frontend`) | `ghcr.io/lloyd-koutele/...` | `.github/workflows/publish-images.yml` — **déclenchement manuel uniquement** (`workflow_dispatch`, onglet Actions → "Run workflow"), volontairement : pour garder le contrôle explicite de quand une nouvelle image devient disponible. Un `git push` seul ne la reconstruit jamais. |
+
+Concrètement, selon le type de correctif :
+
+**a) Correctif dans le code Java/React (backend ou frontend)** — vit
+*dans* l'image, invisible pour quelqu'un qui n'a que `docker-compose.yml`
++ `.env` tant que l'image n'est pas republiée :
+1. Pousser le code sur GitHub (`git push`).
+2. Déclencher manuellement `publish-images.yml` (onglet Actions du
+   dépôt → "Publier les images (ghcr.io)" → "Run workflow").
+3. Sur le serveur, récupérer la nouvelle image et redémarrer :
+   ```bash
+   docker compose pull
+   docker compose up -d
+   ```
+
+**b) Correctif dans un fichier de configuration** (`docker-compose.yml`,
+`traefik/dynamic.yml`, `.env.example`) — ces fichiers ne sont **jamais**
+intégrés à une image : Traefik lit `dynamic.yml` directement depuis le
+disque (monté en volume), et `docker-compose.yml` est lui-même le fichier
+d'orchestration. `docker compose pull` ne les touche donc jamais, même
+après republication d'image. Il faut récupérer le(s) fichier(s) mis à
+jour explicitement, par exemple :
+```bash
+git pull                        # si le serveur a cloné le dépôt entier
+# — ou, si vous ne suivez que docker-compose.yml + .env (sans le code
+#   source) — retélécharger uniquement les fichiers changés (interface
+#   GitHub, "Raw", ou git sparse-checkout).
+docker compose up -d            # relit docker-compose.yml, recrée les
+                                 # conteneurs dont la config a changé
+docker compose restart traefik  # si seul traefik/dynamic.yml a changé
+                                 # (Traefik recharge à chaud, un simple
+                                 # restart suffit à forcer la relecture)
+```
+
+**Cas particulier — certificats mkcert** (`traefik/certs/*.pem`) :
+volontairement **absents du dépôt Git** (`.gitignore`) et **spécifiques
+à chaque machine** — ils ne sont trustés que là où `mkcert -install` a
+été exécuté. Ils ne font partie d'aucun flux de mise à jour : un vrai
+déploiement avec domaine public utilise Let's Encrypt (`certResolver`,
+voir section 4), pas mkcert. Ce mécanisme ne concerne que les
+répétitions/tests en local (VM Multipass, poste de développement).
+
 ## Limites connues (axes d'évolution, pas des blocages)
 
 - **Volumes anonymes** pour MinIO et Meilisearch — les documents archivés
