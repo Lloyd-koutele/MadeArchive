@@ -44,6 +44,33 @@ http:
       tls: {}
       service: frontend
 
+    # Routeurs de secours SANS contrainte de Host — pour accéder à
+    # l'application depuis un autre appareil du même réseau local (ex: un
+    # téléphone) sans lui faire résoudre "madearchive.sn" (ce qui exigerait
+    # un DNS local ou un fichier hosts, impossible à éditer simplement sur
+    # iOS/Android sans root). Priorité volontairement BASSE : si le Host
+    # envoyé est bien "madearchive.sn", les routeurs ci-dessus (10 et 1)
+    # gagnent toujours et rien ne change pour cet usage. Le client verra un
+    # avertissement de certificat (le certificat mkcert ne couvre que le nom
+    # "madearchive.sn", pas une IP) — normal et sans risque en LAN de test ;
+    # à retirer ou restreindre par IP source avant tout usage au-delà d'une
+    # répétition locale.
+    api-lan:
+      rule: "PathPrefix(`/api`)"
+      priority: 5
+      entryPoints:
+        - websecure
+      tls: {}
+      service: app
+
+    frontend-lan:
+      rule: "PathPrefix(`/`)"
+      priority: 0
+      entryPoints:
+        - websecure
+      tls: {}
+      service: frontend
+
   services:
     app:
       loadBalancer:
