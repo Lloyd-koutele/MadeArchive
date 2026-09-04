@@ -132,22 +132,76 @@ deux artefacts séparés :
 
 | Artefact | Où il vit | Mis à jour par |
 |---|---|---|
-| Code source (`.java`, `.tsx`, etc.) | dépôt GitHub | `git push` |
-| Images construites (`app`, `frontend`) | `ghcr.io/lloyd-koutele/...` | `.github/workflows/publish-images.yml` — **déclenchement manuel uniquement** (`workflow_dispatch`, onglet Actions → "Run workflow"), volontairement : pour garder le contrôle explicite de quand une nouvelle image devient disponible. Un `git push` seul ne la reconstruit jamais. |
+| Code source (`.java`, `.tsx`, etc.) | dépôt GitHub | `git push` (déclenche aussi `tests.yml` automatiquement — tests unitaires, intégration, performance) |
+| Images construites (`app`, `frontend`) | `ghcr.io/lloyd-koutele/...` | `.github/workflows/publish-images.yml` — déclenché par un **tag Git de version** (`git tag vX.Y.Z && git push --tags`), pas à chaque push sur `main`. Un push simple sur `main` ne republie jamais une image — c'est volontaire (voir plus bas). |
 
 Concrètement, selon le type de correctif :
 
 **a) Correctif dans le code Java/React (backend ou frontend)** — vit
 *dans* l'image, invisible pour quelqu'un qui n'a que `docker-compose.yml`
 + `.env` tant que l'image n'est pas republiée :
-1. Pousser le code sur GitHub (`git push`).
-2. Déclencher manuellement `publish-images.yml` (onglet Actions du
-   dépôt → "Publier les images (ghcr.io)" → "Run workflow").
+1. Pousser le code sur `main` (`git push`) — les tests tournent automatiquement.
+2. Une fois satisfait du résultat, publier une version :
+   ```bash
+   git tag v1.2.0
+   git push --tags
+   ```
+   `publish-images.yml` se déclenche alors tout seul et publie
+   `madearchive-app:1.2.0` / `madearchive-frontend:1.2.0` (en plus de
+   `:latest` et du sha du commit). Pourquoi un tag plutôt qu'un push
+   automatique sur chaque commit : un commit qui vient d'être poussé n'a
+   pas forcément été éprouvé — le taguer est le geste explicite qui dit
+   "cette version est prête à être déployée", et donne un numéro de
+   version stable à épingler dans `docker-compose.yml` (voir l'encart
+   dans le fichier, à côté de `image:`) plutôt que de dépendre de
+   `:latest`, qui change silencieusement de contenu à chaque republication.
+   (Le bouton "Run workflow" de l'onglet Actions reste disponible en
+   secours, par ex. pour republier après un souci d'infra ghcr.io.)
 3. Sur le serveur, récupérer la nouvelle image et redémarrer :
    ```bash
    docker compose pull
    docker compose up -d
    ```
+   Voir juste en dessous pour ce que ça coupe réellement, et comment
+   réduire cette coupure.
+
+### Coupure de service pendant la mise à jour
+
+`docker compose up -d` ne redémarre **que les conteneurs dont l'image ou
+la configuration a changé** — sur une mise à jour de code, ça veut dire
+uniquement `app` et/ou `frontend`. PostgreSQL, Redis, MinIO, Meilisearch,
+Ollama, Gotenberg, Chromium et Traefik lui-même **continuent de tourner
+sans interruption**, données et connexions comprises. Ce n'est donc pas
+"couper toute l'application", mais un redémarrage bref du seul service
+concerné :
+
+- **`app`** : quelques secondes d'indisponibilité de l'API pendant que
+  l'ancien conteneur s'arrête et que le nouveau démarre (pas de
+  healthcheck configuré sur `app` dans `docker-compose.yml` — Traefik lui
+  envoie du trafic dès que le conteneur existe, pas seulement quand il
+  est prêt à répondre). Le frontend affichera des erreurs réseau
+  ponctuelles côté utilisateur pendant cette fenêtre.
+- **`frontend`** : coupure plus courte (Nginx sert des fichiers statiques,
+  démarre quasi instantanément).
+
+Pour un projet de cette taille (un seul VPS, pas de cluster), une coupure
+de quelques secondes lors d'une mise à jour planifiée est le compromis
+pragmatique — un vrai zéro-downtime (bascule progressive sans aucune
+requête perdue) demanderait plusieurs instances de `app` derrière Traefik
+avec un ordre d'arrêt/démarrage contrôlé (Docker Swarm ou Kubernetes,
+disproportionné ici). Pour limiter l'impact sans cette complexité :
+
+```bash
+# Ne recrée que ce qui a changé (déjà le comportement par défaut de
+# "docker compose up -d" — explicite ici pour montrer que postgres, redis,
+# etc. ne sont jamais touchés) :
+docker compose pull app frontend
+docker compose up -d --no-deps app frontend
+```
+
+Choisir une fenêtre de faible trafic pour lancer la mise à jour reste la
+façon la plus simple de rendre cette coupure de quelques secondes
+invisible en pratique.
 
 **b) Correctif dans un fichier de configuration** (`docker-compose.yml`,
 `traefik/dynamic.yml`, `.env.example`) — ces fichiers ne sont **jamais**
@@ -183,9 +237,13 @@ répétitions/tests en local (VM Multipass, poste de développement).
   fait sans y penser. PostgreSQL utilise déjà un volume nommé.
 - **Aucune sauvegarde automatisée** (base de données, fichiers MinIO) — à
   mettre en place séparément selon votre fournisseur.
-- **Pas de chaîne de déploiement continu** — le déploiement reste manuel
-  (`docker compose up -d --build`), seuls les tests sont automatisés (voir
-  `.github/workflows/`).
+- **Publication d'image automatisée (CI), déploiement lui-même toujours
+  manuel** — un tag Git republie les images sur ghcr.io automatiquement
+  (voir section 9), mais personne ne se connecte au VPS à votre place :
+  `docker compose pull && docker compose up -d` reste une commande que
+  vous lancez vous-même sur le serveur. Une vraie CD (ex: un webhook ou
+  une action SSH déclenchée après `publish-images.yml`) est un axe
+  d'évolution possible, pas encore mis en place.
 - **Dockerfile backend à build externe** — nécessite `./gradlew bootJar`
   avant chaque `docker compose up --build` ; un oubli redéploie
   silencieusement l'ancien code.
