@@ -1,10 +1,17 @@
 name: Publier les images (ghcr.io)
 
-# Déclenchement manuel uniquement (bouton "Run workflow" dans l'onglet
-# Actions) — pas à chaque push, pour garder le contrôle explicite de quand
-# une nouvelle image devient disponible pour un déploiement basé sur
-# docker-compose.yml + .env seuls (sans le code source, voir DEPLOYMENT.md).
+# Déclenché par un tag Git de version (ex: v1.2.0 → git push --tags),
+# PAS à chaque push sur main — un correctif tout juste poussé n'est pas
+# forcément prêt pour les déploiements existants qui font
+# `docker compose pull` (voir DEPLOYMENT.md, section 9). Taguer une
+# release est un geste explicite qui documente aussi ce qui est publié
+# (l'historique des tags = l'historique des versions déployables).
+# "Run workflow" (workflow_dispatch) reste disponible en secours, par ex.
+# pour republier la même version après un souci d'infra ghcr.io.
 on:
+  push:
+    tags:
+      - 'v*.*.*'
   workflow_dispatch:
 
 env:
@@ -35,6 +42,24 @@ jobs:
         working-directory: Backend/archive
         run: ./gradlew bootJar -x test
 
+      - name: Déterminer la version à publier
+        id: version
+        # Sur un push de tag (v1.2.0), on publie CETTE version explicitement,
+        # en plus de latest et du sha — c'est ce que DEPLOYMENT.md
+        # recommandera d'épingler dans docker-compose.yml pour un
+        # déploiement en production (jamais "latest" en dur, pour pouvoir
+        # revenir en arrière). Sur un déclenchement manuel hors tag, on
+        # republie seulement latest + sha (pas de nouveau numéro de version).
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            # Déclenchement manuel hors tag : pas de numéro de version réel,
+            # on retombe sur un identifiant traçable plutôt que de laisser
+            # ce 3e tag vide (invalide en syntaxe "image:tag").
+            echo "version=manual-${GITHUB_SHA:0:7}" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -59,6 +84,7 @@ jobs:
           tags: |
             ${{ env.IMAGE_APP }}:latest
             ${{ env.IMAGE_APP }}:${{ github.sha }}
+            ${{ env.IMAGE_APP }}:${{ steps.version.outputs.version }}
 
       - name: Build + push — frontend
         uses: docker/build-push-action@v6
@@ -69,3 +95,4 @@ jobs:
           tags: |
             ${{ env.IMAGE_FRONTEND }}:latest
             ${{ env.IMAGE_FRONTEND }}:${{ github.sha }}
+            ${{ env.IMAGE_FRONTEND }}:${{ steps.version.outputs.version }}

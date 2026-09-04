@@ -196,6 +196,14 @@ services:
     # docker-compose.override.yml (dev local uniquement, jamais copié seul
     # vers un déploiement) réintroduit "build:" et prend le dessus
     # automatiquement quand les deux fichiers sont présents côte à côte.
+    #
+    # ":latest" convient pour une première installation, mais PAS pour un
+    # déploiement en production déjà en service : une image taguée
+    # explicitement (ex: ":1.2.0", publiée automatiquement sur "git tag
+    # v1.2.0 && git push --tags", voir publish-images.yml) permet de savoir
+    # exactement quelle version tourne et de revenir en arrière en changeant
+    # juste ce tag — voir DEPLOYMENT.md, section 9 "Mettre à jour un
+    # déploiement existant".
     image: ghcr.io/lloyd-koutele/madearchive-frontend:latest
     container_name: madearchive-frontend
     # Même durcissement que "app" : pas de port publié, uniquement joignable
@@ -203,7 +211,8 @@ services:
     # ce service, "/api/*" vers "app", même domaine public pour les deux).
 
   app:
-    # Image publiée — voir le commentaire équivalent sur "frontend" ci-dessus.
+    # Image publiée — voir le commentaire équivalent sur "frontend" ci-dessus
+    # (même recommandation : tag explicite en production, pas ":latest").
     image: ghcr.io/lloyd-koutele/madearchive-app:latest
     container_name: madearchive-app
     # Plus de port publié directement vers l'hôte : Traefik (80/443) devient
