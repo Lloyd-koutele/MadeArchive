@@ -59,3 +59,16 @@ http:
           # Frontend/Dockerfile), écoute sur le port 80 à l'intérieur du
           # conteneur.
           - url: "http://frontend:80"
+
+# Certificat mkcert (HTTPS de confiance en local/répétition — voir
+# docker-compose.yml pour le montage du volume traefik/certs:/etc/traefik/certs).
+# Traefik sélectionne ce certificat par SNI dès que le nom demandé correspond
+# (les deux routeurs ci-dessus ont "tls: {}", sans certResolver, précisément
+# pour laisser cette sélection automatique opérer plutôt que de tenter
+# Let's Encrypt). Sans domaine public : générer avec, depuis
+# Backend/archive/traefik/certs : `mkcert madearchive.sn` (après
+# `mkcert -install` une fois par machine cliente, voir DEPLOYMENT.md).
+tls:
+  certificates:
+    - certFile: /etc/traefik/certs/madearchive.sn.pem
+      keyFile: /etc/traefik/certs/madearchive.sn-key.pem
