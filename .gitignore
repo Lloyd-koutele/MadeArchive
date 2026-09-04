@@ -78,3 +78,11 @@ dist-ssr
 # HSM fichier (clés privées PKI - ne JAMAIS versionner)
 hsm/
 *.p12
+
+# Certificats mkcert (HTTPS local pour la répétition VPS/Multipass) :
+# la clé privée ne doit jamais être versionnée. Le certificat public
+# (*.pem sans -key) n'a de sens que sur les machines où l'autorité
+# locale mkcert est installée (mkcert -install) — on ne le versionne
+# pas non plus, il se régénère en une commande (voir DEPLOYMENT.md) :
+# mkcert <domaine> depuis Backend/archive/traefik/certs/
+Backend/archive/traefik/certs/

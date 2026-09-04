@@ -155,7 +155,14 @@ services:
       # dynamique — voir traefik/dynamic.yml pour le routage réel, à adapter
       # à votre domaine avant déploiement.
       - ./traefik/dynamic.yml:/etc/traefik/dynamic/dynamic.yml:ro
-      # Volume nommé (pas un fichier bind-mounté) : Traefik crée lui-même
+      # Certificat mkcert (dev/répétition locale — voir traefik/dynamic.yml,
+      # section tls.certificates) : approuvé uniquement sur les machines où
+      # l'autorité locale mkcert a été installée (mkcert -install), jamais
+      # publiquement. À retirer pour un vrai déploiement (Let's Encrypt
+      # reprend la main si ce bloc est absent et qu'un vrai domaine public
+      # est configuré).
+      - ./traefik/certs:/etc/traefik/certs:ro
+      # Volume nommé (pas un fichier bind-monté) : Traefik crée lui-même
       # acme.json avec les permissions exactes qu'il exige (600) — un fichier
       # bind-monté depuis l'hôte doit être pré-créé avec les bons droits à
       # la main, plus fragile.
