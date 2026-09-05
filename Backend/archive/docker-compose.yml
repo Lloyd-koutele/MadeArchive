@@ -141,26 +141,43 @@ services:
       retries: 3
 
   traefik:
-    image: traefik:v3.2
+    # Image "maison" (voir traefik/Dockerfile), pas l'image officielle
+    # directement : ajoute un point d'entrée (traefik/docker-entrypoint.sh)
+    # qui régénère traefik/dynamic.yml depuis dynamic.yml.template à chaque
+    # démarrage, en y substituant APP_DOMAIN (ci-dessous) — une seule source
+    # pour le domaine (celle-ci), plus de copie séparée à tenir à jour dans
+    # dynamic.yml. Comme "app"/"frontend" : image publiée sur ghcr.io pour un
+    # déploiement sans code source (voir DEPLOYMENT.md), reconstruite
+    # localement en développement (docker-compose.override.yml).
+    image: ghcr.io/lloyd-koutele/madearchive-traefik:latest
     container_name: traefik
     ports:
       - "80:80"
       - "443:443"
+    environment:
+      # Lu par traefik/docker-entrypoint.sh, PAS par Traefik lui-même — voir
+      # ce script. Doit être le même domaine nu que app.app-domain côté
+      # backend (variable APP_DOMAIN, unique source dans .env).
+      APP_DOMAIN: ${APP_DOMAIN}
     volumes:
       # Fournisseur "file", pas "docker" : Traefik n'a plus besoin du socket
       # Docker du tout (ni de le lire ni d'y écrire) — testé en direct, le
       # fournisseur Docker de Traefik s'est avéré incompatible avec cette
       # version de Docker Desktop (400 Bad Request au démarrage). Un seul
       # service statique ("app") n'a de toute façon pas besoin de découverte
-      # dynamique — voir traefik/dynamic.yml pour le routage réel, à adapter
-      # à votre domaine avant déploiement.
-      - ./traefik/dynamic.yml:/etc/traefik/dynamic/dynamic.yml:ro
-      # Certificat mkcert (dev/répétition locale — voir traefik/dynamic.yml,
-      # section tls.certificates) : approuvé uniquement sur les machines où
-      # l'autorité locale mkcert a été installée (mkcert -install), jamais
-      # publiquement. À retirer pour un vrai déploiement (Let's Encrypt
-      # reprend la main si ce bloc est absent et qu'un vrai domaine public
-      # est configuré).
+      # dynamique.
+      #
+      # Le GABARIT est monté ici (lecture seule) ; le vrai dynamic.yml est
+      # généré par le conteneur lui-même, à l'intérieur de son propre
+      # système de fichiers (jamais bind-monté depuis l'hôte, jamais
+      # versionné) — voir traefik/docker-entrypoint.sh.
+      - ./traefik/dynamic.yml.template:/etc/traefik/dynamic-template/dynamic.yml.template:ro
+      # Certificat mkcert (dev/répétition locale — voir
+      # dynamic.yml.template, section tls.certificates) : approuvé
+      # uniquement sur les machines où l'autorité locale mkcert a été
+      # installée (mkcert -install), jamais publiquement. Sans effet pour un
+      # vrai déploiement (Let's Encrypt reprend la main si ces fichiers
+      # sont absents et qu'un vrai domaine public est configuré).
       - ./traefik/certs:/etc/traefik/certs:ro
       # Volume nommé (pas un fichier bind-monté) : Traefik crée lui-même
       # acme.json avec les permissions exactes qu'il exige (600) — un fichier
@@ -262,7 +279,7 @@ services:
       GOTENBERG_URL: http://gotenberg:3000
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      APP_DOMAIN: ${APP_DOMAIN:-localhost:5173}
     volumes:
       - hsm_data:/app/hsm # <--- VOLUME NOMMÉ : le HSM fichier doit survivre aux redéploiements
 
