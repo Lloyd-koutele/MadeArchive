@@ -37,7 +37,7 @@ helm install shared shared-services -n shared-services --create-namespace
    helm install societe-x madearchive -n societe-x \
      --set societe.nom=SocieteX \
      --set ingress.host=societe-x.madearchive.com \
-     --set app.frontendUrl=https://societe-x.madearchive.com \
+     --set app.appDomain=societe-x.madearchive.com \
      --set hsm.existingSecretName=societe-x-hsm \
      --set image.repository=ghcr.io/votre-org/madearchive-app \
      --set image.tag=1.0.0

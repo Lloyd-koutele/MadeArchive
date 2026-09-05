@@ -51,20 +51,25 @@ Deux catégories de variables dans `.env` :
   noms de service internes (`postgres`, `minio`, etc.) ; les valeurs du
   `.env` ne servent qu'à un usage natif hors Docker (`./gradlew bootRun`).
 
-## 4. Configurer le domaine dans Traefik
+## 4. Le domaine se configure une seule fois, dans `.env`
 
-Traefik (mode "fournisseur fichier") ne peut pas lire les variables de
-`docker-compose.yml` — le domaine doit être écrit en clair, séparément,
-dans `traefik/dynamic.yml` :
+Rien à faire de plus ici : `APP_DOMAIN` (dans `.env`, voir section 3) est la
+**seule** valeur à renseigner. Elle est lue à la fois par le backend (CORS,
+lien du QR code d'attestation) et par Traefik, qui régénère automatiquement
+`traefik/dynamic.yml` à partir de `traefik/dynamic.yml.template` à **chaque
+démarrage** du conteneur (voir `traefik/docker-entrypoint.sh`) — donc à
+chaque `docker compose up -d` qui suit un changement de `.env` (Compose
+recrée de toute façon le conteneur `traefik` dans ce cas, comportement
+normal, déjà vrai pour tous les autres services).
 
-```bash
-sed -i 's/madearchive\.sn/votredomaine.com/g' traefik/dynamic.yml
-```
+Avant, ce nom devait être recopié À LA MAIN dans `traefik/dynamic.yml`
+séparément de `.env` — une coquille entre les deux copies suffisait à
+casser la connexion (rejet CORS 403), sans lien évident avec la cause
+réelle. `APP_DOMAIN` élimine cette classe de bug : il n'y a plus qu'un seul
+endroit où écrire le domaine.
 
-(remplacez `madearchive.sn` par le domaine que vous avez réellement utilisé
-en local, si différent — ou éditez directement les deux occurrences de
-`Host(\`...\`)` dans le fichier). Ce nom doit être **identique** à
-`FRONTEND_URL` dans `.env`.
+`APP_DOMAIN` doit être un domaine **nu** — sans `https://`, sans port, sans
+chemin (ex. `madearchive.sn`, pas `https://madearchive.sn/`).
 
 ## 5. Sécurité — à vérifier avant de démarrer
 
@@ -133,7 +138,7 @@ deux artefacts séparés :
 | Artefact | Où il vit | Mis à jour par |
 |---|---|---|
 | Code source (`.java`, `.tsx`, etc.) | dépôt GitHub | `git push` (déclenche aussi `tests.yml` automatiquement — tests unitaires, intégration, performance) |
-| Images construites (`app`, `frontend`) | `ghcr.io/lloyd-koutele/...` | `.github/workflows/publish-images.yml` — déclenché par un **tag Git de version** (`git tag vX.Y.Z && git push --tags`), pas à chaque push sur `main`. Un push simple sur `main` ne republie jamais une image — c'est volontaire (voir plus bas). |
+| Images construites (`app`, `frontend`, `traefik`) | `ghcr.io/lloyd-koutele/...` | `.github/workflows/publish-images.yml` — déclenché par un **tag Git de version** (`git tag vX.Y.Z && git push --tags`), pas à chaque push sur `main`. Un push simple sur `main` ne republie jamais une image — c'est volontaire (voir plus bas). |
 
 Concrètement, selon le type de correctif :
 
@@ -147,8 +152,9 @@ Concrètement, selon le type de correctif :
    git push --tags
    ```
    `publish-images.yml` se déclenche alors tout seul et publie
-   `madearchive-app:1.2.0` / `madearchive-frontend:1.2.0` (en plus de
-   `:latest` et du sha du commit). Pourquoi un tag plutôt qu'un push
+   `madearchive-app:1.2.0` / `madearchive-frontend:1.2.0` /
+   `madearchive-traefik:1.2.0` (en plus de `:latest` et du sha du commit).
+   Pourquoi un tag plutôt qu'un push
    automatique sur chaque commit : un commit qui vient d'être poussé n'a
    pas forcément été éprouvé — le taguer est le geste explicite qui dit
    "cette version est prête à être déployée", et donne un numéro de
@@ -204,12 +210,13 @@ façon la plus simple de rendre cette coupure de quelques secondes
 invisible en pratique.
 
 **b) Correctif dans un fichier de configuration** (`docker-compose.yml`,
-`traefik/dynamic.yml`, `.env.example`) — ces fichiers ne sont **jamais**
-intégrés à une image : Traefik lit `dynamic.yml` directement depuis le
-disque (monté en volume), et `docker-compose.yml` est lui-même le fichier
-d'orchestration. `docker compose pull` ne les touche donc jamais, même
-après republication d'image. Il faut récupérer le(s) fichier(s) mis à
-jour explicitement, par exemple :
+`traefik/dynamic.yml.template`, `.env.example`) — ces fichiers ne sont
+**jamais** intégrés à une image : `dynamic.yml.template` est monté en volume
+(Traefik le lit à son démarrage pour générer le vrai `dynamic.yml`, voir
+section 4), et `docker-compose.yml` est lui-même le fichier d'orchestration.
+`docker compose pull` ne les touche donc jamais, même après republication
+d'image. Il faut récupérer le(s) fichier(s) mis à jour explicitement, par
+exemple :
 ```bash
 git pull                        # si le serveur a cloné le dépôt entier
 # — ou, si vous ne suivez que docker-compose.yml + .env (sans le code
@@ -217,10 +224,17 @@ git pull                        # si le serveur a cloné le dépôt entier
 #   GitHub, "Raw", ou git sparse-checkout).
 docker compose up -d            # relit docker-compose.yml, recrée les
                                  # conteneurs dont la config a changé
-docker compose restart traefik  # si seul traefik/dynamic.yml a changé
-                                 # (Traefik recharge à chaud, un simple
-                                 # restart suffit à forcer la relecture)
+docker compose restart traefik  # si seul dynamic.yml.template a changé —
+                                 # le fichier généré (dynamic.yml) ne se
+                                 # régénère qu'au DÉMARRAGE du conteneur
+                                 # (voir traefik/docker-entrypoint.sh), pas
+                                 # en continu comme avant : un redémarrage
+                                 # explicite reste nécessaire ici.
 ```
+
+Notez que le `Dockerfile` et `docker-entrypoint.sh` de Traefik, eux, vivent
+*dans* l'image `madearchive-traefik` — un changement là-bas suit le chemin
+**(a)** ci-dessus (republier l'image), pas celui-ci.
 
 **Cas particulier — certificats mkcert** (`traefik/certs/*.pem`) :
 volontairement **absents du dépôt Git** (`.gitignore`) et **spécifiques

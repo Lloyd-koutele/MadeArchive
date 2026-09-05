@@ -21,6 +21,7 @@ env:
   # ("Lloyd-koutele") — l'utiliser tel quel aurait échoué au push.
   IMAGE_APP: ghcr.io/lloyd-koutele/madearchive-app
   IMAGE_FRONTEND: ghcr.io/lloyd-koutele/madearchive-frontend
+  IMAGE_TRAEFIK: ghcr.io/lloyd-koutele/madearchive-traefik
 
 permissions:
   contents: read
@@ -96,3 +97,19 @@ jobs:
             ${{ env.IMAGE_FRONTEND }}:latest
             ${{ env.IMAGE_FRONTEND }}:${{ github.sha }}
             ${{ env.IMAGE_FRONTEND }}:${{ steps.version.outputs.version }}
+
+      # Image Traefik "maison" (voir Backend/archive/traefik/Dockerfile) :
+      # ajoute un point d'entrée qui régénère dynamic.yml depuis
+      # dynamic.yml.template à chaque démarrage — voir docker-compose.yml et
+      # DEPLOYMENT.md pour le pourquoi (une seule source pour le domaine,
+      # APP_DOMAIN dans .env, au lieu de deux copies désynchronisables).
+      - name: Build + push — traefik
+        uses: docker/build-push-action@v6
+        with:
+          context: Backend/archive/traefik
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGE_TRAEFIK }}:latest
+            ${{ env.IMAGE_TRAEFIK }}:${{ github.sha }}
+            ${{ env.IMAGE_TRAEFIK }}:${{ steps.version.outputs.version }}

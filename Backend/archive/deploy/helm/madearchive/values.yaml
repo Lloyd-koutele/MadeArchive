@@ -20,8 +20,10 @@ app:
   resources:
     requests: { cpu: 250m, memory: 512Mi }
     limits:   { cpu: "1",  memory: 1Gi }
-  # URL publique du frontend pour cette société (CORS, liens dans les emails...)
-  frontendUrl: "https://societe-a.madearchive.com"
+  # Domaine public NU pour cette société (CORS, liens dans les emails...) —
+  # sans "https://", même convention que APP_DOMAIN côté docker-compose
+  # (voir Backend/archive/.env.example).
+  appDomain: "societe-a.madearchive.com"
   jwtExpiration: "3600000"
   jwtRefreshExpiration: "604800000"
 

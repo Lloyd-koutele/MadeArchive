@@ -13,7 +13,7 @@ data:
   REDIS_PORT: "6379"
   GOTENBERG_URL: {{ .Values.shared.gotenbergUrl | quote }}
   OLLAMA_BASE_URL: {{ .Values.shared.ollamaUrl | quote }}
-  FRONTEND_URL: {{ .Values.app.frontendUrl | quote }}
+  APP_DOMAIN: {{ .Values.app.appDomain | quote }}
   JWT_EXPIRATION: {{ .Values.app.jwtExpiration | quote }}
   JWT_REFRESH_EXPIRATION: {{ .Values.app.jwtRefreshExpiration | quote }}
   HSM_KEYSTORE_PATH: "/app/hsm/{{ .Values.hsm.keystoreFilename }}"

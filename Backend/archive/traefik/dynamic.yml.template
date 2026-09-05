@@ -1,3 +1,20 @@
+# GABARIT — pas le fichier lu par Traefik. Le vrai traefik/dynamic.yml (créé
+# au démarrage du conteneur, jamais versionné) est régénéré automatiquement à
+# partir de CELUI-CI par traefik/docker-entrypoint.sh, qui remplace ${APP_DOMAIN}
+# par la valeur RÉELLE de la variable d'environnement APP_DOMAIN (définie dans
+# .env, lue par Docker Compose comme n'importe quelle autre variable).
+#
+# Pourquoi : avant, le domaine était écrit en clair ICI ("madearchive.sn") ET
+# séparément dans .env (APP_DOMAIN, utilisé par le backend pour CORS et les
+# liens de QR code) — deux copies manuelles du même domaine, sans lien entre
+# elles. Une coquille dans l'une des deux suffisait à casser la connexion
+# (rejet CORS 403) sans rapport apparent avec la cause réelle — vécu
+# concrètement pendant le développement de ce projet. Avec ce gabarit,
+# APP_DOMAIN dans .env est la SEULE source : ce fichier ne contient plus le
+# nom du domaine en dur nulle part, il est toujours régénéré à chaque
+# démarrage du conteneur Traefik (qui redémarre de toute façon dès que .env
+# change, Compose recréant le conteneur — voir DEPLOYMENT.md).
+#
 # Configuration statique du routage Traefik (fournisseur "file", pas
 # "docker") — voir docker-compose.yml pour le pourquoi : le fournisseur Docker
 # de Traefik s'est avéré incompatible avec cette version de Docker Desktop
@@ -11,15 +28,10 @@
 # tout le reste -> frontend (React, servi par Nginx — voir Frontend/Dockerfile)
 # Le frontend est buildé avec VITE_API_URL=/api (relatif) précisément pour
 # que ce découpage fonctionne sans connaître le domaine à l'avance.
-#
-# ⚠️ Remplacez madearchive.sn par votre vrai domaine avant tout
-# déploiement — Traefik ne peut pas lire les variables de docker-compose.yml
-# (${DOMAIN}) à l'intérieur de ce fichier, c'est une limite du fournisseur
-# "file" : ce nom doit être écrit en clair ici, dans LES DEUX routeurs.
 http:
   routers:
     api:
-      rule: "Host(`madearchive.sn`) && PathPrefix(`/api`)"
+      rule: "Host(`${APP_DOMAIN}`) && PathPrefix(`/api`)"
       # Priorité explicite : Traefik calcule normalement une priorité à
       # partir de la longueur de la règle (donc ce routeur, plus spécifique,
       # gagnerait déjà naturellement face à "frontend" ci-dessous) — explicite
@@ -37,7 +49,7 @@ http:
       service: app
 
     frontend:
-      rule: "Host(`madearchive.sn`)"
+      rule: "Host(`${APP_DOMAIN}`)"
       priority: 1
       entryPoints:
         - websecure
@@ -46,29 +58,30 @@ http:
 
     # Routeurs de secours — pour accéder à l'application depuis un autre
     # appareil du même réseau local (ex: un téléphone) sans lui faire
-    # résoudre "madearchive.sn" (ce qui exigerait un DNS local ou un fichier
-    # hosts, impossible à éditer simplement sur iOS/Android sans root).
+    # résoudre le domaine (ce qui exigerait un DNS local ou un fichier hosts,
+    # impossible à éditer simplement sur iOS/Android sans root).
     #
     # "!Host(...)" plutôt qu'une simple priorité plus basse : un essai
     # initial avec juste "PathPrefix(`/`)" (sans condition de Host) et une
-    # priorité à 0 a cassé le routage même pour madearchive.sn — constaté en
-    # direct (POST /api/login répondait 405, servi par nginx/frontend au
-    # lieu du backend). Traefik ne semble pas garantir qu'un router au
-    # rule plus restrictive (Host + PathPrefix, priorité 10) batte
-    # systématiquement un router "attrape-tout" (PathPrefix("/") seul) rien
-    # qu'avec la priorité — cause exacte non confirmée (bug ou subtilité du
-    # moteur de règles de Traefik v3.2), mais le correctif retenu supprime
-    # complètement le chevauchement plutôt que d'en dépendre : ces routeurs
-    # ne matchent JAMAIS une requête pour madearchive.sn (le "!Host" les en
-    # exclut), donc aucune ambiguïté de priorité n'est plus possible entre
-    # eux et les routeurs "api"/"frontend" ci-dessus.
+    # priorité à 0 a cassé le routage même pour le domaine principal —
+    # constaté en direct (POST /api/login répondait 405, servi par
+    # nginx/frontend au lieu du backend). Traefik ne semble pas garantir
+    # qu'un router à la règle plus restrictive (Host + PathPrefix, priorité
+    # 10) batte systématiquement un router "attrape-tout" (PathPrefix("/")
+    # seul) rien qu'avec la priorité — cause exacte non confirmée (bug ou
+    # subtilité du moteur de règles de Traefik v3.2), mais le correctif
+    # retenu supprime complètement le chevauchement plutôt que d'en
+    # dépendre : ces routeurs ne matchent JAMAIS une requête pour le domaine
+    # principal (le "!Host" les en exclut), donc aucune ambiguïté de
+    # priorité n'est plus possible entre eux et les routeurs
+    # "api"/"frontend" ci-dessus.
     #
     # Le client verra un avertissement de certificat sur ce chemin (le
-    # certificat mkcert ne couvre que le nom "madearchive.sn", pas une IP)
-    # — normal et sans risque en LAN de test ; à retirer ou restreindre par
-    # IP source avant tout usage au-delà d'une répétition locale.
+    # certificat mkcert ne couvre que le nom de domaine, pas une IP) —
+    # normal et sans risque en LAN de test ; à retirer ou restreindre par IP
+    # source avant tout usage au-delà d'une répétition locale.
     api-lan:
-      rule: "!Host(`madearchive.sn`) && PathPrefix(`/api`)"
+      rule: "!Host(`${APP_DOMAIN}`) && PathPrefix(`/api`)"
       priority: 5
       entryPoints:
         - websecure
@@ -76,7 +89,7 @@ http:
       service: app
 
     frontend-lan:
-      rule: "!Host(`madearchive.sn`)"
+      rule: "!Host(`${APP_DOMAIN}`)"
       priority: 1
       entryPoints:
         - websecure
@@ -102,12 +115,14 @@ http:
 # Certificat mkcert (HTTPS de confiance en local/répétition — voir
 # docker-compose.yml pour le montage du volume traefik/certs:/etc/traefik/certs).
 # Traefik sélectionne ce certificat par SNI dès que le nom demandé correspond
-# (les deux routeurs ci-dessus ont "tls: {}", sans certResolver, précisément
+# (les routeurs ci-dessus ont tous "tls: {}", sans certResolver, précisément
 # pour laisser cette sélection automatique opérer plutôt que de tenter
 # Let's Encrypt). Sans domaine public : générer avec, depuis
-# Backend/archive/traefik/certs : `mkcert madearchive.sn` (après
-# `mkcert -install` une fois par machine cliente, voir DEPLOYMENT.md).
+# Backend/archive/traefik/certs : `mkcert ${APP_DOMAIN}` (après
+# `mkcert -install` une fois par machine cliente, voir DEPLOYMENT.md) — le nom
+# de fichier produit par mkcert correspond déjà exactement à ce que ce gabarit
+# attend, aucune autre étape.
 tls:
   certificates:
-    - certFile: /etc/traefik/certs/madearchive.sn.pem
-      keyFile: /etc/traefik/certs/madearchive.sn-key.pem
+    - certFile: /etc/traefik/certs/${APP_DOMAIN}.pem
+      keyFile: /etc/traefik/certs/${APP_DOMAIN}-key.pem

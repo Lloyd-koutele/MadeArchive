@@ -76,14 +76,15 @@ public class SecurityConfig
                 .cors(cors -> cors.configurationSource(request -> {
                     CorsConfiguration config = new CorsConfiguration();
                     java.util.List<String> origines = new java.util.ArrayList<>(Arrays.asList(
-                            "http://localhost:5173", "http://localhost:3000"));
-                    if (appProperties.getFrontendUrl() != null && !appProperties.getFrontendUrl().isBlank())
+                            "https://localhost:5174", "http://localhost:3000"));
+                    // appDomain est un domaine NU (voir AppProperties) — jamais
+                    // stocké avec un schéma, donc on préfixe "https://" ici, au
+                    // seul endroit où une origine complète est réellement
+                    // nécessaire.
+                    if (appProperties.getAppDomain() != null && !appProperties.getAppDomain().isBlank())
                     {
-                        origines.add(appProperties.getFrontendUrl());
+                        origines.add("https://" + appProperties.getAppDomain());
                     }
-                    // Origines supplémentaires (CORS_ADDITIONAL_ORIGINS, ex.
-                    // test depuis un téléphone via l'IP du serveur) — voir
-                    // AppProperties. Vide par défaut, sans effet.
                     if (appProperties.getCorsAdditionalOrigins() != null
                             && !appProperties.getCorsAdditionalOrigins().isBlank())
                     {

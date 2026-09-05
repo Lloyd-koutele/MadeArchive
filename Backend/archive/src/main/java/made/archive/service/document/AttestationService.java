@@ -76,7 +76,7 @@ public class AttestationService
             throw new BusinessException("Ce document a été supprimé");
         }
 
-        String lien = appProperties.getFrontendUrl() + "/attestation/" + token;
+        String lien = "https://" + appProperties.getAppDomain() + "/attestation/" + token;
 
         AttestationPdfData data = new AttestationPdfData(
             doc.getTitre(),
@@ -106,7 +106,7 @@ public class AttestationService
     {
         return AttestationDto.builder()
             .token(attestation.getToken())
-            .url(appProperties.getFrontendUrl() + "/attestation/" + attestation.getToken())
+            .url("https://" + appProperties.getAppDomain() + "/attestation/" + attestation.getToken())
             .dejaExistante(dejaExistante)
             .build();
     }
