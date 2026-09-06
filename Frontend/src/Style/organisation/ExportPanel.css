@@ -83,7 +83,11 @@
     resize: vertical;
 }
 
-.export-load-btn { align-self: flex-start; }
+.export-quick-actions {
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
 
 .export-apercu {
     display: flex;
