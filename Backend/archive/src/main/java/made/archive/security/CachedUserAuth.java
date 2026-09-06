@@ -20,6 +20,7 @@ public record CachedUserAuth(
     String prenom,
     boolean actif,
     Instant sessionInvalidatedAt,
+    String sessionInvalidationReason,
     List<String> roleNames
 ) implements Serializable
 {
