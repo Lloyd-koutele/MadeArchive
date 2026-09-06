@@ -119,9 +119,20 @@ public class SecurityConfig
                             Object reason = req.getAttribute("authFailureReason");
                             if (reason instanceof String reasonStr)
                             {
-                                String message = "ACCOUNT_BLOCKED".equals(reasonStr)
-                                        ? "Votre compte a été désactivé par un administrateur."
-                                        : "Votre session n'est plus valide, veuillez vous reconnecter.";
+                                String message;
+                                if ("ACCOUNT_BLOCKED".equals(reasonStr))
+                                {
+                                    message = "Votre compte a été désactivé par un administrateur.";
+                                }
+                                else if ("UO_CHANGEE".equals(reasonStr))
+                                {
+                                    message = "Votre unité organisationnelle a été modifiée par un administrateur. "
+                                            + "Vous pourrez vous reconnecter avec votre email et votre mot de passe.";
+                                }
+                                else
+                                {
+                                    message = "Votre session n'est plus valide, veuillez vous reconnecter.";
+                                }
                                 res.getWriter().write(String.format(
                                         "{\"error\":\"Unauthorized\",\"message\":\"%s\",\"reason\":\"%s\"}",
                                         message, reasonStr));

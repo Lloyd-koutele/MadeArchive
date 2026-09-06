@@ -126,8 +126,8 @@ public class JwtAuthFilter extends OncePerRequestFilter
     /**
      * Retourne une raison de rejet si ce token, bien que structurellement valide et non
      * expiré, ne doit plus être accepté : compte désactivé, ou session invalidée après
-     * blocage / changement de rôle / changement de mot de passe (voir UserService).
-     * Retourne null si le token reste utilisable.
+     * blocage / changement de rôle / changement de mot de passe / transfert d'UO (voir
+     * UserService et SessionInvalidationService). Retourne null si le token reste utilisable.
      */
     private String resolveFailureReason(UserDetails userDetails, String jwt)
     {
@@ -149,7 +149,11 @@ public class JwtAuthFilter extends OncePerRequestFilter
                 Instant issuedAt = jwtService.extractIssuedAt(jwt).toInstant();
                 if (issuedAt.isBefore(invalidatedAtFloor))
                 {
-                    return "SESSION_INVALIDATED";
+                    // La raison précise (ex. "UO_CHANGEE") est posée par l'appelant via
+                    // SessionInvalidationService — absente pour les invalidations plus
+                    // anciennes ou le rôle/mot de passe changé, d'où le repli générique.
+                    String raison = impl.getUser().getSessionInvalidationReason();
+                    return raison != null ? raison : "SESSION_INVALIDATED";
                 }
             }
         }
