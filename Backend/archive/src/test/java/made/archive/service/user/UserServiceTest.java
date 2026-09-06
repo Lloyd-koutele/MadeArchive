@@ -172,8 +172,15 @@ class UserServiceTest
         cible.setEmail("cible@esp.sn");
 
         when(userRepository.findById(cible.getId())).thenReturn(Optional.of(cible));
+        // Compte déjà connecté : c'est le seul cas qui passe par le délai de
+        // grâce — voir demanderSuppressionSupprimeImmediatementSiJamaisConnecte
+        // pour le cas contraire.
+        when(journalAuditRepository.existsByActeurIdAndAction(cible.getId(), AuditAction.LOGIN_REUSSI))
+            .thenReturn(true);
 
-        service.demanderSuppression(cible.getId(), admin);
+        boolean immediat = service.demanderSuppression(cible.getId(), admin);
+
+        assertThat(immediat).isFalse();
 
         // Bloqué tout de suite, comme un blocage classique — entièrement réversible.
         assertThat(cible.isActif()).isFalse();
@@ -185,6 +192,31 @@ class UserServiceTest
         assertThat(cible.getPkiKeyStatus()).isEqualTo(PkiKeyStatus.ACTIVE);
         assertThat(cible.getSupprimeLe()).isNull();
         verify(userRepository, never()).delete(any());
+    }
+
+    @Test
+    void demanderSuppressionSupprimeImmediatementSiJamaisConnecte()
+    {
+        // Automatique : pas de délai de grâce pour un compte qui n'a jamais servi
+        // — rien à protéger d'un ADMIN malveillant, voir la Javadoc de la méthode.
+        User admin = utilisateur(Role_Name.ADMIN);
+        User cible = utilisateur(Role_Name.USER);
+        MembreUniteOrganisationnelle adhesion = new MembreUniteOrganisationnelle();
+
+        when(userRepository.findById(cible.getId())).thenReturn(Optional.of(cible));
+        when(journalAuditRepository.existsByActeurIdAndAction(cible.getId(), AuditAction.LOGIN_REUSSI))
+            .thenReturn(false);
+        when(membreUORepository.findByUserId(cible.getId())).thenReturn(List.of(adhesion));
+
+        boolean immediat = service.demanderSuppression(cible.getId(), admin);
+
+        assertThat(immediat).isTrue();
+        verify(membreUORepository).deleteAll(List.of(adhesion));
+        verify(userRepository).delete(cible);
+        // Aucune des étapes du chemin "en attente" — jamais bloqué, jamais programmé.
+        assertThat(cible.getSuppressionPrevueLe()).isNull();
+        verify(sessionInvalidationService, never()).invalider(any(), any());
+        verify(userRepository, never()).save(any());
     }
 
     // ───────────────────────── annulerSuppression ─────────────────────────
@@ -223,8 +255,11 @@ class UserServiceTest
     // ─────────────────────── executerSuppressionsEnAttente ───────────────────────
 
     @Test
-    void unCompteJamaisConnecteEstReellementSupprimeUneFoisLeDelaiEcoule()
+    void unCompteJamaisConnecteRestantEnAttenteEstQuandMemeSupprimeParSecurite()
     {
+        // Cas défensif — voir Javadoc d'executerSuppressionsEnAttente : ne devrait
+        // normalement jamais se produire (demanderSuppression supprime un compte
+        // jamais connecté tout de suite, sans jamais passer par suppressionPrevueLe).
         User cible = utilisateur(Role_Name.EDITOR);
         cible.setSuppressionPrevueLe(LocalDate.now().minusDays(1));
         MembreUniteOrganisationnelle adhesion = new MembreUniteOrganisationnelle();

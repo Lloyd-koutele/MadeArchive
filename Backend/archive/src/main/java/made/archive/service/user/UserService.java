@@ -287,21 +287,32 @@ public class UserService
     private static final long DELAI_GRACE_SUPPRESSION_JOURS = 2;
 
     /**
-     * DEMANDE de suppression d'un compte — n'exécute rien d'irréversible tout de
-     * suite. Bloque le compte immédiatement (actif=false, session invalidée —
-     * même effet immédiat qu'un blocage classique, entièrement réversible via
-     * annulerSuppression), et programme l'exécution réelle (réelle si le compte
-     * n'a jamais servi, sinon logique — voir executerSuppressionsEnAttente) après
-     * DELAI_GRACE_SUPPRESSION_JOURS.
+     * DEMANDE de suppression d'un compte.
      *
-     * Autorité : même modèle que retirerMembre — un ADMIN_UO ne peut jamais viser
-     * un ADMIN ni un autre ADMIN_UO (même dans son propre sous-arbre), et doit
-     * avoir autorité sur l'UO actuelle de la cible. Un ADMIN peut tout, sauf se
-     * supprimer lui-même et sauf supprimer le dernier ADMIN du système (sans quoi
-     * plus personne ne pourrait administrer l'application).
+     * Compte n'ayant JAMAIS servi (aucun LOGIN_REUSSI au journal) : suppression
+     * AUTOMATIQUE et IMMÉDIATE — pas de délai de grâce. Un compte jamais utilisé
+     * ne porte aucune identité ni donnée à protéger contre un ADMIN malveillant
+     * (voir la Javadoc de DELAI_GRACE_SUPPRESSION_JOURS, dont la raison d'être ne
+     * s'applique qu'aux comptes déjà connectés) — le retarder n'apporterait
+     * aucune sécurité supplémentaire, seulement de la friction.
+     *
+     * Compte ayant déjà servi : n'exécute rien d'irréversible tout de suite.
+     * Bloque le compte immédiatement (actif=false, session invalidée — même
+     * effet immédiat qu'un blocage classique, entièrement réversible via
+     * annulerSuppression), et programme l'exécution réelle (logique, voir
+     * executerSuppressionsEnAttente) après DELAI_GRACE_SUPPRESSION_JOURS.
+     *
+     * Autorité (les deux cas) : même modèle que retirerMembre — un ADMIN_UO ne
+     * peut jamais viser un ADMIN ni un autre ADMIN_UO (même dans son propre
+     * sous-arbre), et doit avoir autorité sur l'UO actuelle de la cible. Un ADMIN
+     * peut tout, sauf se supprimer lui-même et sauf supprimer le dernier ADMIN du
+     * système (sans quoi plus personne ne pourrait administrer l'application).
+     *
+     * @return true si la suppression a été exécutée immédiatement (jamais
+     *         connecté), false si elle a seulement été programmée.
      */
     @Transactional
-    public void demanderSuppression(UUID id, User currentUser)
+    public boolean demanderSuppression(UUID id, User currentUser)
     {
         if (id == null || currentUser == null)
         {
@@ -351,6 +362,28 @@ public class UserService
             throw new BusinessException("Impossible de supprimer le dernier administrateur du système");
         }
 
+        Long uoCible = uoDe(id);
+        boolean dejaConnecte = journalAuditRepository.existsByActeurIdAndAction(id, AuditAction.LOGIN_REUSSI);
+
+        if (!dejaConnecte)
+        {
+            // Automatique et immédiat : voir Javadoc de la méthode. La seule ligne
+            // qui peut référencer ce compte à ce stade est son adhésion UO — créée
+            // à la création du compte par l'admin (pas une action de la cible
+            // elle-même, voir createUser) — on la retire d'abord pour ne pas
+            // violer la contrainte de clé étrangère. Si un document/projet/export
+            // existe malgré tout (ne devrait jamais arriver sans connexion
+            // préalable), le DELETE échoue sur une violation de contrainte plutôt
+            // que de risquer une perte silencieuse de données réelles.
+            String emailCible = cible.getEmail();
+            membreUORepository.deleteAll(membreUORepository.findByUserId(id));
+            userRepository.delete(cible);
+            auditLogService.log(currentUser, AuditAction.UTILISATEUR_SUPPRIME, AuditCible.UTILISATEUR,
+                id.toString(), uoCible, "Suppression définitive et automatique (compte jamais utilisé) de "
+                    + emailCible, true);
+            return true;
+        }
+
         LocalDate prevueLe = LocalDate.now().plusDays(DELAI_GRACE_SUPPRESSION_JOURS);
         cible.setSuppressionPrevueLe(prevueLe);
         cible.setActif(false);
@@ -359,9 +392,10 @@ public class UserService
         sessionInvalidationService.invalider(cible, made.archive.security.SessionInvalidationService.RAISON_COMPTE_SUPPRIME);
 
         auditLogService.log(currentUser, AuditAction.UTILISATEUR_SUPPRESSION_DEMANDEE, AuditCible.UTILISATEUR,
-            id.toString(), uoDe(id),
+            id.toString(), uoCible,
             "Suppression demandée pour " + cible.getEmail() + " — exécution prévue le " + prevueLe
                 + " sauf annulation d'ici là", true);
+        return false;
     }
 
     /**
@@ -416,13 +450,14 @@ public class UserService
     /**
      * Exécute réellement les suppressions dont le délai de grâce est écoulé — voir
      * UserSuppressionCleanupScheduler (une fois par jour, même rythme que la purge
-     * de la corbeille documentaire). Réelle (DELETE) si le compte n'a JAMAIS servi,
-     * sinon logique (irréversible, mais nom/prénom/email/id conservés pour rester
-     * lisibles sur ce que ce compte a déjà produit et dans le journal d'audit).
+     * de la corbeille documentaire).
      *
-     * "Jamais servi" est réévalué ICI plutôt que mémorisé au moment de la demande :
-     * sans incidence, puisque le compte est bloqué (actif=false) dès la demande —
-     * aucune connexion n'a pu s'intercaler entre-temps.
+     * Ne devrait normalement voir passer QUE des comptes déjà connectés : un
+     * compte jamais connecté est supprimé automatiquement et immédiatement par
+     * demanderSuppression, sans jamais transiter par suppressionPrevueLe (voir sa
+     * Javadoc) — donc sans jamais atteindre ce scheduler. Le cas "jamais connecté"
+     * ci-dessous reste néanmoins traité par sécurité (défensif, pas le chemin
+     * attendu) plutôt que de supposer cet invariant sans filet.
      */
     @Transactional
     public void executerSuppressionsEnAttente()
@@ -438,14 +473,10 @@ public class UserService
 
             if (!dejaConnecte)
             {
-                // Suppression réelle : ce compte n'a jamais servi. La seule ligne qui
-                // peut le référencer à ce stade est son adhésion UO — créée à la
-                // création du compte par l'admin (pas une action de l'utilisateur
-                // lui-même, voir createUser) — on la retire d'abord pour ne pas violer
-                // la contrainte de clé étrangère. Si un document/projet/export/etc.
-                // existe malgré tout (ne devrait jamais arriver sans connexion
-                // préalable), le DELETE échoue sur une violation de contrainte plutôt
-                // que de risquer une perte silencieuse de données réelles.
+                // Cas défensif — voir Javadoc de la méthode : ne devrait normalement
+                // jamais se produire. Même traitement que le chemin immédiat de
+                // demanderSuppression : retirer l'adhésion UO avant le DELETE pour
+                // ne pas violer la contrainte de clé étrangère.
                 membreUORepository.deleteAll(membreUORepository.findByUserId(id));
                 userRepository.delete(cible);
                 auditLogService.log(null, AuditAction.UTILISATEUR_SUPPRIME, AuditCible.UTILISATEUR,
