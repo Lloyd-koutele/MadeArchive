@@ -159,22 +159,44 @@ public class AdminController
     }
 
     /**
-     * Suppression d'un compte — réelle (DELETE) s'il n'a jamais servi, sinon
-     * logique et irréversible (voir UserService.supprimerUtilisateur). Aucune
-     * réactivation possible ensuite, contrairement à /users/status/{id}.
+     * DEMANDE de suppression d'un compte — bloque immédiatement (réversible),
+     * programme l'exécution réelle (délai de grâce de 2 jours, voir
+     * UserService.demanderSuppression et DELAI_GRACE_SUPPRESSION_JOURS) — annulable
+     * jusque-là via /users/{id}/annuler-suppression.
      */
     @Secured({"ROLE_ADMIN", "ROLE_ADMIN_UO"})
     @DeleteMapping("/users/{id}")
-    public ResponseEntity<?> supprimerUtilisateur(@PathVariable UUID id, @AuthenticationPrincipal UserDetailsImpl currentUser)
+    public ResponseEntity<?> demanderSuppressionUtilisateur(@PathVariable UUID id, @AuthenticationPrincipal UserDetailsImpl currentUser)
     {
         try
         {
-            userService.supprimerUtilisateur(id, currentUser.getUser());
+            userService.demanderSuppression(id, currentUser.getUser());
             return ResponseEntity.ok().build();
         }
         catch (Exception e)
         {
             return errorResponse("Erreur lors de la suppression de l'utilisateur: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Annule une suppression en attente — voir UserService.annulerSuppression.
+     * C'est le levier de sécurité central de cette fonctionnalité : un AUTRE
+     * administrateur peut contrer une suppression demandée par un compte ADMIN
+     * malveillant ou compromis tant que le délai de grâce n'est pas écoulé.
+     */
+    @Secured({"ROLE_ADMIN", "ROLE_ADMIN_UO"})
+    @PutMapping("/users/{id}/annuler-suppression")
+    public ResponseEntity<?> annulerSuppressionUtilisateur(@PathVariable UUID id, @AuthenticationPrincipal UserDetailsImpl currentUser)
+    {
+        try
+        {
+            userService.annulerSuppression(id, currentUser.getUser());
+            return ResponseEntity.ok().build();
+        }
+        catch (Exception e)
+        {
+            return errorResponse("Erreur lors de l'annulation de la suppression: " + e.getMessage());
         }
     }
 

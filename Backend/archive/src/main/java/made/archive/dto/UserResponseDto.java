@@ -1,6 +1,7 @@
 package made.archive.dto;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.Set;
 import java.util.UUID;
 
@@ -40,4 +41,8 @@ public class UserResponseDto
 
     /** null = pas supprimé ; sinon date de la suppression LOGIQUE (irréversible) — voir User.supprimeLe. */
     private Instant supprimeLe;
+
+    /** null = pas de suppression en attente ; sinon date d'exécution prévue (annulable
+     *  jusque-là) — voir User.suppressionPrevueLe. */
+    private LocalDate suppressionPrevueLe;
 }

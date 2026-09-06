@@ -1,5 +1,6 @@
 package made.archive.repository;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -41,4 +42,12 @@ public interface UserRepository extends JpaRepository<User, UUID>
     // UserRepository
     @Query("SELECT u FROM User u JOIN u.membresUniteOrganisationnelles m WHERE m.uniteOrganisationnelle.id = :uoId")
     List<User> findByUniteOrganisationnelleId(@Param("uoId") Long uoId);
+
+    /**
+     * Suppressions demandées dont le délai de grâce de 2 jours est écoulé — voir
+     * UserSuppressionCleanupScheduler et User.suppressionPrevueLe.
+     * supprimeLe IS NULL exclut celles déjà exécutées (ne devrait normalement
+     * jamais coexister avec suppressionPrevueLe non-null, mais défensif).
+     */
+    List<User> findBySuppressionPrevueLeLessThanEqualAndSupprimeLeIsNull(LocalDate date);
 }

@@ -2,6 +2,7 @@ package made.archive.service.user;
 
 import java.security.KeyPair;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -126,7 +127,8 @@ public class UserService
                 u.getRoles(),
                 uo != null ? uo.getId() : null,
                 uo != null ? uo.getNom() : null,
-                u.getSupprimeLe()
+                u.getSupprimeLe(),
+                u.getSuppressionPrevueLe()
             );
         }).toList();
     }
@@ -241,6 +243,11 @@ public class UserService
         {
             throw new BusinessException("Ce compte a été supprimé, son statut ne peut plus être modifié");
         }
+        if (user.getSuppressionPrevueLe() != null)
+        {
+            throw new BusinessException(
+                "Une suppression est en attente pour ce compte — annulez-la d'abord pour modifier son statut");
+        }
 
         if (!uniteOrganisationnelleService.aAutoriteSurUtilisateur(id, currentUser))
         {
@@ -272,10 +279,20 @@ public class UserService
         return userRepository.save(user);
     }
 
+    /** Délai de grâce avant qu'une suppression demandée ne devienne exécutable —
+     *  voir User.suppressionPrevueLe. Raison de sécurité explicite : laisser le
+     *  temps à un autre ADMIN de repérer et annuler une suppression demandée par
+     *  un compte ADMIN malveillant ou compromis, avant qu'elle ne devienne
+     *  irréversible. */
+    private static final long DELAI_GRACE_SUPPRESSION_JOURS = 2;
+
     /**
-     * Supprime un compte — réellement (DELETE) s'il n'a JAMAIS servi, sinon
-     * logiquement (irréversible, mais nom/prénom/email/id conservés pour rester
-     * lisibles sur ce que ce compte a déjà produit et dans le journal d'audit).
+     * DEMANDE de suppression d'un compte — n'exécute rien d'irréversible tout de
+     * suite. Bloque le compte immédiatement (actif=false, session invalidée —
+     * même effet immédiat qu'un blocage classique, entièrement réversible via
+     * annulerSuppression), et programme l'exécution réelle (réelle si le compte
+     * n'a jamais servi, sinon logique — voir executerSuppressionsEnAttente) après
+     * DELAI_GRACE_SUPPRESSION_JOURS.
      *
      * Autorité : même modèle que retirerMembre — un ADMIN_UO ne peut jamais viser
      * un ADMIN ni un autre ADMIN_UO (même dans son propre sous-arbre), et doit
@@ -284,7 +301,7 @@ public class UserService
      * plus personne ne pourrait administrer l'application).
      */
     @Transactional
-    public void supprimerUtilisateur(UUID id, User currentUser)
+    public void demanderSuppression(UUID id, User currentUser)
     {
         if (id == null || currentUser == null)
         {
@@ -302,6 +319,10 @@ public class UserService
         {
             throw new BusinessException("Ce compte est déjà supprimé");
         }
+        if (cible.getSuppressionPrevueLe() != null)
+        {
+            throw new BusinessException("Une suppression est déjà en attente pour ce compte");
+        }
 
         boolean cibleEstAdmin = cible.getRoles().stream().anyMatch(r -> r.getName() == Role_Name.ADMIN);
         boolean cibleEstAdminUo = cible.getRoles().stream().anyMatch(r -> r.getName() == Role_Name.ADMIN_UO);
@@ -311,7 +332,7 @@ public class UserService
         {
             // ADMIN_UO : jamais sur un ADMIN ni un autre ADMIN_UO — même garde que
             // UniteOrganisationnelleService.retirerMembre, pour une action bien plus
-            // grave (irréversible) que le retrait.
+            // grave (irréversible, même différée) que le retrait.
             if (cibleEstAdmin || cibleEstAdminUo)
             {
                 throw new AccessDeniedException("Vous n'avez pas l'autorité pour supprimer ce compte");
@@ -324,60 +345,142 @@ public class UserService
 
         // Dernier ADMIN du système : jamais, quel que soit son statut (actif ou
         // bloqué) — sinon plus personne ne pourrait ni administrer l'application
-        // ni réactiver un compte bloqué.
+        // ni annuler la suppression d'un autre compte.
         if (cibleEstAdmin && userRepository.findByRoleName(Role_Name.ADMIN).size() <= 1)
         {
             throw new BusinessException("Impossible de supprimer le dernier administrateur du système");
         }
 
-        Long uoCible = uoDe(id);
-        boolean dejaConnecte = journalAuditRepository.existsByActeurIdAndAction(id, AuditAction.LOGIN_REUSSI);
-        String emailCible = cible.getEmail();
-
-        if (!dejaConnecte)
-        {
-            // Suppression réelle : ce compte n'a jamais servi. La seule ligne qui
-            // peut le référencer à ce stade est son adhésion UO — créée à la
-            // création du compte par l'admin (pas une action de l'utilisateur
-            // lui-même, voir createUser) — on la retire d'abord pour ne pas violer
-            // la contrainte de clé étrangère. Si un document/projet/export/etc.
-            // existe malgré tout (ne devrait jamais arriver sans connexion
-            // préalable), le DELETE échoue sur une violation de contrainte plutôt
-            // que de risquer une perte silencieuse de données réelles.
-            membreUORepository.deleteAll(membreUORepository.findByUserId(id));
-            userRepository.delete(cible);
-            auditLogService.log(currentUser, AuditAction.UTILISATEUR_SUPPRIME, AuditCible.UTILISATEUR,
-                id.toString(), uoCible, "Suppression définitive (compte jamais utilisé) de " + emailCible, true);
-            return;
-        }
-
-        // Suppression logique : le compte a déjà servi. On coupe tout ce qui
-        // permettrait de s'en servir à nouveau, mais on garde nom/prénom/email/id
-        // intacts — ils restent affichés sur les documents/projets/exports déjà
-        // réalisés par ce compte, et dans le journal d'audit (voir la Javadoc de
-        // JournalAudit : un snapshot texte y survit de toute façon, mais l'attente
-        // ici est de garder aussi l'affichage "live" — ex. sur un document).
-        membreUORepository.findByUserIdAndActifTrue(id).ifPresent(m -> {
-            m.setActif(false);
-            m.setDateRetrait(LocalDateTime.now());
-            m.setRetirePar(currentUser);
-            membreUORepository.save(m);
-        });
-
-        if (cible.getPkiKeyStatus() == PkiKeyStatus.ACTIVE)
-        {
-            cible.setPkiKeyStatus(PkiKeyStatus.REVOKED);
-        }
+        LocalDate prevueLe = LocalDate.now().plusDays(DELAI_GRACE_SUPPRESSION_JOURS);
+        cible.setSuppressionPrevueLe(prevueLe);
         cible.setActif(false);
-        cible.setPassword(passwordEncoder.encode(UUID.randomUUID().toString()));
-        cible.setSupprimeLe(Instant.now());
         userRepository.save(cible);
 
         sessionInvalidationService.invalider(cible, made.archive.security.SessionInvalidationService.RAISON_COMPTE_SUPPRIME);
 
-        auditLogService.log(currentUser, AuditAction.UTILISATEUR_SUPPRIME, AuditCible.UTILISATEUR,
-            id.toString(), uoCible,
-            "Suppression logique de " + emailCible + " (mot de passe invalidé, clé PKI révoquée si active)", true);
+        auditLogService.log(currentUser, AuditAction.UTILISATEUR_SUPPRESSION_DEMANDEE, AuditCible.UTILISATEUR,
+            id.toString(), uoDe(id),
+            "Suppression demandée pour " + cible.getEmail() + " — exécution prévue le " + prevueLe
+                + " sauf annulation d'ici là", true);
+    }
+
+    /**
+     * Annule une suppression en attente (voir demanderSuppression) — le compte
+     * n'a encore rien perdu d'irréversible, la seule chose à défaire est le
+     * blocage. Même modèle d'autorité que demanderSuppression : n'importe quel
+     * ADMIN peut annuler, un ADMIN_UO seulement dans son sous-arbre et jamais sur
+     * un ADMIN/ADMIN_UO — c'est précisément ce qui permet à un AUTRE administrateur
+     * de contrer une suppression demandée par un compte ADMIN malveillant ou
+     * compromis avant qu'elle ne s'exécute.
+     */
+    @Transactional
+    public void annulerSuppression(UUID id, User currentUser)
+    {
+        if (id == null || currentUser == null)
+        {
+            throw new BusinessException("Les données sont invalides");
+        }
+
+        User cible = userRepository.findById(id)
+            .orElseThrow(() -> new BusinessException("Utilisateur non trouvé avec l'ID: " + id));
+
+        if (cible.getSuppressionPrevueLe() == null)
+        {
+            throw new BusinessException("Aucune suppression en attente pour ce compte");
+        }
+
+        boolean cibleEstAdmin = cible.getRoles().stream().anyMatch(r -> r.getName() == Role_Name.ADMIN);
+        boolean cibleEstAdminUo = cible.getRoles().stream().anyMatch(r -> r.getName() == Role_Name.ADMIN_UO);
+        boolean acteurEstAdmin = currentUser.getRoles().stream().anyMatch(r -> r.getName() == Role_Name.ADMIN);
+
+        if (!acteurEstAdmin)
+        {
+            if (cibleEstAdmin || cibleEstAdminUo)
+            {
+                throw new AccessDeniedException("Vous n'avez pas l'autorité pour annuler cette suppression");
+            }
+            if (!uniteOrganisationnelleService.aAutoriteSurUtilisateur(id, currentUser))
+            {
+                throw new AccessDeniedException("Vous n'avez pas l'autorité sur cet utilisateur");
+            }
+        }
+
+        cible.setSuppressionPrevueLe(null);
+        cible.setActif(true);
+        userRepository.save(cible);
+
+        auditLogService.log(currentUser, AuditAction.UTILISATEUR_SUPPRESSION_ANNULEE, AuditCible.UTILISATEUR,
+            id.toString(), uoDe(id), "Suppression annulée pour " + cible.getEmail(), true);
+    }
+
+    /**
+     * Exécute réellement les suppressions dont le délai de grâce est écoulé — voir
+     * UserSuppressionCleanupScheduler (une fois par jour, même rythme que la purge
+     * de la corbeille documentaire). Réelle (DELETE) si le compte n'a JAMAIS servi,
+     * sinon logique (irréversible, mais nom/prénom/email/id conservés pour rester
+     * lisibles sur ce que ce compte a déjà produit et dans le journal d'audit).
+     *
+     * "Jamais servi" est réévalué ICI plutôt que mémorisé au moment de la demande :
+     * sans incidence, puisque le compte est bloqué (actif=false) dès la demande —
+     * aucune connexion n'a pu s'intercaler entre-temps.
+     */
+    @Transactional
+    public void executerSuppressionsEnAttente()
+    {
+        List<User> aSupprimer = userRepository.findBySuppressionPrevueLeLessThanEqualAndSupprimeLeIsNull(LocalDate.now());
+
+        for (User cible : aSupprimer)
+        {
+            UUID id = cible.getId();
+            Long uoCible = uoDe(id);
+            boolean dejaConnecte = journalAuditRepository.existsByActeurIdAndAction(id, AuditAction.LOGIN_REUSSI);
+            String emailCible = cible.getEmail();
+
+            if (!dejaConnecte)
+            {
+                // Suppression réelle : ce compte n'a jamais servi. La seule ligne qui
+                // peut le référencer à ce stade est son adhésion UO — créée à la
+                // création du compte par l'admin (pas une action de l'utilisateur
+                // lui-même, voir createUser) — on la retire d'abord pour ne pas violer
+                // la contrainte de clé étrangère. Si un document/projet/export/etc.
+                // existe malgré tout (ne devrait jamais arriver sans connexion
+                // préalable), le DELETE échoue sur une violation de contrainte plutôt
+                // que de risquer une perte silencieuse de données réelles.
+                membreUORepository.deleteAll(membreUORepository.findByUserId(id));
+                userRepository.delete(cible);
+                auditLogService.log(null, AuditAction.UTILISATEUR_SUPPRIME, AuditCible.UTILISATEUR,
+                    id.toString(), uoCible, "Suppression définitive (compte jamais utilisé) de " + emailCible
+                        + " — délai de grâce écoulé", true);
+                continue;
+            }
+
+            // Suppression logique : le compte a déjà servi. On coupe tout ce qui
+            // permettrait de s'en servir à nouveau, mais on garde nom/prénom/email/id
+            // intacts — ils restent affichés sur les documents/projets/exports déjà
+            // réalisés par ce compte, et dans le journal d'audit (voir la Javadoc de
+            // JournalAudit : un snapshot texte y survit de toute façon, mais l'attente
+            // ici est de garder aussi l'affichage "live" — ex. sur un document).
+            membreUORepository.findByUserIdAndActifTrue(id).ifPresent(m -> {
+                m.setActif(false);
+                m.setDateRetrait(LocalDateTime.now());
+                membreUORepository.save(m);
+            });
+
+            if (cible.getPkiKeyStatus() == PkiKeyStatus.ACTIVE)
+            {
+                cible.setPkiKeyStatus(PkiKeyStatus.REVOKED);
+            }
+            cible.setActif(false);
+            cible.setPassword(passwordEncoder.encode(UUID.randomUUID().toString()));
+            cible.setSuppressionPrevueLe(null);
+            cible.setSupprimeLe(Instant.now());
+            userRepository.save(cible);
+
+            auditLogService.log(null, AuditAction.UTILISATEUR_SUPPRIME, AuditCible.UTILISATEUR,
+                id.toString(), uoCible,
+                "Suppression logique de " + emailCible
+                    + " (mot de passe invalidé, clé PKI révoquée si active) — délai de grâce écoulé", true);
+        }
     }
 
     @Transactional(readOnly = true)
@@ -525,6 +628,11 @@ public class UserService
         if (user.getSupprimeLe() != null)
         {
             throw new BusinessException("Ce compte a été supprimé, il ne peut plus être modifié");
+        }
+        if (user.getSuppressionPrevueLe() != null)
+        {
+            throw new BusinessException(
+                "Une suppression est en attente pour ce compte — annulez-la d'abord pour le modifier");
         }
 
         Set<Role> nouveauxRoles = new HashSet<>();

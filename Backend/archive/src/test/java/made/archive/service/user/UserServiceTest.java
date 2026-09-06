@@ -1,5 +1,6 @@
 package made.archive.service.user;
 
+import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -35,7 +36,6 @@ import made.archive.service.organisation.UniteOrganisationnelleService;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
@@ -43,9 +43,16 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Suppression d'utilisateur (voir UserService.supprimerUtilisateur) — la pièce la
- * plus sensible de tout le fichier : irréversible, et deux chemins radicalement
- * différents selon que le compte a déjà servi ou non.
+ * Suppression d'utilisateur — en deux temps depuis l'ajout du délai de grâce de
+ * 2 jours (raison de sécurité : un ADMIN malveillant ou compromis ne doit pas
+ * pouvoir détruire un compte de façon instantanée et irréversible) :
+ *   1. demanderSuppression — bloque immédiatement (réversible), programme
+ *      l'exécution ;
+ *   2. executerSuppressionsEnAttente — appelée par le scheduler une fois le
+ *      délai écoulé, exécute réellement (DELETE si jamais connecté, sinon
+ *      logique et irréversible).
+ * annulerSuppression permet à un AUTRE administrateur de contrer l'étape 1
+ * avant que l'étape 2 ne s'exécute.
  */
 @Tag("unit")
 @ExtendWith(MockitoExtension.class)
@@ -76,12 +83,14 @@ class UserServiceTest
         return user;
     }
 
+    // ───────────────────────── demanderSuppression ─────────────────────────
+
     @Test
     void refuseDeSeSupprimerSoiMeme()
     {
         User admin = utilisateur(Role_Name.ADMIN);
 
-        assertThatThrownBy(() -> service.supprimerUtilisateur(admin.getId(), admin))
+        assertThatThrownBy(() -> service.demanderSuppression(admin.getId(), admin))
             .isInstanceOf(BusinessException.class);
     }
 
@@ -94,34 +103,34 @@ class UserServiceTest
         when(userRepository.findById(dernierAdmin.getId())).thenReturn(Optional.of(dernierAdmin));
         when(userRepository.findByRoleName(Role_Name.ADMIN)).thenReturn(List.of(dernierAdmin));
 
-        assertThatThrownBy(() -> service.supprimerUtilisateur(dernierAdmin.getId(), admin))
+        assertThatThrownBy(() -> service.demanderSuppression(dernierAdmin.getId(), admin))
             .isInstanceOf(BusinessException.class)
             .hasMessageContaining("dernier administrateur");
 
-        verify(userRepository, never()).delete(any());
+        assertThat(dernierAdmin.getSuppressionPrevueLe()).isNull();
     }
 
     @Test
-    void unAdminUoNePeutPasSupprimerUnAdmin()
+    void unAdminUoNePeutPasDemanderLaSuppressionDUnAdmin()
     {
         User adminUo = utilisateur(Role_Name.ADMIN_UO);
         User cibleAdmin = utilisateur(Role_Name.ADMIN);
 
         when(userRepository.findById(cibleAdmin.getId())).thenReturn(Optional.of(cibleAdmin));
 
-        assertThatThrownBy(() -> service.supprimerUtilisateur(cibleAdmin.getId(), adminUo))
+        assertThatThrownBy(() -> service.demanderSuppression(cibleAdmin.getId(), adminUo))
             .isInstanceOf(AccessDeniedException.class);
     }
 
     @Test
-    void unAdminUoNePeutPasSupprimerUnAutreAdminUo()
+    void unAdminUoNePeutPasDemanderLaSuppressionDUnAutreAdminUo()
     {
         User adminUo = utilisateur(Role_Name.ADMIN_UO);
         User cibleAdminUo = utilisateur(Role_Name.ADMIN_UO);
 
         when(userRepository.findById(cibleAdminUo.getId())).thenReturn(Optional.of(cibleAdminUo));
 
-        assertThatThrownBy(() -> service.supprimerUtilisateur(cibleAdminUo.getId(), adminUo))
+        assertThatThrownBy(() -> service.demanderSuppression(cibleAdminUo.getId(), adminUo))
             .isInstanceOf(AccessDeniedException.class);
     }
 
@@ -134,30 +143,106 @@ class UserServiceTest
 
         when(userRepository.findById(cible.getId())).thenReturn(Optional.of(cible));
 
-        assertThatThrownBy(() -> service.supprimerUtilisateur(cible.getId(), admin))
+        assertThatThrownBy(() -> service.demanderSuppression(cible.getId(), admin))
             .isInstanceOf(BusinessException.class)
             .hasMessageContaining("déjà supprimé");
     }
 
     @Test
-    void unCompteJamaisConnecteEstReellementSupprime()
+    void refuseSiUneSuppressionEstDejaEnAttente()
     {
         User admin = utilisateur(Role_Name.ADMIN);
         User cible = utilisateur(Role_Name.EDITOR);
-        MembreUniteOrganisationnelle adhesion = new MembreUniteOrganisationnelle();
+        cible.setSuppressionPrevueLe(LocalDate.now().plusDays(1));
 
         when(userRepository.findById(cible.getId())).thenReturn(Optional.of(cible));
+
+        assertThatThrownBy(() -> service.demanderSuppression(cible.getId(), admin))
+            .isInstanceOf(BusinessException.class)
+            .hasMessageContaining("déjà en attente");
+    }
+
+    @Test
+    void demanderSuppressionBloqueImmediatementSansRienDetruire()
+    {
+        User admin = utilisateur(Role_Name.ADMIN);
+        User cible = utilisateur(Role_Name.EDITOR);
+        cible.setPkiKeyStatus(PkiKeyStatus.ACTIVE);
+        cible.setPassword("hash-original");
+        cible.setEmail("cible@esp.sn");
+
+        when(userRepository.findById(cible.getId())).thenReturn(Optional.of(cible));
+
+        service.demanderSuppression(cible.getId(), admin);
+
+        // Bloqué tout de suite, comme un blocage classique — entièrement réversible.
+        assertThat(cible.isActif()).isFalse();
+        assertThat(cible.getSuppressionPrevueLe()).isEqualTo(LocalDate.now().plusDays(2));
+        verify(sessionInvalidationService).invalider(eq(cible), eq(SessionInvalidationService.RAISON_COMPTE_SUPPRIME));
+
+        // Rien d'IRRÉVERSIBLE tant que le délai n'est pas écoulé.
+        assertThat(cible.getPassword()).isEqualTo("hash-original");
+        assertThat(cible.getPkiKeyStatus()).isEqualTo(PkiKeyStatus.ACTIVE);
+        assertThat(cible.getSupprimeLe()).isNull();
+        verify(userRepository, never()).delete(any());
+    }
+
+    // ───────────────────────── annulerSuppression ─────────────────────────
+
+    @Test
+    void refuseDAnnulerSiAucuneSuppressionEnAttente()
+    {
+        User admin = utilisateur(Role_Name.ADMIN);
+        User cible = utilisateur(Role_Name.EDITOR);
+
+        when(userRepository.findById(cible.getId())).thenReturn(Optional.of(cible));
+
+        assertThatThrownBy(() -> service.annulerSuppression(cible.getId(), admin))
+            .isInstanceOf(BusinessException.class)
+            .hasMessageContaining("Aucune suppression en attente");
+    }
+
+    @Test
+    void annulerSuppressionReactiveLeCompteEtEffaceLEcheance()
+    {
+        // Un AUTRE admin que celui qui a demandé la suppression, précisément le
+        // scénario de sécurité visé : contrer une suppression malveillante.
+        User autreAdmin = utilisateur(Role_Name.ADMIN);
+        User cible = utilisateur(Role_Name.EDITOR);
+        cible.setSuppressionPrevueLe(LocalDate.now().plusDays(1));
+        cible.setActif(false);
+
+        when(userRepository.findById(cible.getId())).thenReturn(Optional.of(cible));
+
+        service.annulerSuppression(cible.getId(), autreAdmin);
+
+        assertThat(cible.getSuppressionPrevueLe()).isNull();
+        assertThat(cible.isActif()).isTrue();
+    }
+
+    // ─────────────────────── executerSuppressionsEnAttente ───────────────────────
+
+    @Test
+    void unCompteJamaisConnecteEstReellementSupprimeUneFoisLeDelaiEcoule()
+    {
+        User cible = utilisateur(Role_Name.EDITOR);
+        cible.setSuppressionPrevueLe(LocalDate.now().minusDays(1));
+        MembreUniteOrganisationnelle adhesion = new MembreUniteOrganisationnelle();
+
+        when(userRepository.findBySuppressionPrevueLeLessThanEqualAndSupprimeLeIsNull(LocalDate.now()))
+            .thenReturn(List.of(cible));
         when(journalAuditRepository.existsByActeurIdAndAction(cible.getId(), AuditAction.LOGIN_REUSSI))
             .thenReturn(false);
         when(membreUORepository.findByUserId(cible.getId())).thenReturn(List.of(adhesion));
 
-        service.supprimerUtilisateur(cible.getId(), admin);
+        service.executerSuppressionsEnAttente();
 
         // La ligne d'adhésion (créée à la création du compte, jamais utilisée par
         // la cible elle-même) est retirée AVANT le DELETE pour ne pas violer la FK.
         verify(membreUORepository).deleteAll(List.of(adhesion));
         verify(userRepository).delete(cible);
-        // Chemin "jamais servi" : aucune des étapes de la suppression logique.
+        // Chemin "jamais servi" : aucune des étapes de la suppression logique,
+        // et pas de second appel à invalider() — déjà fait à la demande.
         verify(sessionInvalidationService, never()).invalider(any(), any());
         verify(userRepository, never()).save(any());
     }
@@ -165,20 +250,21 @@ class UserServiceTest
     @Test
     void unCompteDejaConnecteEstSupprimeLogiquementSansHardDelete()
     {
-        User admin = utilisateur(Role_Name.ADMIN);
         User cible = utilisateur(Role_Name.EDITOR);
+        cible.setSuppressionPrevueLe(LocalDate.now().minusDays(1));
         cible.setPkiKeyStatus(PkiKeyStatus.ACTIVE);
         cible.setEmail("cible@esp.sn");
         cible.setNom("Dupont");
         cible.setPrenom("Awa");
 
-        when(userRepository.findById(cible.getId())).thenReturn(Optional.of(cible));
+        when(userRepository.findBySuppressionPrevueLeLessThanEqualAndSupprimeLeIsNull(LocalDate.now()))
+            .thenReturn(List.of(cible));
         when(journalAuditRepository.existsByActeurIdAndAction(cible.getId(), AuditAction.LOGIN_REUSSI))
             .thenReturn(true);
         lenient().when(membreUORepository.findByUserIdAndActifTrue(cible.getId())).thenReturn(Optional.empty());
         when(passwordEncoder.encode(any())).thenReturn("un-hash-aleatoire-impossible-a-deviner");
 
-        service.supprimerUtilisateur(cible.getId(), admin);
+        service.executerSuppressionsEnAttente();
 
         // Jamais de DELETE réel une fois que le compte a servi.
         verify(userRepository, never()).delete(any());
@@ -189,30 +275,42 @@ class UserServiceTest
         assertThat(cible.getNom()).isEqualTo("Dupont");
         assertThat(cible.getPrenom()).isEqualTo("Awa");
 
-        // Ce qui doit être coupé : connexion (mot de passe + actif) et signature (PKI).
+        // Ce qui devient IRRÉVERSIBLE une fois le délai écoulé : mot de passe + PKI.
         assertThat(cible.getPassword()).isEqualTo("un-hash-aleatoire-impossible-a-deviner");
         assertThat(cible.isActif()).isFalse();
         assertThat(cible.getPkiKeyStatus()).isEqualTo(PkiKeyStatus.REVOKED);
         assertThat(cible.getSupprimeLe()).isNotNull();
-
-        verify(sessionInvalidationService).invalider(eq(cible), eq(SessionInvalidationService.RAISON_COMPTE_SUPPRIME));
+        assertThat(cible.getSuppressionPrevueLe()).isNull();
     }
 
     @Test
     void unCompteDejaConnecteSansClePkiActiveNestPasRevoque()
     {
-        User admin = utilisateur(Role_Name.ADMIN);
         User cible = utilisateur(Role_Name.USER);
+        cible.setSuppressionPrevueLe(LocalDate.now().minusDays(1));
         cible.setPkiKeyStatus(PkiKeyStatus.NONE);
 
-        when(userRepository.findById(cible.getId())).thenReturn(Optional.of(cible));
+        when(userRepository.findBySuppressionPrevueLeLessThanEqualAndSupprimeLeIsNull(LocalDate.now()))
+            .thenReturn(List.of(cible));
         when(journalAuditRepository.existsByActeurIdAndAction(cible.getId(), AuditAction.LOGIN_REUSSI))
             .thenReturn(true);
         lenient().when(membreUORepository.findByUserIdAndActifTrue(cible.getId())).thenReturn(Optional.empty());
         when(passwordEncoder.encode(any())).thenReturn("hash");
 
-        service.supprimerUtilisateur(cible.getId(), admin);
+        service.executerSuppressionsEnAttente();
 
         assertThat(cible.getPkiKeyStatus()).isEqualTo(PkiKeyStatus.NONE);
+    }
+
+    @Test
+    void nExecuteRienSiAucuneSuppressionNEstEchue()
+    {
+        when(userRepository.findBySuppressionPrevueLeLessThanEqualAndSupprimeLeIsNull(LocalDate.now()))
+            .thenReturn(List.of());
+
+        service.executerSuppressionsEnAttente();
+
+        verify(userRepository, never()).delete(any());
+        verify(userRepository, never()).save(any());
     }
 }

@@ -17,11 +17,14 @@ interface User {
     roles: RoleField[];
     uoId?: number | null;
     uoNom?: string | null;
+    /** Non-null = suppression en attente (délai de grâce de 2 jours, annulable
+     *  jusque-là) — voir User.suppressionPrevueLe côté serveur. */
+    suppressionPrevueLe?: string | null;
 }
 
 interface UserTableProps {
     user: User[];
-    onAction: (id: string, actionType: 'edit' | 'block-unblock' | 'delete' | 'view') => void;
+    onAction: (id: string, actionType: 'edit' | 'block-unblock' | 'delete' | 'annuler-suppression' | 'view') => void;
     actionInProgress: boolean;
     onRemoveFromUO?: (userId: string, uoId: number) => void;
     onRemoveAdminUO?: (userId: string, uoId: number) => void;
@@ -133,12 +136,17 @@ const UserTable = memo(({ user, onAction, actionInProgress, onRemoveFromUO, onRe
                 </thead>
                 <tbody>
                     {user.map((singleUser) => {
+                        // Suppression en attente (délai de grâce de 2 jours) : le serveur
+                        // refuse déjà block/unblock, transfert, retrait et modification sur
+                        // ce compte (voir UserService) — on les masque ici pour ne pas
+                        // exposer des boutons qui échoueraient systématiquement.
+                        const suppressionEnAttente = !!singleUser.suppressionPrevueLe;
                         const userHasUO = hasUO(singleUser);
-                        const showRetirerAttribuer = userHasUO
+                        const showRetirerAttribuer = !suppressionEnAttente && (userHasUO
                             ? (isAdminUO(singleUser) ? !!onRemoveAdminUO : !!onRemoveFromUO)
-                            : (!isAdminGlobal(singleUser) && !!onAssignToUO);
-                        const showTransferer = userHasUO && !isAdminGlobal(singleUser) && !!onTransfer;
-                        const showModifier = true;
+                            : (!isAdminGlobal(singleUser) && !!onAssignToUO));
+                        const showTransferer = !suppressionEnAttente && userHasUO && !isAdminGlobal(singleUser) && !!onTransfer;
+                        const showModifier = !suppressionEnAttente;
 
                         const handleRetirerAttribuer = () => {
                             closeMenu();
@@ -164,17 +172,23 @@ const UserTable = memo(({ user, onAction, actionInProgress, onRemoveFromUO, onRe
                                 <td className="col-telephone">{singleUser.telephone}</td>
                                 <td>
                                     <div className="actions-cell-container">
-                                        {/* Masqués à taille réduite (voir UserTable.css,
-                                            .actions-standalone) — repris comme entrées du
-                                            menu "..." juste en dessous plutôt que
-                                            disparaître : rien n'est perdu, juste regroupé. */}
-                                        <button
-                                            onClick={() => onAction(singleUser.id, 'block-unblock')}
-                                            disabled={actionInProgress}
-                                            className={`block-unblock actions-standalone ${singleUser.actif === true || singleUser.actif === 'true' ? 'is-active' : 'is-blocked'}`}
-                                        >
-                                            {singleUser.actif === true || singleUser.actif === 'true' ? 'Active' : 'Bloquer'}
-                                        </button>
+                                        {suppressionEnAttente ? (
+                                            <span className="suppression-en-attente-badge" title="Compte bloqué, annulable jusqu'à cette date">
+                                                Suppression le {new Date(singleUser.suppressionPrevueLe as string).toLocaleDateString('fr-FR')}
+                                            </span>
+                                        ) : (
+                                            /* Masqué à taille réduite (voir UserTable.css,
+                                               .actions-standalone) — repris comme entrée du
+                                               menu "..." juste en dessous plutôt que
+                                               disparaître : rien n'est perdu, juste regroupé. */
+                                            <button
+                                                onClick={() => onAction(singleUser.id, 'block-unblock')}
+                                                disabled={actionInProgress}
+                                                className={`block-unblock actions-standalone ${singleUser.actif === true || singleUser.actif === 'true' ? 'is-active' : 'is-blocked'}`}
+                                            >
+                                                {singleUser.actif === true || singleUser.actif === 'true' ? 'Active' : 'Bloquer'}
+                                            </button>
+                                        )}
 
                                         <button
                                             onClick={() => onAction(singleUser.id, 'view')}
@@ -236,15 +250,27 @@ const UserTable = memo(({ user, onAction, actionInProgress, onRemoveFromUO, onRe
                                                             Modifier
                                                         </button>
                                                     )}
-                                                    {/* Le serveur reste seul juge (autorité, dernier ADMIN du
-                                                        système, auto-suppression) - le bouton reste toujours
-                                                        visible, l'erreur exacte remonte au clic si refusé. */}
-                                                    <button
-                                                        onClick={() => { closeMenu(); onAction(singleUser.id, 'delete'); }}
-                                                        className="action-menu-item action-menu-item-danger"
-                                                    >
-                                                        Supprimer
-                                                    </button>
+                                                    {suppressionEnAttente ? (
+                                                        // Le levier de sécurité central de cette fonctionnalité :
+                                                        // n'importe quel admin (pas seulement celui qui l'a
+                                                        // demandée) peut annuler tant que le délai n'est pas écoulé.
+                                                        <button
+                                                            onClick={() => { closeMenu(); onAction(singleUser.id, 'annuler-suppression'); }}
+                                                            className="action-menu-item"
+                                                        >
+                                                            Annuler la suppression
+                                                        </button>
+                                                    ) : (
+                                                        // Le serveur reste seul juge (autorité, dernier ADMIN du
+                                                        // système, auto-suppression) - le bouton reste toujours
+                                                        // visible, l'erreur exacte remonte au clic si refusé.
+                                                        <button
+                                                            onClick={() => { closeMenu(); onAction(singleUser.id, 'delete'); }}
+                                                            className="action-menu-item action-menu-item-danger"
+                                                        >
+                                                            Supprimer
+                                                        </button>
+                                                    )}
                                                 </div>,
                                                 document.body
                                             )}

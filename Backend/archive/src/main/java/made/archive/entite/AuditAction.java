@@ -19,6 +19,11 @@ public enum AuditAction
     UTILISATEUR_MODIFIE,
     UTILISATEUR_BLOQUE,
     UTILISATEUR_REACTIVE,
+    /** Suppression demandée — n'exécute rien tout de suite, voir UTILISATEUR_SUPPRIME. */
+    UTILISATEUR_SUPPRESSION_DEMANDEE,
+    UTILISATEUR_SUPPRESSION_ANNULEE,
+    /** Suppression réellement EXÉCUTÉE, délai de grâce de 2 jours écoulé — voir
+     *  UserSuppressionCleanupScheduler. */
     UTILISATEUR_SUPPRIME,
     PROFIL_MODIFIE,
 
