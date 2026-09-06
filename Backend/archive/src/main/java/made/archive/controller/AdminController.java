@@ -159,10 +159,12 @@ public class AdminController
     }
 
     /**
-     * DEMANDE de suppression d'un compte — bloque immédiatement (réversible),
-     * programme l'exécution réelle (délai de grâce de 2 jours, voir
-     * UserService.demanderSuppression et DELAI_GRACE_SUPPRESSION_JOURS) — annulable
-     * jusque-là via /users/{id}/annuler-suppression.
+     * DEMANDE de suppression d'un compte — immédiate et automatique si le compte
+     * n'a jamais servi, sinon bloqué tout de suite (réversible) et exécuté après
+     * un délai de grâce de 2 jours (voir UserService.demanderSuppression et
+     * DELAI_GRACE_SUPPRESSION_JOURS) — annulable jusque-là via
+     * /users/{id}/annuler-suppression. Le corps de la réponse indique laquelle
+     * des deux s'est produite, pour que le client affiche le bon message.
      */
     @Secured({"ROLE_ADMIN", "ROLE_ADMIN_UO"})
     @DeleteMapping("/users/{id}")
@@ -170,8 +172,8 @@ public class AdminController
     {
         try
         {
-            userService.demanderSuppression(id, currentUser.getUser());
-            return ResponseEntity.ok().build();
+            boolean supprimeImmediatement = userService.demanderSuppression(id, currentUser.getUser());
+            return ResponseEntity.ok(java.util.Map.of("supprimeImmediatement", supprimeImmediatement));
         }
         catch (Exception e)
         {

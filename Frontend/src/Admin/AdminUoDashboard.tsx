@@ -310,15 +310,16 @@ function AdminUoDashboard() {
         }
 
         if (action === 'delete') {
-            // Le compte est bloqué immédiatement (réversible), la suppression
-            // réelle (réelle si jamais connecté, sinon logique et irréversible —
-            // mot de passe invalidé, clé PKI révoquée si éditeur) n'a lieu
-            // qu'après un délai de grâce de 2 jours, annulable jusque-là par
-            // n'importe quel admin — voir UserService.demanderSuppression.
+            // Deux issues possibles, décidées par le serveur (voir
+            // UserService.demanderSuppression) : si le compte n'a jamais servi,
+            // suppression immédiate et automatique (rien à protéger d'un admin
+            // malveillant) ; sinon bloqué tout de suite (réversible) puis supprimé
+            // pour de bon après 2 jours, annulable jusque-là par n'importe quel admin.
             const ok = await confirm({
                 title: 'Supprimer cet utilisateur ?',
-                message: `Bloquer puis supprimer ${targetUser.nom} ${targetUser.prenom} (${targetUser.email}) dans 2 jours ? `
-                    + `Annulable jusque-là ; passé ce délai, l'action devient irréversible.`,
+                message: `Supprimer ${targetUser.nom} ${targetUser.prenom} (${targetUser.email}) ? `
+                    + `S'il n'a jamais servi, ce sera immédiat et définitif. Sinon, il sera bloqué puis `
+                    + `supprimé pour de bon dans 2 jours (annulable jusque-là).`,
                 confirmLabel: 'Supprimer',
                 danger: true,
             });
@@ -326,8 +327,10 @@ function AdminUoDashboard() {
 
             setActionInProgress(true);
             try {
-                await supprimerUtilisateur(userId);
-                notify.success("Suppression programmée dans 2 jours (annulable jusque-là)");
+                const res = await supprimerUtilisateur(userId);
+                notify.success(res?.supprimeImmediatement
+                    ? "Utilisateur supprimé définitivement"
+                    : "Suppression programmée dans 2 jours (annulable jusque-là)");
                 if (currentUOId) fetchUsers(currentUOId);
             } catch (err: any) {
                 notify.error(err.message || "Erreur lors de la suppression de l'utilisateur");
