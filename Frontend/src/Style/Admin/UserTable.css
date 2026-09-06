@@ -261,20 +261,68 @@
 }
 
 /* Remplace le bouton Actif/Bloquer quand une suppression est en attente —
-   même gabarit visuel que .block-unblock, mais pas un bouton : le déblocage
-   passe par "Annuler la suppression" (menu "..."), pas par ce badge. */
-.suppression-en-attente-badge {
+   un badge poubelle compact plutôt qu'un texte qui allonge la ligne ; le
+   détail (date, annulation) est dans l'info-bulle au clic, et dans "Voir". */
+.deletion-badge-wrapper {
+    position: relative;
+    display: inline-flex;
+}
+
+.deletion-badge {
     display: inline-flex;
     align-items: center;
-    padding: 0.35rem 0.85rem;
-    border-radius: var(--radius-sm);
-    font-family: 'DM Sans', sans-serif;
-    font-size: 0.78rem;
-    font-weight: 500;
-    white-space: nowrap;
-    border: 1.5px solid rgba(155,58,58,0.2);
-    background: rgba(155,58,58,0.08);
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(155,58,58,0.25);
+    background: rgba(155,58,58,0.1);
     color: var(--error);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background var(--transition), box-shadow var(--transition);
+}
+
+.deletion-badge:hover {
+    background: rgba(155,58,58,0.18);
+    box-shadow: 0 0 0 3px rgba(155,58,58,0.1);
+}
+
+/* Réutilise le gabarit de .action-menu mais avec un contenu texte + bouton
+   plutôt qu'une liste d'entrées cliquables. */
+.deletion-menu {
+    padding: 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    max-width: 240px;
+}
+
+.deletion-menu-message {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--dark-soft);
+    line-height: 1.4;
+}
+
+.deletion-menu-cancel-btn {
+    align-self: flex-start;
+    padding: 0.45rem 0.9rem;
+    border-radius: var(--radius-sm);
+    border: 1.5px solid var(--border);
+    background: var(--white-choc);
+    color: var(--dark-soft);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background var(--transition), border-color var(--transition);
+}
+
+.deletion-menu-cancel-btn:hover {
+    background: var(--cream);
+    border-color: var(--accent);
 }
 
 button:disabled {

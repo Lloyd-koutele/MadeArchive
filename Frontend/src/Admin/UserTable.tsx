@@ -54,6 +54,13 @@ const UserTable = memo(({ user, onAction, actionInProgress, onRemoveFromUO, onRe
     const rolesMenuRef = useRef<HTMLDivElement | null>(null);
     const rolesButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
+    // Info-bulle "suppression en attente" — même mécanique encore, déclenchée par
+    // le badge poubelle rouge dans la colonne Actions (voir plus bas).
+    const [openDeletionId, setOpenDeletionId] = useState<string | null>(null);
+    const [deletionMenuPos, setDeletionMenuPos] = useState<MenuPosition | null>(null);
+    const deletionMenuRef = useRef<HTMLDivElement | null>(null);
+    const deletionButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
     const normalizeRole = (role: string) => {
         if (!role || typeof role !== 'string') return '';
         return role.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
@@ -73,6 +80,16 @@ const UserTable = memo(({ user, onAction, actionInProgress, onRemoveFromUO, onRe
     const hasUO = (u: User) => u.uoId !== null && u.uoId !== undefined;
     const isAdminGlobal = (u: User) => rolesOf(u).includes('ADMIN');
     const isAdminUO = (u: User) => rolesOf(u).includes('ADMIN_UO');
+
+    // Même hiérarchie que côté serveur (voir SecurityConfig.roleHierarchy) —
+    // détermine quel rôle afficher en titre du bouton (le plus "élevé"), les
+    // autres allant dans la liste déroulante plutôt qu'un compte brut (voir
+    // le rendu de la colonne "Rôle" plus bas).
+    const ROLE_PRIORITY = ['ADMIN', 'ADMIN_UO', 'EDITOR', 'USER'];
+    const rolesParPriorite = (u: User) =>
+        [...(u.roles || [])].sort(
+            (a, b) => ROLE_PRIORITY.indexOf(normalizeRole(a.name)) - ROLE_PRIORITY.indexOf(normalizeRole(b.name))
+        );
 
     const closeMenu = () => {
         setOpenMenuId(null);
@@ -164,6 +181,50 @@ const UserTable = memo(({ user, onAction, actionInProgress, onRemoveFromUO, onRe
         };
     }, [openRolesId]);
 
+    const closeDeletionMenu = () => {
+        setOpenDeletionId(null);
+        setDeletionMenuPos(null);
+    };
+
+    const toggleDeletionMenu = (id: string) => {
+        if (openDeletionId === id) {
+            closeDeletionMenu();
+            return;
+        }
+        const btn = deletionButtonRefs.current[id];
+        if (btn) {
+            const rect = btn.getBoundingClientRect();
+            setDeletionMenuPos({
+                top: rect.bottom + window.scrollY + 4,
+                left: rect.left + window.scrollX,
+            });
+        }
+        setOpenDeletionId(id);
+    };
+
+    useEffect(() => {
+        if (!openDeletionId) return;
+
+        const handleClickOutside = (event: MouseEvent) => {
+            const target = event.target as Node;
+            const clickedToggle = deletionButtonRefs.current[openDeletionId]?.contains(target);
+            const clickedMenu = deletionMenuRef.current?.contains(target);
+            if (!clickedToggle && !clickedMenu) closeDeletionMenu();
+        };
+
+        const handleScrollOrResize = () => closeDeletionMenu();
+
+        document.addEventListener('mousedown', handleClickOutside);
+        window.addEventListener('scroll', handleScrollOrResize, true);
+        window.addEventListener('resize', handleScrollOrResize);
+
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            window.removeEventListener('scroll', handleScrollOrResize, true);
+            window.removeEventListener('resize', handleScrollOrResize);
+        };
+    }, [openDeletionId]);
+
     if (!Array.isArray(user) || user.length === 0) {
         return (
             <div className='empty-state'>
@@ -223,48 +284,88 @@ const UserTable = memo(({ user, onAction, actionInProgress, onRemoveFromUO, onRe
                                         'Aucun rôle'
                                     ) : singleUser.roles.length <= 2 ? (
                                         singleUser.roles.map(r => getRoleLabel(r.name)).join(', ')
-                                    ) : (
-                                        // 3 rôles ou plus : repliés dans une liste déroulante plutôt
-                                        // que d'allonger la ligne indéfiniment.
-                                        <div className="roles-dropdown-wrapper">
-                                            <button
-                                                ref={(el) => { rolesButtonRefs.current[singleUser.id] = el; }}
-                                                onClick={() => toggleRolesMenu(singleUser.id)}
-                                                className="roles-trigger"
-                                                aria-label={`${singleUser.roles.length} rôles`}
-                                                aria-expanded={openRolesId === singleUser.id}
-                                            >
-                                                {singleUser.roles.length} rôles <i className="fa-solid fa-chevron-down" />
-                                            </button>
-
-                                            {openRolesId === singleUser.id && rolesMenuPos && createPortal(
-                                                <div
-                                                    ref={rolesMenuRef}
-                                                    className="action-menu roles-menu"
-                                                    style={{
-                                                        position: 'fixed',
-                                                        top: rolesMenuPos.top,
-                                                        left: rolesMenuPos.left,
-                                                    }}
+                                    ) : (() => {
+                                        // 3 rôles ou plus : un seul affiché en titre (le plus élevé
+                                        // dans la hiérarchie), les autres repliés dans la liste
+                                        // déroulante plutôt que d'allonger la ligne indéfiniment.
+                                        const [rolePrincipal, ...autres] = rolesParPriorite(singleUser);
+                                        return (
+                                            <div className="roles-dropdown-wrapper">
+                                                <button
+                                                    ref={(el) => { rolesButtonRefs.current[singleUser.id] = el; }}
+                                                    onClick={() => toggleRolesMenu(singleUser.id)}
+                                                    className="roles-trigger"
+                                                    aria-label={`${getRoleLabel(rolePrincipal.name)}, et ${autres.length} autre(s) rôle(s)`}
+                                                    aria-expanded={openRolesId === singleUser.id}
                                                 >
-                                                    {singleUser.roles.map((r, i) => (
-                                                        <div key={i} className="roles-menu-item">
-                                                            {getRoleLabel(r.name)}
-                                                        </div>
-                                                    ))}
-                                                </div>,
-                                                document.body
-                                            )}
-                                        </div>
-                                    )}
+                                                    {getRoleLabel(rolePrincipal.name)} <i className="fa-solid fa-chevron-down" />
+                                                </button>
+
+                                                {openRolesId === singleUser.id && rolesMenuPos && createPortal(
+                                                    <div
+                                                        ref={rolesMenuRef}
+                                                        className="action-menu roles-menu"
+                                                        style={{
+                                                            position: 'fixed',
+                                                            top: rolesMenuPos.top,
+                                                            left: rolesMenuPos.left,
+                                                        }}
+                                                    >
+                                                        {autres.map((r, i) => (
+                                                            <div key={i} className="roles-menu-item">
+                                                                {getRoleLabel(r.name)}
+                                                            </div>
+                                                        ))}
+                                                    </div>,
+                                                    document.body
+                                                )}
+                                            </div>
+                                        );
+                                    })()}
                                 </td>
                                 <td className="col-telephone">{singleUser.telephone}</td>
                                 <td>
                                     <div className="actions-cell-container">
                                         {suppressionEnAttente ? (
-                                            <span className="suppression-en-attente-badge" title="Compte bloqué, annulable jusqu'à cette date">
-                                                Suppression le {new Date(singleUser.suppressionPrevueLe as string).toLocaleDateString('fr-FR')}
-                                            </span>
+                                            // Badge poubelle : indique une suppression en cours sans
+                                            // encombrer la ligne — le détail (date, annulation) est
+                                            // dans l'info-bulle au clic, et dans "Voir" (voir plus bas).
+                                            <div className="deletion-badge-wrapper">
+                                                <button
+                                                    ref={(el) => { deletionButtonRefs.current[singleUser.id] = el; }}
+                                                    onClick={() => toggleDeletionMenu(singleUser.id)}
+                                                    className="deletion-badge"
+                                                    aria-label="Suppression en cours, cliquer pour plus d'informations"
+                                                    aria-expanded={openDeletionId === singleUser.id}
+                                                >
+                                                    <i className="fa-solid fa-trash" />
+                                                </button>
+
+                                                {openDeletionId === singleUser.id && deletionMenuPos && createPortal(
+                                                    <div
+                                                        ref={deletionMenuRef}
+                                                        className="action-menu deletion-menu"
+                                                        style={{
+                                                            position: 'fixed',
+                                                            top: deletionMenuPos.top,
+                                                            left: deletionMenuPos.left,
+                                                        }}
+                                                    >
+                                                        <p className="deletion-menu-message">
+                                                            L'utilisateur sera supprimé le{' '}
+                                                            {new Date(singleUser.suppressionPrevueLe as string).toLocaleDateString('fr-FR')}.
+                                                        </p>
+                                                        <button
+                                                            onClick={() => { closeDeletionMenu(); onAction(singleUser.id, 'annuler-suppression'); }}
+                                                            disabled={actionInProgress}
+                                                            className="deletion-menu-cancel-btn"
+                                                        >
+                                                            Annuler la suppression
+                                                        </button>
+                                                    </div>,
+                                                    document.body
+                                                )}
+                                            </div>
                                         ) : (
                                             /* Masqué à taille réduite (voir UserTable.css,
                                                .actions-standalone) — repris comme entrée du
@@ -282,11 +383,16 @@ const UserTable = memo(({ user, onAction, actionInProgress, onRemoveFromUO, onRe
                                         <button
                                             onClick={() => onAction(singleUser.id, 'view')}
                                             disabled={actionInProgress}
-                                            className="action-button view actions-standalone"
+                                            // En attente de suppression : le menu "..." disparaît (plus
+                                            // rien à y mettre, Annuler vit désormais dans le badge
+                                            // poubelle ci-dessus) — "Voir" doit donc rester accessible à
+                                            // toute largeur, pas seulement au-delà de 1100px.
+                                            className={`action-button view ${suppressionEnAttente ? '' : 'actions-standalone'}`}
                                         >
                                             Voir
                                         </button>
 
+                                        {!suppressionEnAttente && (
                                         <div className="action-menu-wrapper">
                                             <button
                                                 ref={(el) => { buttonRefs.current[singleUser.id] = el; }}
@@ -339,31 +445,20 @@ const UserTable = memo(({ user, onAction, actionInProgress, onRemoveFromUO, onRe
                                                             Modifier
                                                         </button>
                                                     )}
-                                                    {suppressionEnAttente ? (
-                                                        // Le levier de sécurité central de cette fonctionnalité :
-                                                        // n'importe quel admin (pas seulement celui qui l'a
-                                                        // demandée) peut annuler tant que le délai n'est pas écoulé.
-                                                        <button
-                                                            onClick={() => { closeMenu(); onAction(singleUser.id, 'annuler-suppression'); }}
-                                                            className="action-menu-item"
-                                                        >
-                                                            Annuler la suppression
-                                                        </button>
-                                                    ) : (
-                                                        // Le serveur reste seul juge (autorité, dernier ADMIN du
-                                                        // système, auto-suppression) - le bouton reste toujours
-                                                        // visible, l'erreur exacte remonte au clic si refusé.
-                                                        <button
-                                                            onClick={() => { closeMenu(); onAction(singleUser.id, 'delete'); }}
-                                                            className="action-menu-item action-menu-item-danger"
-                                                        >
-                                                            Supprimer
-                                                        </button>
-                                                    )}
+                                                    {/* Ce menu ne se rend plus du tout tant qu'une suppression est
+                                                        en attente (voir plus haut) — "Annuler" vit désormais dans
+                                                        le badge poubelle, "Supprimer" est donc toujours pertinent ici. */}
+                                                    <button
+                                                        onClick={() => { closeMenu(); onAction(singleUser.id, 'delete'); }}
+                                                        className="action-menu-item action-menu-item-danger"
+                                                    >
+                                                        Supprimer
+                                                    </button>
                                                 </div>,
                                                 document.body
                                             )}
                                         </div>
+                                        )}
                                     </div>
                                 </td>
                             </tr>

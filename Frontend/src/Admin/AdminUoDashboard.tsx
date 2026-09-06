@@ -638,6 +638,14 @@ function AdminUoDashboard() {
                                     {isUserActive(viewingUser) ? 'Actif' : 'Bloqué'}
                                 </span>
                             </div>
+                            {viewingUser.suppressionPrevueLe && (
+                                <div className="details-row">
+                                    <strong>Suppression :</strong>
+                                    <span className="status-tag inactive">
+                                        Suppression le {new Date(viewingUser.suppressionPrevueLe).toLocaleDateString('fr-FR')}
+                                    </span>
+                                </div>
+                            )}
                             <div className="details-row">
                                 <strong>Rôles :</strong> {viewingUser.roles?.map(r => r.name).join(', ') || 'Aucun'}
                             </div>
