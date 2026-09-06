@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import Modal from '../Page/Modal';
 import {
     getArbreEmplacements,
@@ -126,6 +127,48 @@ function PhysicalLocationsPanel({ uoId }: PhysicalLocationsPanelProps) {
         if (noeud) collecter(noeud, acc);
         return acc;
     }, [arbre, draggedId]);
+
+    // ── Menu "..." compact (écran réduit — voir PhysicalLocationsPanel.css) ──
+    // Un seul menu ouvert à la fois pour tout l'arbre, géré ici (pas dans
+    // PlNode) car il faut une seule position/portail partagés, même pattern
+    // que UserTable/TypedocumentList. Le menu reprend TOUS les boutons
+    // autonomes (mêmes icônes, mêmes libellés, mêmes conditions d'affichage)
+    // — rien n'est perdu, juste regroupé derrière un seul point d'entrée.
+    const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+    const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+    const menuRef = useRef<HTMLDivElement | null>(null);
+    const menuButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+    const closeMenu = () => { setOpenMenuId(null); setMenuPos(null); };
+
+    const toggleMenu = (id: string) => {
+        if (openMenuId === id) { closeMenu(); return; }
+        const btn = menuButtonRefs.current[id];
+        if (btn) {
+            const rect = btn.getBoundingClientRect();
+            setMenuPos({ top: rect.bottom + window.scrollY + 4, left: rect.right + window.scrollX });
+        }
+        setOpenMenuId(id);
+    };
+
+    useEffect(() => {
+        if (!openMenuId) return;
+        const handleClickOutside = (event: MouseEvent) => {
+            const target = event.target as Node;
+            const clickedToggle = menuButtonRefs.current[openMenuId]?.contains(target);
+            const clickedMenu = menuRef.current?.contains(target);
+            if (!clickedToggle && !clickedMenu) closeMenu();
+        };
+        const handleScrollOrResize = () => closeMenu();
+        document.addEventListener('mousedown', handleClickOutside);
+        window.addEventListener('scroll', handleScrollOrResize, true);
+        window.addEventListener('resize', handleScrollOrResize);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            window.removeEventListener('scroll', handleScrollOrResize, true);
+            window.removeEventListener('resize', handleScrollOrResize);
+        };
+    }, [openMenuId]);
 
     const charger = useCallback(async () => {
         if (uoId == null) { setArbre([]); return; }
@@ -378,6 +421,12 @@ function PhysicalLocationsPanel({ uoId }: PhysicalLocationsPanelProps) {
                                 onDragOver={handleDragOver}
                                 onDragLeave={handleDragLeave}
                                 onDrop={handleDrop}
+                                openMenuId={openMenuId}
+                                menuPos={menuPos}
+                                menuRef={menuRef}
+                                menuButtonRefs={menuButtonRefs}
+                                onToggleMenu={toggleMenu}
+                                onCloseMenu={closeMenu}
                             />
                         ))
                     )}
@@ -407,12 +456,12 @@ function PhysicalLocationsPanel({ uoId }: PhysicalLocationsPanelProps) {
                             <label>
                                 <input type="radio" checked={form.storagePoint}
                                     onChange={() => setForm(f => ({ ...f, storagePoint: true }))} />
-                                Point de stockage — recevra des documents, ne pourra pas avoir d'enfants
+                                Point de stockage
                             </label>
                             <label>
                                 <input type="radio" checked={!form.storagePoint}
                                     onChange={() => setForm(f => ({ ...f, storagePoint: false }))} />
-                                Nœud chemin — pourra avoir des enfants, ne recevra pas de document directement
+                                Nœud chemin
                             </label>
                         </fieldset>
                     )}
@@ -433,6 +482,7 @@ function PlNode({
     expanded, onToggleExpand, filterActive, visibleIds, matchIds,
     onAddChild, onEdit, onToggleType, onToggleStatus, onDelete,
     onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop,
+    openMenuId, menuPos, menuRef, menuButtonRefs, onToggleMenu, onCloseMenu,
 }: {
     node: PhysicalLocationNodeDto;
     depth: number;
@@ -454,6 +504,12 @@ function PlNode({
     onDragOver: (e: React.DragEvent, target: PhysicalLocationNodeDto | null) => void;
     onDragLeave: (key: string | 'ROOT') => void;
     onDrop: (e: React.DragEvent, target: PhysicalLocationNodeDto | null) => void;
+    openMenuId: string | null;
+    menuPos: { top: number; left: number } | null;
+    menuRef: React.RefObject<HTMLDivElement | null>;
+    menuButtonRefs: React.RefObject<Record<string, HTMLButtonElement | null>>;
+    onToggleMenu: (id: string) => void;
+    onCloseMenu: () => void;
 }) {
     const isBusy = busyId === node.id;
     const isInactive = node.status === 'INACTIVE';
@@ -501,28 +557,82 @@ function PlNode({
                 {isInactive && <span className="pl-status-tag">Inactif</span>}
 
                 <div className="pl-actions">
+                    {/* Masqués sur écran réduit (voir PhysicalLocationsPanel.css,
+                        .pl-actions-standalone) — repris à l'identique (mêmes icônes,
+                        mêmes libellés, mêmes conditions) dans le menu "..." juste
+                        en dessous plutôt que disparaître. */}
                     {!node.storagePoint && !isInactive && (
-                        <button title="Ajouter un enfant" onClick={() => onAddChild(node.id)} disabled={isBusy}>
+                        <button title="Ajouter un enfant" className="pl-actions-standalone"
+                            onClick={() => onAddChild(node.id)} disabled={isBusy}>
                             <i className="fa-solid fa-plus" />
                         </button>
                     )}
-                    <button title="Modifier" onClick={() => onEdit(node)} disabled={isBusy}>
+                    <button title="Modifier" className="pl-actions-standalone"
+                        onClick={() => onEdit(node)} disabled={isBusy}>
                         <i className="fa-solid fa-pen" />
                     </button>
                     <button title={node.storagePoint ? 'Convertir en chemin' : 'Convertir en stockage'}
+                        className="pl-actions-standalone"
                         onClick={() => onToggleType(node)} disabled={isBusy}>
                         <i className="fa-solid fa-shuffle" />
                     </button>
                     <button title={isInactive ? 'Réactiver' : 'Désactiver'}
+                        className="pl-actions-standalone"
                         onClick={() => onToggleStatus(node)} disabled={isBusy}>
                         <i className={`fa-solid ${isInactive ? 'fa-toggle-off' : 'fa-toggle-on'}`} />
                     </button>
                     <button
                         title={node.children.length > 0 ? 'Supprimer avec sa sous-arborescence' : 'Supprimer'}
-                        className="pl-delete-btn"
+                        className="pl-delete-btn pl-actions-standalone"
                         onClick={() => onDelete(node)} disabled={isBusy}>
                         <i className="fa-solid fa-trash" />
                     </button>
+
+                    {/* Menu "..." compact — visible uniquement sous ~1100px, voir
+                        PhysicalLocationsPanel.css. Reprend exactement les mêmes
+                        actions/icônes/conditions que les boutons autonomes ci-dessus. */}
+                    <div className="action-menu-wrapper pl-actions-compact">
+                        <button
+                            ref={(el) => { menuButtonRefs.current[node.id] = el; }}
+                            onClick={() => onToggleMenu(node.id)}
+                            disabled={isBusy}
+                            className="menu-toggle"
+                            aria-label="Plus d'actions"
+                            aria-expanded={openMenuId === node.id}
+                        >
+                            <i className="fa-solid fa-ellipsis" />
+                        </button>
+
+                        {openMenuId === node.id && menuPos && createPortal(
+                            <div
+                                ref={menuRef}
+                                className="action-menu"
+                                style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, transform: 'translateX(-100%)' }}
+                            >
+                                {!node.storagePoint && !isInactive && (
+                                    <button onClick={() => { onCloseMenu(); onAddChild(node.id); }} className="action-menu-item">
+                                        <i className="fa-solid fa-plus" /> Ajouter un enfant
+                                    </button>
+                                )}
+                                <button onClick={() => { onCloseMenu(); onEdit(node); }} className="action-menu-item">
+                                    <i className="fa-solid fa-pen" /> Modifier
+                                </button>
+                                <button onClick={() => { onCloseMenu(); onToggleType(node); }} className="action-menu-item">
+                                    <i className="fa-solid fa-shuffle" />{' '}
+                                    {node.storagePoint ? 'Convertir en chemin' : 'Convertir en stockage'}
+                                </button>
+                                <button onClick={() => { onCloseMenu(); onToggleStatus(node); }} className="action-menu-item">
+                                    <i className={`fa-solid ${isInactive ? 'fa-toggle-off' : 'fa-toggle-on'}`} />{' '}
+                                    {isInactive ? 'Réactiver' : 'Désactiver'}
+                                </button>
+                                <button onClick={() => { onCloseMenu(); onDelete(node); }} className="action-menu-item">
+                                    <i className="fa-solid fa-trash" />{' '}
+                                    {node.children.length > 0 ? 'Supprimer avec sa sous-arborescence' : 'Supprimer'}
+                                </button>
+                            </div>,
+                            document.body
+                        )}
+                    </div>
                 </div>
             </div>
             {hasChildren && isExpanded && (
@@ -550,6 +660,12 @@ function PlNode({
                             onDragOver={onDragOver}
                             onDragLeave={onDragLeave}
                             onDrop={onDrop}
+                            openMenuId={openMenuId}
+                            menuPos={menuPos}
+                            menuRef={menuRef}
+                            menuButtonRefs={menuButtonRefs}
+                            onToggleMenu={onToggleMenu}
+                            onCloseMenu={onCloseMenu}
                         />
                     ))}
                 </div>
