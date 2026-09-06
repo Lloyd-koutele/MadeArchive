@@ -443,7 +443,7 @@ function AdminUoDashboard() {
                                     onClick={() => setIsExportModalOpen(true)}
                                     className="sidebar-btn"
                                 >
-                                    <i className="fa-solid fa-file-zipper" /> Exporter
+                                    <i className="fa-solid fa-box-open"/> Exporter
                                 </button>
                             </div>
 
@@ -618,11 +618,11 @@ function AdminUoDashboard() {
                     defaultUoId={currentUOId}
                 />
 
-                <Modal isOpen={isCreateUserModalOpen} onClose={handleCloseModal} title="Créer un utilisateur">
+                <Modal isOpen={isCreateUserModalOpen} onClose={handleCloseModal} title="Créer un utilisateur" size="medium">
                     <CreateUser onsuccess={handleUserUpdated} restrictToUO={restrictToUO} />
                 </Modal>
 
-                <Modal isOpen={isUpdateModalOpen} onClose={handleCloseModal} title="Mettre à jour un utilisateur">
+                <Modal isOpen={isUpdateModalOpen} onClose={handleCloseModal} title="Mettre à jour un utilisateur" size="medium">
                     {selectedUser && <UpdateUser initialData={selectedUser} onsuccess={handleUserUpdated} restrictToUO={restrictToUO} />}
                 </Modal>
 
