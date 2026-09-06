@@ -182,7 +182,18 @@
 
 /* Responsive */
 @media (max-width: 768px) {
-    .admin-body { flex-direction: column; }
+    /* PAS flex-direction: column ici (c'était le cas avant) : cette règle
+       datait de l'ANCIEN comportement de la sidebar mobile, qui passait en
+       pleine largeur/hauteur automatique et poussait le contenu en dessous
+       — cohérent empilé en colonne à l'époque. La sidebar est maintenant un
+       rail fixe de 52px replié (Page/Sidebar.css) ou un tiroir superposé
+       (position: fixed, sorti du flux) quand ouverte : dans les deux cas
+       elle doit rester CÔTE À CÔTE avec .main-content (flex-direction: row,
+       la valeur par défaut, héritée de .admin-body ci-dessus), jamais
+       empilée au-dessus. En colonne, le rail de 52px de haut (height: 100vh)
+       poussait .main-content à 800px plus bas, hors écran — repéré en
+       inspectant le DOM à 760px de large (main-content existait bien, juste
+       positionné sous la sidebar au lieu d'à côté). */
     .main-content { padding: 1rem; }
 }
 
