@@ -207,25 +207,19 @@ const UserTable = memo(({ user, onAction, actionInProgress, onRemoveFromUO, onRe
                                                         transform: 'translateX(-100%)',
                                                     }}
                                                 >
-                                                    {/* Doublons de "Voir"/Actif-Bloquer, réservés
-                                                        à la taille réduite (action-menu-item-compact,
-                                                        display: none par défaut — voir UserTable.css)
-                                                        pour ne jamais les dupliquer avec les boutons
-                                                        autonomes ci-dessus quand ceux-ci sont visibles. */}
+                                                    {/* Doublon de "Voir", réservé à la taille réduite
+                                                        (action-menu-item-compact, display: none par
+                                                        défaut — voir UserTable.css) pour ne jamais le
+                                                        dupliquer avec le bouton autonome ci-dessus quand
+                                                        celui-ci est visible. Le statut Actif/Bloquer n'a
+                                                        PAS de doublon ici — retiré du menu à la demande,
+                                                        il reste uniquement accessible en bouton autonome
+                                                        au-delà de 1100px. */}
                                                     <button
                                                         onClick={() => { closeMenu(); onAction(singleUser.id, 'view'); }}
                                                         className="action-menu-item action-menu-item-compact"
                                                     >
                                                         Voir
-                                                    </button>
-                                                    <button
-                                                        onClick={() => { closeMenu(); onAction(singleUser.id, 'block-unblock'); }}
-                                                        className="action-menu-item action-menu-item-compact"
-                                                    >
-                                                        {/* Même texte que le bouton autonome ci-dessus
-                                                            (pas un verbe inversé) — reprendre
-                                                            exactement la même logique existante. */}
-                                                        {singleUser.actif === true || singleUser.actif === 'true' ? 'Active' : 'Bloquer'}
                                                     </button>
                                                     {showRetirerAttribuer && (
                                                         <button onClick={handleRetirerAttribuer} className="action-menu-item">
