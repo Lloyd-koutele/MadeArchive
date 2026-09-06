@@ -33,7 +33,14 @@ services:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
     volumes:
-      - /data # <--- VOLUME ANONYME : Supprimé automatiquement au "docker compose down"
+      # Volume NOMMÉ (pas anonyme comme avant) : un volume anonyme est
+      # supprimé automatiquement par "docker compose down" — chaque
+      # document archivé, et le bucket lui-même, disparaissaient avec lui,
+      # alors que Postgres (déjà en volume nommé) gardait la trace de ces
+      # documents comme "archivés" — constaté en conditions réelles, un
+      # vrai problème pour un système d'archivage. "docker compose down -v"
+      # (avec -v) reste nécessaire pour effacer aussi ce volume-là.
+      - minio_data:/data
     command: server /data --console-address ":9001"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
@@ -285,6 +292,7 @@ services:
 
 volumes:
   postgres_data:
+  minio_data:
   ollama_data:
   hsm_data:
   traefik_certs:

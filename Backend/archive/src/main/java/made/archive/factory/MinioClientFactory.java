@@ -29,11 +29,23 @@ public class MinioClientFactory
         if (client == null)
         {
             client = buildClient();
-            ensureBucketExists();
         }
+        // Revérifié à CHAQUE appel, pas seulement à la première construction
+        // du client — sans ça, un bucket qui disparaît sous les pieds de
+        // l'application (ex. volume MinIO anonyme effacé par un
+        // "docker compose down", constaté en conditions réelles) restait
+        // invisible pour le reste de la vie du processus : le client déjà
+        // mis en cache n'était plus jamais revérifié, et les échecs de
+        // upload/download qui en résultaient n'étaient pas toujours
+        // remontés (ex. l'enregistrement du texte OCR, volontairement
+        // "best-effort" — voir OcrService — n'aurait jamais signalé un
+        // bucket manquant). Le coût d'un aller-retour bucketExists
+        // supplémentaire par opération est négligeable face au risque de
+        // silence sur un problème de stockage réel.
+        ensureBucketExists();
         return client;
     }
-    
+
     private void ensureBucketExists()
     {
         try
@@ -52,14 +64,16 @@ public class MinioClientFactory
                 );
                 log.info("[MinIO] Bucket '{}' créé", props.getBucket());
             }
-            else
-            {
-                log.info("[MinIO] Bucket '{}' existant", props.getBucket());
-            }
         }
         catch (Exception e)
         {
-            log.error("[MinIO] Erreur vérification bucket : {}", e.getMessage());
+            // Relancée (pas seulement loggée comme avant) : un bucket
+            // inaccessible ou impossible à créer doit bloquer l'opération de
+            // stockage qui a déclenché cet appel, pas être avalé
+            // silencieusement en laissant croire que tout va bien.
+            throw new IllegalStateException(
+                "Bucket MinIO '" + props.getBucket()
+                    + "' inaccessible ou impossible à créer : " + e.getMessage(), e);
         }
     }
 
