@@ -37,6 +37,17 @@
     max-height: 94vh;
 }
 
+/* Formulaire à 2 colonnes dont les champs ont besoin d'un peu plus de place —
+   à 540px, un email ("prenom.nom@domaine.com") ou un nom composé
+   ("Jean-Claude Petit") débordait visuellement de sa moitié de ligne alors
+   que Prénom/Téléphone, plus courts, y tenaient sans problème (voir
+   CreateUser/UpdateUser — les 4 champs partagent pourtant la même grille
+   1fr 1fr, donc la même largeur : le souci n'était pas leur taille relative,
+   juste que 540px ne suffisait pas à ce contenu-là). */
+.modal-content-medium {
+    max-width: 680px;
+}
+
 @keyframes modalIn {
     from { opacity: 0; transform: translateY(12px); }
     to   { opacity: 1; transform: translateY(0); }
