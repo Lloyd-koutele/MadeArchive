@@ -164,10 +164,14 @@ const UserTable = memo(({ user, onAction, actionInProgress, onRemoveFromUO, onRe
                                 <td className="col-telephone">{singleUser.telephone}</td>
                                 <td>
                                     <div className="actions-cell-container">
+                                        {/* Masqués à taille réduite (voir UserTable.css,
+                                            .actions-standalone) — repris comme entrées du
+                                            menu "..." juste en dessous plutôt que
+                                            disparaître : rien n'est perdu, juste regroupé. */}
                                         <button
                                             onClick={() => onAction(singleUser.id, 'block-unblock')}
                                             disabled={actionInProgress}
-                                            className={`block-unblock ${singleUser.actif === true || singleUser.actif === 'true' ? 'is-active' : 'is-blocked'}`}
+                                            className={`block-unblock actions-standalone ${singleUser.actif === true || singleUser.actif === 'true' ? 'is-active' : 'is-blocked'}`}
                                         >
                                             {singleUser.actif === true || singleUser.actif === 'true' ? 'Active' : 'Bloquer'}
                                         </button>
@@ -175,7 +179,7 @@ const UserTable = memo(({ user, onAction, actionInProgress, onRemoveFromUO, onRe
                                         <button
                                             onClick={() => onAction(singleUser.id, 'view')}
                                             disabled={actionInProgress}
-                                            className="action-button view"
+                                            className="action-button view actions-standalone"
                                         >
                                             Voir
                                         </button>
@@ -203,6 +207,26 @@ const UserTable = memo(({ user, onAction, actionInProgress, onRemoveFromUO, onRe
                                                         transform: 'translateX(-100%)',
                                                     }}
                                                 >
+                                                    {/* Doublons de "Voir"/Actif-Bloquer, réservés
+                                                        à la taille réduite (action-menu-item-compact,
+                                                        display: none par défaut — voir UserTable.css)
+                                                        pour ne jamais les dupliquer avec les boutons
+                                                        autonomes ci-dessus quand ceux-ci sont visibles. */}
+                                                    <button
+                                                        onClick={() => { closeMenu(); onAction(singleUser.id, 'view'); }}
+                                                        className="action-menu-item action-menu-item-compact"
+                                                    >
+                                                        Voir
+                                                    </button>
+                                                    <button
+                                                        onClick={() => { closeMenu(); onAction(singleUser.id, 'block-unblock'); }}
+                                                        className="action-menu-item action-menu-item-compact"
+                                                    >
+                                                        {/* Même texte que le bouton autonome ci-dessus
+                                                            (pas un verbe inversé) — reprendre
+                                                            exactement la même logique existante. */}
+                                                        {singleUser.actif === true || singleUser.actif === 'true' ? 'Active' : 'Bloquer'}
+                                                    </button>
                                                     {showRetirerAttribuer && (
                                                         <button onClick={handleRetirerAttribuer} className="action-menu-item">
                                                             {userHasUO ? 'Retirer' : 'Attribuer'}
