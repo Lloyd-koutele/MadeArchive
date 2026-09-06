@@ -269,6 +269,9 @@
     align-items: center;
 }
 
+/* Anneau pointillé rouge "en cours/compte à rebours" (façon minuteur macOS)
+   plutôt qu'un simple disque plein — évoque le délai de grâce qui s'écoule,
+   pas juste "danger". Icône poubelle grise au centre, fond clair. */
 .deletion-badge {
     display: inline-flex;
     align-items: center;
@@ -281,10 +284,11 @@
                        texte ambiant au lieu du centre du cercle — décalage
                        classique des polices d'icônes dans un badge rond. */
     border-radius: 50%;
-    border: 1.5px solid rgba(155,58,58,0.25);
-    background: rgba(155,58,58,0.1);
-    color: var(--error);
-    font-size: 0.85rem;
+    border: 2px dashed var(--error);
+    background: var(--white-choc);
+    color: var(--text-light);
+    box-shadow: 0 0 6px rgba(155,58,58,0.35);
+    font-size: 0.8rem;
     cursor: pointer;
     transition: background var(--transition), box-shadow var(--transition);
 }
@@ -294,8 +298,8 @@
 }
 
 .deletion-badge:hover {
-    background: rgba(155,58,58,0.18);
-    box-shadow: 0 0 0 3px rgba(155,58,58,0.1);
+    background: var(--cream);
+    box-shadow: 0 0 10px rgba(155,58,58,0.5);
 }
 
 /* Réutilise le gabarit de .action-menu mais avec un contenu texte + bouton
