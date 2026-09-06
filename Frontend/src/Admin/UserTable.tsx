@@ -123,8 +123,11 @@ const UserTable = memo(({ user, onAction, actionInProgress, onRemoveFromUO, onRe
                     <tr>
                         <th>Utilisateur</th>
                         <th>Email</th>
-                        <th>Rôle</th>
-                        <th>Téléphone</th>
+                        {/* Masquées sur écran réduit (voir UserTable.css) — le
+                            rôle et le téléphone restent consultables via
+                            "Voir", pas indispensables dans la liste elle-même. */}
+                        <th className="col-role">Rôle</th>
+                        <th className="col-telephone">Téléphone</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -153,12 +156,12 @@ const UserTable = memo(({ user, onAction, actionInProgress, onRemoveFromUO, onRe
                             <tr key={singleUser.id}>
                                 <td>{singleUser.nom} {singleUser.prenom}</td>
                                 <td>{singleUser.email}</td>
-                                <td>
+                                <td className="col-role">
                                     {singleUser.roles && singleUser.roles.length > 0
                                         ? singleUser.roles.map(r => getRoleLabel(r.name)).join(', ')
                                         : 'Aucun rôle'}
                                 </td>
-                                <td>{singleUser.telephone}</td>
+                                <td className="col-telephone">{singleUser.telephone}</td>
                                 <td>
                                     <div className="actions-cell-container">
                                         <button
