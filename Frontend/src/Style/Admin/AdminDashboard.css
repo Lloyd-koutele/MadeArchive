@@ -233,14 +233,31 @@
 }
 
 /* ─── Onglets de contenu UO (Utilisateurs / Documents / Projets) ─── */
+/* Tailles fluides (clamp) plutôt qu'un seul palier fixe : avant, un unique
+   @media à 1150px réduisait le padding/la police UNE fois, puis plus rien —
+   sous 1150px, les 7 onglets ("Journal d'audit" compris) débordaient hors du
+   conteneur sans aucun moyen de les atteindre (pas de défilement). Le clamp()
+   rétrécit en continu avec la largeur de l'écran ; "overflow-x: auto" reste
+   un filet de sécurité pour les très petits écrans où même la taille
+   minimale ne suffit pas à tout faire tenir — jamais un onglet caché ou
+   inatteignable, au pire on défile pour l'atteindre. */
 .uo-tabs {
     display: flex;
     align-items: center;
-    justify-content: center;
+    /* PAS "center" : combiné à overflow-x (ci-dessous), "center" centre le
+       contenu qui déborde plutôt que de l'ancrer au début — le navigateur
+       masque alors autant à gauche qu'à droite par défaut (scrollLeft: 0
+       montre le MILIEU des onglets, pas "Utilisateurs" en premier), déroutant
+       et pas comment un défilement doit se comporter. "flex-start" n'a de
+       toute façon aucun effet visuel tant que tout tient (le conteneur fait
+       exactement la largeur de son contenu, width: fit-content ci-dessous)
+       — il ne change le rendu que dans le cas où ça déborde, justement pour
+       le rendre prévisible. */
+    justify-content: flex-start;
     width: fit-content;
     max-width: 100%;
-    gap: 0.2rem;
-    padding: 0.4rem 0.5rem;
+    gap: clamp(0.1rem, 0.6vw, 0.2rem);
+    padding: clamp(0.25rem, 1vw, 0.4rem) clamp(0.3rem, 1.2vw, 0.5rem);
     background: linear-gradient(135deg, rgba(255, 255, 255, 0.55), rgba(253, 248, 243, 0.32));
     backdrop-filter: blur(26px) saturate(180%);
     -webkit-backdrop-filter: blur(26px) saturate(180%);
@@ -251,20 +268,28 @@
         inset 0 1px 0 rgba(255, 255, 255, 0.8),
         inset 0 -1px 0 rgba(232, 217, 197, 0.35);
     margin: 0 auto 1.75rem auto;
+    overflow-x: auto;
+    /* Défilement possible mais scrollbar invisible (esthétique "pilule") —
+       toujours utilisable au doigt/trackpad, juste sans la barre visuelle. */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
 }
+
+.uo-tabs::-webkit-scrollbar { display: none; }
 
 .uo-tab {
     border: none;
     background: transparent;
-    padding: 0.55rem 0.95rem;
+    padding: clamp(0.4rem, 1.4vw, 0.55rem) clamp(0.55rem, 2.2vw, 0.95rem);
     font-family: 'DM Sans', sans-serif;
-    font-size: 0.8rem;
+    font-size: clamp(0.68rem, 1.1vw, 0.8rem);
     font-weight: 500;
     letter-spacing: 0.1px;
     color: var(--text-light);
     border-radius: 999px;
     cursor: pointer;
     white-space: nowrap;
+    flex-shrink: 0;
     transition: background var(--transition), color var(--transition), box-shadow var(--transition);
 }
 
@@ -280,11 +305,6 @@
     box-shadow:
         0 3px 10px rgba(44, 26, 14, 0.28),
         inset 0 1px 0 rgba(253, 248, 243, 0.18);
-}
-
-@media (max-width: 1150px) {
-    .uo-tabs { gap: 0.15rem; padding: 0.35rem 0.4rem; }
-    .uo-tab  { padding: 0.5rem 0.7rem; font-size: 0.75rem; }
 }
 
 /* ─── Stub "Projets" (fonctionnalité à venir) ─── */
