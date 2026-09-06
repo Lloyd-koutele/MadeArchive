@@ -27,3 +27,22 @@
     color: var(--success);
     border: 1px solid rgba(74, 124, 89, 0.2);
 }
+
+/* ── Responsive (vue liste) ──────────────────────────────────────────────
+   Même palier que UserTable.css / Typedocument.css (1100px) : sous ce
+   seuil, seuls Titre / Type / Actions restent dans le tableau — Accès,
+   Statut, Archivé le et Rétention restent consultables via le détail
+   ("i"). Les boutons d'action autonomes cèdent la place à un menu "..."
+   volontairement limité à Voir le PDF / Télécharger (pas de doublon pour
+   Détail, accès ou corbeille — non repris ici). */
+.doc-actions-compact { display: none; }
+
+@media (max-width: 1100px) {
+    .doc-col-acces,
+    .doc-col-statut,
+    .doc-col-archive,
+    .doc-col-retention { display: none; }
+
+    .doc-actions-standalone { display: none; }
+    .doc-actions-compact { display: inline-flex; }
+}
