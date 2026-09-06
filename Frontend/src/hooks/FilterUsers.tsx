@@ -13,9 +13,14 @@ interface UserFilters {
 interface FilterUsersProps {
     filters: UserFilters;
     onChange: (updatedFilters: UserFilters) => void;
+    // Rôles à ne pas proposer dans la liste déroulante — ex. "ADMIN" côté
+    // Admin UO, qui ne gère jamais d'administrateurs globaux (voir
+    // AdminUoDashboard.tsx). Vide par défaut : Admin (global) garde les
+    // 4 rôles, seul l'appelant qui a besoin de restreindre passe cette prop.
+    excludeRoles?: string[];
 }
 
-function FilterUsers({ filters, onChange }: FilterUsersProps) {
+function FilterUsers({ filters, onChange, excludeRoles = [] }: FilterUsersProps) {
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         onChange({ ...filters, [e.target.name]: e.target.value });
@@ -81,9 +86,11 @@ function FilterUsers({ filters, onChange }: FilterUsersProps) {
                     onChange={handleRoleSelect}
                 >
                     <option value="">Tous les rôles</option>
-                    {['ADMIN', 'ADMIN_UO', 'EDITOR', 'USER'].map((role) => (
-                        <option key={role} value={role}>{labelMap[role]}</option>
-                    ))}
+                    {['ADMIN', 'ADMIN_UO', 'EDITOR', 'USER']
+                        .filter((role) => !excludeRoles.includes(role))
+                        .map((role) => (
+                            <option key={role} value={role}>{labelMap[role]}</option>
+                        ))}
                 </select>
 
                 <button
