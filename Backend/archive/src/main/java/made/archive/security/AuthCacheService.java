@@ -51,6 +51,7 @@ public class AuthCacheService
                 u.getPrenom(),
                 u.isActif(),
                 u.getSessionInvalidatedAt(),
+                u.getSessionInvalidationReason(),
                 u.getRoles().stream().map(r -> r.getName().name()).toList()
             ))
             .orElse(null);
@@ -60,7 +61,8 @@ public class AuthCacheService
      * Reconstruit un UserDetailsImpl fonctionnellement équivalent à celui du
      * bean UserDetailsService, à partir de la forme mise en cache — sans
      * requête base. Le User reconstruit n'a que les champs nécessaires en aval
-     * (id, email, nom, prenom, actif, sessionInvalidatedAt, roles) ; ses
+     * (id, email, nom, prenom, actif, sessionInvalidatedAt,
+     * sessionInvalidationReason, roles) ; ses
      * relations JPA restantes (documents, UO...) restent vides — la plupart du
      * code métier re-résout de toute façon l'utilisateur depuis son id/email
      * (voir les patterns resolveUser(...) déjà en place partout), donc ça ne
@@ -76,6 +78,7 @@ public class AuthCacheService
         user.setPrenom(cached.prenom());
         user.setActif(cached.actif());
         user.setSessionInvalidatedAt(cached.sessionInvalidatedAt());
+        user.setSessionInvalidationReason(cached.sessionInvalidationReason());
 
         Set<Role> roles = cached.roleNames().stream()
             .map(nom -> {
