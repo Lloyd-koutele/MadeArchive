@@ -9,17 +9,6 @@ interface TypeDocumentDetailProps {
     td: TypeDocumentDto;
 }
 
-const TYPE_LABELS: Record<string, string> = {
-    CHAR: 'Caractère',
-    STRING: 'Texte court',
-    INTEGER: 'Entier',
-    FLOAT: 'Décimal (float)',
-    DOUBLE: 'Décimal (double)',
-    BOOLEAN: 'Booléen',
-    DATE: 'Date',
-    TEXT: 'Texte long'
-};
-
 function TypeDocumentDetail({ td }: TypeDocumentDetailProps) {
     const notify = useNotify();
     const confirm = useConfirm();
@@ -61,18 +50,22 @@ function TypeDocumentDetail({ td }: TypeDocumentDetailProps) {
                     <strong>Nom :</strong> {td.nom}
                 </div>
                 <div className="details-row">
-                    <strong>Rétention :</strong> {td.retentionYears} an{(td.retentionYears ?? 0) > 1 ? 's' : ''}
+                    <strong>Rétention :</strong>{' '}
+                    {td.retentionYears != null
+                        ? `${td.retentionYears} an${td.retentionYears > 1 ? 's' : ''}`
+                        : 'Indéfinie'}
                 </div>
                 <div className="details-row">
-                    <strong>Période de grâce :</strong> {td.periodGrace} jour{(td.periodGrace ?? 0) > 1 ? 's' : ''}
+                    <strong>Période de grâce :</strong>{' '}
+                    {td.periodGrace != null
+                        ? `${td.periodGrace} jour${td.periodGrace > 1 ? 's' : ''}`
+                        : 'Indéfinie'}
                 </div>
             </div>
 
             {/* Métadonnées */}
             <div className="td-detail-section">
-                <h4 className="td-detail-subtitle">
-                    Métadonnées ({td.metaData?.length ?? 0})
-                </h4>
+                <h4 className="td-detail-subtitle">Métadonnées</h4>
 
                 {!td.metaData || td.metaData.length === 0 ? (
                     <p className="td-detail-empty">Aucune métadonnée définie.</p>
@@ -82,7 +75,6 @@ function TypeDocumentDetail({ td }: TypeDocumentDetailProps) {
                             <tr>
                                 <th>#</th>
                                 <th>Nom</th>
-                                <th>Type</th>
                                 <th>Obligatoire</th>
                             </tr>
                         </thead>
@@ -91,11 +83,6 @@ function TypeDocumentDetail({ td }: TypeDocumentDetailProps) {
                                 <tr key={i}>
                                     <td>{i + 1}</td>
                                     <td>{m.nom}</td>
-                                    <td>
-                                        <span className="td-type-badge">
-                                            {TYPE_LABELS[m.metaDataType] || m.metaDataType}
-                                        </span>
-                                    </td>
                                     <td>
                                         <span className={`td-oblig-badge ${m.obligatoire ? 'yes' : 'no'}`}>
                                             {m.obligatoire ? 'Oui' : 'Non'}
