@@ -40,7 +40,7 @@ public class AdminController
 
     @Secured({"ROLE_ADMIN", "ROLE_ADMIN_UO"})
     @PostMapping("/users/create-user")
-    public ResponseEntity<?> createUser(@RequestBody UserDto dto, @RequestParam(required = false) List<Long> uoIds, @AuthenticationPrincipal UserDetailsImpl createPar)
+    public ResponseEntity<?> createUser(@Valid @RequestBody UserDto dto, @RequestParam(required = false) List<Long> uoIds, @AuthenticationPrincipal UserDetailsImpl createPar)
     {
         try
         {

@@ -6,6 +6,7 @@ import { FaEye, FaEyeSlash } from 'react-icons/fa';
 import { getCurrentUserInfo } from "../auth/authService";
 import "../Style/Page/Profil.css"
 import { useNotify } from "../notifications/NotificationProvider";
+import PhoneNumberField, { isValidPhoneNumber } from "../components/PhoneNumberField";
 
 interface RoleField {
     name: "ADMIN" | "ADMIN_UO" | "EDITOR" | "USER";
@@ -70,6 +71,12 @@ function Profile({ userId: propUserId }: ProfileProps) {
 
 const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!isValidPhoneNumber(telephone.trim())) {
+        notify.error('Le numéro de téléphone est invalide pour le pays sélectionné');
+        return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -145,7 +152,7 @@ const handleSubmit = async (e: React.FormEvent) => {
                             <input id="p-prenom" type="text" className="form-field-input" placeholder="Prénom" aria-label="Prénom" value={prenom} onChange={e => setPrenom(e.target.value)} required />
                         </div>
                         <div className="form-field">
-                            <input id="p-tel" type="text" className="form-field-input" placeholder="Téléphone" aria-label="Téléphone" value={telephone} onChange={e => setTelephone(e.target.value)} required />
+                            <PhoneNumberField id="p-tel" value={telephone} onChange={setTelephone} required />
                         </div>
                         
                         <div className="form-field form-field-password profile-field-fullwidth">
