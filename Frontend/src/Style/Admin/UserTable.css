@@ -253,3 +253,16 @@ button:disabled {
     .col-role,
     .col-telephone { display: none; }
 }
+
+/* "Voir" et le badge Actif/Bloquer suivent Rôle/Téléphone dans le menu "..."
+   à taille réduite — rien n'est perdu, juste regroupé derrière un seul point
+   d'entrée compact. Les doublons dédiés (.action-menu-item-compact, voir
+   UserTable.tsx) restent masqués par défaut pour ne jamais dupliquer ces
+   deux actions avec les boutons autonomes tant que l'écran est assez large
+   pour les deux. */
+.action-menu-item-compact { display: none; }
+
+@media (max-width: 1100px) {
+    .actions-standalone { display: none; }
+    .action-menu-item-compact { display: block; }
+}
