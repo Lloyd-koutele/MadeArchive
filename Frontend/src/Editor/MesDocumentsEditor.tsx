@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import Modal from '../Page/Modal';
 import GestionGroupe from '../document/GestionGroupe';
 import ImportDocuments from '../document/ImportDocuments';
@@ -148,6 +149,50 @@ function MesDocumentsEditor({
     const [selectionModeActive, setSelectionModeActive] = useState(false);
     const [suppressionMasseEnCours, setSuppressionMasseEnCours] = useState(false);
     const longPressTimer = useRef<number | null>(null);
+
+    // ── Menu "..." compact (vue liste, écran réduit uniquement — voir
+    // Editor.css) : regroupe Détail, Télécharger, Nouvelle version et
+    // Corbeille derrière un seul point d'entrée quand les boutons autonomes
+    // disparaissent sous 1100px. "Gérer le groupe d'accès" n'est volontairement
+    // pas repris ici — action secondaire, réservée aux documents privés.
+    const [openMenuDocId, setOpenMenuDocId] = useState<string | null>(null);
+    const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+    const menuRef = useRef<HTMLDivElement | null>(null);
+    const menuButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+    const closeCompactMenu = () => {
+        setOpenMenuDocId(null);
+        setMenuPos(null);
+    };
+
+    const toggleCompactMenu = (documentId: string) => {
+        if (openMenuDocId === documentId) { closeCompactMenu(); return; }
+        const btn = menuButtonRefs.current[documentId];
+        if (btn) {
+            const rect = btn.getBoundingClientRect();
+            setMenuPos({ top: rect.bottom + window.scrollY + 4, left: rect.right + window.scrollX });
+        }
+        setOpenMenuDocId(documentId);
+    };
+
+    useEffect(() => {
+        if (!openMenuDocId) return;
+        const handleClickOutside = (event: MouseEvent) => {
+            const target = event.target as Node;
+            const clickedToggle = menuButtonRefs.current[openMenuDocId]?.contains(target);
+            const clickedMenu = menuRef.current?.contains(target);
+            if (!clickedToggle && !clickedMenu) closeCompactMenu();
+        };
+        const handleScrollOrResize = () => closeCompactMenu();
+        document.addEventListener('mousedown', handleClickOutside);
+        window.addEventListener('scroll', handleScrollOrResize, true);
+        window.addEventListener('resize', handleScrollOrResize);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            window.removeEventListener('scroll', handleScrollOrResize, true);
+            window.removeEventListener('resize', handleScrollOrResize);
+        };
+    }, [openMenuDocId]);
 
     // ── Mode d'affichage des documents d'un dossier : liste (tableau) ou
     // grille (aperçus PDF) — même bascule que "Documents accessibles". ────
@@ -1111,9 +1156,12 @@ function MesDocumentsEditor({
                                         </th>
                                     )}
                                     <th>Titre</th>
-                                    <th>Accès</th>
-                                    <th>Statut</th>
-                                    <th>Archivé le</th>
+                                    {/* Masquées sur écran réduit (voir Editor.css) — ne restent
+                                        que Titre / Rétention / Actions, le reste redevient
+                                        consultable via le détail ("i"). */}
+                                    <th className="med-col-acces">Accès</th>
+                                    <th className="med-col-statut">Statut</th>
+                                    <th className="med-col-archive">Archivé le</th>
                                     <th>Rétention</th>
                                     <th>Actions</th>
                                 </tr>
@@ -1150,32 +1198,35 @@ function MesDocumentsEditor({
                                             {doc.titre}
                                             <VersionBadge label={doc.versionLabel} />
                                         </td>
-                                        <td>
+                                        <td className="med-col-acces">
                                             <span className={`doc-access-tag ${doc.access === 'PUBLIC' ? 'public' : 'prive'}`}>
                                                 {doc.access === 'PUBLIC' ? 'Public' : 'Privé'}
                                             </span>
                                         </td>
-                                        <td>
+                                        <td className="med-col-statut">
                                             <span className={`status-tag ${STATUS_CLASS[doc.status] ?? 'inactive'}`}>
                                                 {STATUS_LABELS[doc.status] ?? doc.status}
                                             </span>
                                         </td>
-                                        <td>{formatDate(doc.createAt)}</td>
+                                        <td className="med-col-archive">{formatDate(doc.createAt)}</td>
                                         <td>{doc.retentionUntil ? formatDate(doc.retentionUntil) : 'Indéfinie'}</td>
                                         <td onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>
                                             <div className="td-actions">
-                                                {/* Détail */}
+                                                {/* Masqués sur écran réduit (voir Editor.css,
+                                                    .med-actions-standalone) — repris dans le menu
+                                                    "..." juste en dessous (Détail, Télécharger,
+                                                    Nouvelle version, Corbeille — pas le groupe
+                                                    d'accès, laissé de côté volontairement). */}
                                                 <button
-                                                    className="action-button edit"
+                                                    className="action-button edit med-actions-standalone"
                                                     onClick={() => openDetail(doc)}
                                                     title="Détail et métadonnées"
                                                 >
                                                     <i className="fa-solid fa-circle-info" />
                                                 </button>
 
-                                                {/* Télécharger PDF/A */}
                                                 <button
-                                                    className="action-button"
+                                                    className="action-button med-actions-standalone"
                                                     onClick={() => handleDownloadPdfA(doc)}
                                                     disabled={downloadingId === doc.documentId + '_pdfa'}
                                                     title="Télécharger PDF/A"
@@ -1186,10 +1237,11 @@ function MesDocumentsEditor({
                                                     }
                                                 </button>
 
-                                                {/* Groupe accès */}
+                                                {/* Groupe accès — uniquement en bouton autonome,
+                                                    jamais dans le menu compact. */}
                                                 {doc.access === 'PRIVE' && (
                                                     <button
-                                                        className="action-button"
+                                                        className="action-button med-actions-standalone"
                                                         onClick={() => {
                                                             setGroupeDocId(doc.documentId);
                                                             setGroupeDocTitre(doc.titre);
@@ -1204,7 +1256,7 @@ function MesDocumentsEditor({
                                                 {/* Nouvelle version — uniquement sur la dernière version (jamais versionné ou "Final") */}
                                                 {(!doc.versionLabel || doc.versionLabel === 'Final') && (
                                                     <button
-                                                        className="action-button"
+                                                        className="action-button med-actions-standalone"
                                                         onClick={() => openNewVersion(doc)}
                                                         title="Déposer une nouvelle version"
                                                     >
@@ -1212,16 +1264,67 @@ function MesDocumentsEditor({
                                                     </button>
                                                 )}
 
-                                                {/* Envoyer à la corbeille */}
                                                 {doc.peutGererCorbeille && (
                                                     <button
-                                                        className="action-button delete"
+                                                        className="action-button delete med-actions-standalone"
                                                         onClick={() => handleEnvoyerCorbeilleRapide(doc)}
                                                         title="Envoyer à la corbeille"
                                                     >
                                                         <i className="fa-solid fa-trash" />
                                                     </button>
                                                 )}
+
+                                                {/* Menu "..." compact — visible uniquement sous
+                                                    1100px (voir Editor.css). */}
+                                                <div className="action-menu-wrapper med-actions-compact">
+                                                    <button
+                                                        ref={(el) => { menuButtonRefs.current[doc.documentId] = el; }}
+                                                        onClick={() => toggleCompactMenu(doc.documentId)}
+                                                        className="action-button menu-toggle"
+                                                        aria-label="Plus d'actions"
+                                                        aria-expanded={openMenuDocId === doc.documentId}
+                                                    >
+                                                        <i className="fa-solid fa-ellipsis" />
+                                                    </button>
+
+                                                    {openMenuDocId === doc.documentId && menuPos && createPortal(
+                                                        <div
+                                                            ref={menuRef}
+                                                            className="action-menu"
+                                                            style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, transform: 'translateX(-100%)' }}
+                                                        >
+                                                            <button
+                                                                onClick={() => { closeCompactMenu(); openDetail(doc); }}
+                                                                className="action-menu-item"
+                                                            >
+                                                                <i className="fa-solid fa-circle-info" /> Détail
+                                                            </button>
+                                                            <button
+                                                                onClick={() => { closeCompactMenu(); handleDownloadPdfA(doc); }}
+                                                                className="action-menu-item"
+                                                            >
+                                                                <i className="fa-solid fa-file-pdf" /> Télécharger
+                                                            </button>
+                                                            {(!doc.versionLabel || doc.versionLabel === 'Final') && (
+                                                                <button
+                                                                    onClick={() => { closeCompactMenu(); openNewVersion(doc); }}
+                                                                    className="action-menu-item"
+                                                                >
+                                                                    <i className="fa-solid fa-code-branch" /> Nouvelle version
+                                                                </button>
+                                                            )}
+                                                            {doc.peutGererCorbeille && (
+                                                                <button
+                                                                    onClick={() => { closeCompactMenu(); handleEnvoyerCorbeilleRapide(doc); }}
+                                                                    className="action-menu-item"
+                                                                >
+                                                                    <i className="fa-solid fa-trash" /> Envoyer à la corbeille
+                                                                </button>
+                                                            )}
+                                                        </div>,
+                                                        document.body
+                                                    )}
+                                                </div>
                                             </div>
                                         </td>
                                     </tr>
