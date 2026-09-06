@@ -362,13 +362,13 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
                                     <div className="td-folder-doc-line" />
                                 </div>
                                 <div className="td-folder-glass" />
-                                {/* Pastille = nombre de champs de métadonnées
-                                    (pas un nombre de documents, il n'y en a
-                                    pas ici — c'est un TYPE, pas un dossier de
-                                    documents). */}
-                                <span className="td-folder-count">
-                                    {td.metaData?.length ?? 0}
-                                </span>
+                                {/* Pas de pastille de compteur ici (contrairement
+                                    au dossier éditeur, "Mes documents") : elle y
+                                    représente un nombre de documents, alors qu'ici
+                                    ça aurait été le nombre de champs de
+                                    métadonnées — même position visuelle, sens
+                                    différent, ambigu pour qui les voit tous les
+                                    deux. Retiré à la demande. */}
                             </div>
 
                             <span className="td-folder-name" title={td.nom}>{td.nom}</span>
