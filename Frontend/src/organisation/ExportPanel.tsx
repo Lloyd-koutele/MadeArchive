@@ -194,12 +194,21 @@ function ExportPanel({ isOpen, onClose, uos, defaultUoId }: ExportPanelProps) {
         }, POLL_INTERVAL_MS);
     };
 
+    /**
+     * Exporte directement dès qu'une UO est choisie — pas besoin de passer
+     * par "Charger les documents" avant : l'aperçu détaillé (cases à cocher
+     * une par une) reste possible mais devient une manipulation optionnelle,
+     * pas une étape obligatoire.
+     *
+     * Si l'aperçu n'a jamais été chargé, résout silencieusement le périmètre
+     * puis applique le type/projet déjà choisis en haut du formulaire pour
+     * obtenir la liste de documents à exporter. Si l'aperçu a déjà été
+     * chargé (et éventuellement affiné coche par coche), la sélection
+     * manuelle prend le dessus — cohérent avec ce que l'utilisateur voit
+     * à l'écran à ce moment-là.
+     */
     const handleLancer = async () => {
-        if (uoId == null || !apercu) return;
-        if (selectedIds.size === 0) {
-            notify.error('Sélectionnez au moins un document à exporter');
-            return;
-        }
+        if (uoId == null) return;
         if (estAdmin && includePriveNonMembre && !motif.trim()) {
             notify.error("Un motif est obligatoire pour inclure des documents privés dont vous n'êtes pas membre");
             return;
@@ -207,9 +216,36 @@ function ExportPanel({ isOpen, onClose, uos, defaultUoId }: ExportPanelProps) {
         setLancementLoading(true);
         try {
             const uoIds = await resoudrePerimetre();
+            let docIds: string[];
+
+            if (apercu) {
+                if (selectedIds.size === 0) {
+                    notify.error('Sélectionnez au moins un document à exporter');
+                    setLancementLoading(false);
+                    return;
+                }
+                docIds = Array.from(selectedIds);
+            } else {
+                const documents = await apercuExport({
+                    uoIds,
+                    excludeCorbeille,
+                    includePriveNonMembre: estAdmin && includePriveNonMembre,
+                });
+                const filtres = documents.filter(d =>
+                    (!filterType || d.typeDocumentNom === filterType) &&
+                    (!filterProjet || d.projetNom === filterProjet)
+                );
+                if (filtres.length === 0) {
+                    notify.error('Aucun document ne correspond à ce périmètre');
+                    setLancementLoading(false);
+                    return;
+                }
+                docIds = filtres.map(d => d.id);
+            }
+
             const statut = await lancerExport({
                 uoIds,
-                docIds: Array.from(selectedIds),
+                docIds,
                 separateProjects,
                 excludeCorbeille,
                 includePriveNonMembre: estAdmin && includePriveNonMembre,
@@ -337,16 +373,35 @@ function ExportPanel({ isOpen, onClose, uos, defaultUoId }: ExportPanelProps) {
                     </>
                 )}
 
-                <button
-                    type="button"
-                    className="action-button export-load-btn"
-                    onClick={handleApercu}
-                    disabled={uoId == null || apercuLoading || jobEnCours}
-                >
-                    {apercuLoading
-                        ? <><i className="fa-solid fa-spinner fa-spin" /> Chargement…</>
-                        : <><i className="fa-solid fa-magnifying-glass" /> Charger les documents</>}
-                </button>
+                {/* "Exporter" apparaît dès qu'une UO est choisie — pas besoin
+                    de charger l'aperçu au préalable. "Charger les documents"
+                    reste disponible à côté pour qui veut affiner sa
+                    sélection document par document avant de lancer ; une
+                    manipulation optionnelle, pas une étape obligatoire. */}
+                {uoId != null && !apercu && (
+                    <div className="export-quick-actions">
+                        <button
+                            type="button"
+                            className="action-button"
+                            onClick={handleApercu}
+                            disabled={apercuLoading || jobEnCours}
+                        >
+                            {apercuLoading
+                                ? <><i className="fa-solid fa-spinner fa-spin" /> Chargement…</>
+                                : <><i className="fa-solid fa-magnifying-glass" /> Choisir précisément</>}
+                        </button>
+                        <button
+                            type="button"
+                            className="form-submit-btn up-submit"
+                            onClick={handleLancer}
+                            disabled={lancementLoading || jobEnCours}
+                        >
+                            {lancementLoading
+                                ? <><i className="fa-solid fa-spinner fa-spin" /> Lancement…</>
+                                : <><i className="fa-solid fa-file-zipper" /> Exporter</>}
+                        </button>
+                    </div>
+                )}
 
                 {/* ── Sélection fine des documents ── */}
                 {apercu && (
