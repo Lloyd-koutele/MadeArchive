@@ -3,6 +3,7 @@ package made.archive.dto;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
+import made.archive.entite.DocumentStatus;
 import made.archive.entite.TypeAccess;
 
 /**
@@ -20,6 +21,7 @@ public record DocumentExportRow(
     String titre,
     String storageKey,
     TypeAccess access,
+    DocumentStatus status,
     LocalDateTime createAt,
     Long uoId,
     String uoNom,
