@@ -48,7 +48,6 @@ import made.archive.repository.RoleRepository;
 import made.archive.repository.TypeDocumentRepository;
 import made.archive.repository.UniteOrganisationnelleRepository;
 import made.archive.repository.UserRepository;
-import made.archive.service.document.DocumentExportGenerationService;
 import made.archive.service.document.DocumentExportService;
 import made.archive.service.notification.NotificationService;
 import made.archive.service.audit.AuditLogService;
@@ -114,8 +113,7 @@ class DocumentExportIntegrationTest
                 uniteOrganisationnelleService,
                 org.mockito.Mockito.mock(NotificationService.class),
                 org.mockito.Mockito.mock(AuditLogService.class),
-                new DocumentExportProperties(),
-                org.mockito.Mockito.mock(DocumentExportGenerationService.class));
+                new DocumentExportProperties());
         }
     }
 

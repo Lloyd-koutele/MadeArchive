@@ -186,4 +186,28 @@ public interface DocumentRepository extends JpaRepository<Document, UUID>, JpaSp
            "ORDER BY d.uniteOrganisationnelle.nom, d.titre")
     List<Document> findForExport(@Param("uoIds") Collection<Long> uoIds,
                                   @Param("statutsExclus") Collection<DocumentStatus> statutsExclus);
+
+    /**
+     * Projection dédiée à l'export administratif (DocumentExportGenerationService)
+     * — PAS "SELECT d FROM Document d" : charger l'entité complète matérialise
+     * aussi horodatageToken (@Lob), dont la lecture exige une transaction
+     * Postgres explicite (pas auto-commit) — ce traitement est @Async, sans
+     * transaction ouverte, "Large Objects may not be used in auto-commit
+     * mode" constaté en conditions réelles. Cette projection ne sélectionne
+     * que les colonnes réellement utiles au ZIP/manifeste, en une seule
+     * requête (pas de lazy loading a posteriori nécessaire).
+     */
+    @Query("SELECT new made.archive.dto.DocumentExportRow(" +
+           "d.id, d.titre, d.storageKey, d.access, d.createAt, " +
+           "d.uniteOrganisationnelle.id, d.uniteOrganisationnelle.nom, " +
+           "d.typeDocument.nom, p.nom) " +
+           // LEFT JOIN explicite sur projet (nullable) : une navigation par
+           // point (d.projet.nom) génère un INNER JOIN implicite en JPQL,
+           // qui aurait exclu silencieusement tout document sans projet —
+           // constaté en conditions réelles (export d'1 document sans
+           // projet revenant vide). uniteOrganisationnelle/typeDocument
+           // sont non-nullables (nullable=false sur Document), la navigation
+           // par point y reste sans risque.
+           "FROM Document d LEFT JOIN d.projet p WHERE d.id IN :ids")
+    List<made.archive.dto.DocumentExportRow> findAllByIdPourExport(@Param("ids") Collection<UUID> ids);
 }

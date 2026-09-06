@@ -14,6 +14,7 @@ import QuickCreateTypeDocumentsModal from '../document/QuickCreateTypeDocumentsM
 import Corbeille from '../document/Corbeille';
 import ProjetsPanel from '../organisation/ProjetsPanel';
 import PhysicalLocationsPanel from '../organisation/PhysicalLocationsPanel';
+import ExportPanel from '../organisation/ExportPanel';
 import AuditLogPanel from './AuditLogPanel';
 import DocumentsArchivesPanel from './DocumentsArchivesPanel';
 import type { TypeDocumentDto } from '../services/document/TypedocumentService';
@@ -68,7 +69,7 @@ interface UONode {
 }
 
 type MainView = 'profile' | 'contenu';
-type Tab = 'utilisateurs' | 'documents' | 'archives' | 'corbeille' | 'projets' | 'emplacements' | 'journal';
+type Tab = 'utilisateurs' | 'documents' | 'archives' | 'corbeille' | 'projets' | 'emplacements' | 'journal' | 'export';
 
 const isUserActive = (user: User): boolean => user.actif === true || user.actif === 'true';
 
@@ -480,6 +481,12 @@ function AdminUoDashboard() {
                                 >
                                     Journal d'audit
                                 </button>
+                                <button
+                                    className={`uo-tab ${tab === 'export' ? 'active' : ''}`}
+                                    onClick={() => setTab('export')}
+                                >
+                                    <i className="fa-solid fa-file-zipper" /> Export
+                                </button>
                             </div>
 
                             {tab === 'utilisateurs' && (
@@ -551,6 +558,10 @@ function AdminUoDashboard() {
                             )}
 
                             {tab === 'journal' && <AuditLogPanel />}
+
+                            {tab === 'export' && (
+                                <ExportPanel uoId={currentUOId} uoNom={currentUO.nom} />
+                            )}
                         </>
                     )}
                 </div>

@@ -53,7 +53,6 @@ class DocumentExportServiceTest
     @Mock private UniteOrganisationnelleService   uniteOrganisationnelleService;
     @Mock private NotificationService             notificationService;
     @Mock private AuditLogService                 auditLogService;
-    @Mock private DocumentExportGenerationService generationService;
 
     private final DocumentExportProperties properties = new DocumentExportProperties();
 
