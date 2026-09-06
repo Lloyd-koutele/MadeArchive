@@ -1725,6 +1725,26 @@ label.bulk-file-item { cursor: pointer; }
     padding: 0.25rem 0 1rem;
 }
 
+/* ── "Mes documents" (vue liste) — responsive ────────────────────────────
+   Même seuil que les autres tableaux de l'app (1100px) : ne restent que
+   Titre / Rétention / Actions. Accès, Statut et Archivé le disparaissent
+   mais restent consultables via le détail ("i"). Les boutons d'action
+   autonomes cèdent la place à un menu "..." qui reprend Détail,
+   Télécharger, Nouvelle version et Corbeille — pas le groupe d'accès,
+   volontairement laissé de côté (action secondaire). Qualifié par
+   .td-actions (specificité 0,2,0 au lieu de 0,1,0) par précaution, même si
+   .action-button ne fixe pas lui-même de display ici. */
+.med-actions-compact { display: none; }
+
+@media (max-width: 1100px) {
+    .med-col-acces,
+    .med-col-statut,
+    .med-col-archive { display: none; }
+
+    .td-actions .med-actions-standalone { display: none; }
+    .med-actions-compact { display: inline-flex; }
+}
+
 /* Carte "fiche" — coin corné (comme une feuille qu'on aurait pliée), reprend
    le modèle de référence (.file-container) plutôt qu'une carte rectangulaire
    générique. */
