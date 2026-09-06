@@ -696,7 +696,15 @@ public class UniteOrganisationnelleService
         ancienneMembership.setActif(false);
         ancienneMembership.setDateRetrait(LocalDateTime.now());
         ancienneMembership.setRetirePar(demandePar);
-        membreUORepository.save(ancienneMembership);
+        // flush() explicite indispensable ici : par défaut, Hibernate exécute
+        // TOUS les INSERT en attente avant TOUS les UPDATE au moment du flush,
+        // quel que soit l'ordre des save() dans le code. Sans ce flush, l'INSERT
+        // de nouvelleMembership (plus bas) partirait avant que cet UPDATE ne
+        // soit réellement appliqué en base, et l'index unique partiel
+        // uk_membre_uo_user_actif (une seule ligne actif=true par user_id, voir
+        // schema.sql) verrait momentanément deux lignes actives pour le même
+        // utilisateur → violation de contrainte → 400 en conditions réelles.
+        membreUORepository.saveAndFlush(ancienneMembership);
 
         MembreUniteOrganisationnelle nouvelleMembership = new MembreUniteOrganisationnelle();
         nouvelleMembership.setUser(cible);
