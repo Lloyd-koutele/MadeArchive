@@ -532,58 +532,182 @@
     color: var(--white-choc);
 }
 
-/* ─── Vue grille ─── */
+/* ─── Vue grille — carte "dossier", même habillage visuel que côté éditeur
+   (Mes documents, MesDocumentsEditor.tsx/Editor.css : .folder-card et
+   consorts) — classes préfixées td- redéfinies ici plutôt que réutilisées
+   telles quelles : ce composant est monté côté Admin/Admin UO, qui n'importe
+   pas Editor.css. Toutes les couleurs viennent des mêmes variables globales
+   (--accent, --white-choc, --dark-choc...), donc le rendu est identique au
+   pixel près. Différence volontaire avec le modèle éditeur : pas de dossier
+   cliquable (un TYPE de document n'a rien "à l'intérieur" à ouvrir) ni de
+   bouton "+" au survol — une case à cocher (sélection groupée, coin
+   haut-gauche) et un seul bouton "..." (coin haut-droit, TOUJOURS visible,
+   pas seulement au survol : c'est l'unique moyen d'agir sur la carte). ─── */
 .td-grid {
     display: grid;
-    /* auto-fill + minmax : le nombre de colonnes s'ajuste tout seul à la
-       largeur disponible, aucun palier de media query nécessaire ici — une
-       vraie grille fluide, pas une liste de cartes en colonne unique forcée. */
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: 1rem;
+    /* min(100%, 130px) : sur un écran plus étroit que 130px, la colonne
+       retombe à 100% plutôt que de forcer un débordement horizontal. */
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 130px), 1fr));
+    gap: 1.75rem 1.25rem;
+    padding: 1.25rem 0;
 }
 
-.td-grid-card {
+.td-folder-card {
+    position: relative;
     display: flex;
     flex-direction: column;
-    gap: 0.65rem;
-    padding: 1rem;
-    background: var(--white-choc);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow-sm);
-    transition: box-shadow var(--transition);
-}
-
-.td-grid-card:hover { box-shadow: var(--shadow-md); }
-
-.td-grid-card.td-row-selected {
-    background: rgba(214, 158, 46, 0.08);
-    border-color: rgba(214, 158, 46, 0.4);
-}
-
-.td-grid-card-header {
-    display: flex;
     align-items: center;
     gap: 0.6rem;
+    -webkit-user-select: none;
+    user-select: none;
 }
 
-.td-grid-title {
-    font-weight: 600;
+.td-folder-card.td-row-selected .td-folder-back {
+    background: var(--dark-soft);
+}
+
+.td-folder-checkbox {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    z-index: 3;
+    cursor: pointer;
+}
+
+.td-folder-icon-wrap {
+    position: relative;
+    width: 100%;
+    max-width: 130px;
+    aspect-ratio: 180 / 130;
+    margin: 0 auto;
+}
+
+.td-folder-tab {
+    position: absolute;
+    top: 9.2%;
+    left: 4.4%;
+    width: 33.3%;
+    height: 15.4%;
+    background: var(--accent);
+    border-radius: 6px 6px 0 0;
+}
+
+.td-folder-back {
+    position: absolute;
+    bottom: 0;
+    left: 4.4%;
+    width: 91.1%;
+    height: 81.5%;
+    background: var(--accent);
+    border-radius: 10px;
+    box-shadow: 0 6px 16px rgba(44, 26, 14, 0.14);
+}
+
+.td-folder-sheet {
+    position: absolute;
+    top: -6.2%;
+    left: 20%;
+    width: 60%;
+    height: 88.5%;
+    background: var(--white-choc);
+    border-radius: 5px 12px 5px 5px;
+    box-shadow: 0 3px 10px rgba(44, 26, 14, 0.10);
+    padding: 9% 8%;
+    display: flex;
+    flex-direction: column;
+    gap: 5%;
+}
+
+.td-folder-doc-line {
+    height: 2px;
+    background: var(--border);
+    border-radius: 2px;
+    width: 100%;
+}
+
+.td-folder-doc-line.short { width: 55%; }
+
+.td-folder-glass {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 76.9%;
+    background: rgba(255, 255, 255, 0.35);
+    backdrop-filter: blur(14px) saturate(160%);
+    -webkit-backdrop-filter: blur(14px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    border-radius: 14px;
+    box-shadow: 0 8px 24px rgba(44, 26, 14, 0.08), inset 0 1px 2px rgba(255, 255, 255, 0.8);
+}
+
+.td-folder-count {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    z-index: 3;
+    min-width: 20px;
+    height: 20px;
+    background: var(--white-choc);
     color: var(--dark-choc);
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 0 5px;
+    border-radius: 10px;
+    line-height: 20px;
+    text-align: center;
+    box-shadow: 0 1px 4px rgba(44, 26, 14, 0.22);
+    pointer-events: none;
+}
+
+.td-folder-name {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 0.92rem;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+    text-align: center;
+    color: var(--dark-choc);
+    max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    line-height: 1.3;
 }
 
-.td-grid-body {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-    font-size: 0.85rem;
+.td-folder-meta {
+    font-size: 0.68rem;
     color: var(--text-light);
+    text-align: center;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-top: -0.3rem;
 }
 
-.td-grid-fact { color: var(--dark-soft); }
+/* Bouton "..." de la carte — coin haut-droit, toujours visible (pas
+   d'apparition au survol, contrairement au "+" du modèle éditeur : c'est
+   ici le seul point d'action de la carte). Repositionne .action-menu-wrapper
+   (partagé avec la vue liste) qui, par défaut, suit juste le flux normal. */
+.td-folder-card .action-menu-wrapper {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    z-index: 4;
+}
+
+.td-folder-card .menu-toggle {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--white-choc);
+    border: 1px solid var(--border);
+    box-shadow: 0 1px 4px rgba(44, 26, 14, 0.18);
+}
 
 /* ─── Colonnes masquées à taille réduite (liste) ───
    Sous 1100px (même seuil que Admin/UserTable.css et AuditLogPanel.css) :

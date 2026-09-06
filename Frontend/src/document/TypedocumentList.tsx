@@ -179,8 +179,13 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
     // Menu déroulant "..." — portalé dans <body> pour échapper à
     // overflow:hidden/auto des conteneurs ancêtres (même raison que
     // NotificationBell/UserTable). Partagé entre la vue liste et la vue
-    // grille.
-    const renderMenu = (td: TypeDocumentDto) => (
+    // grille, mais pas avec le même comportement : en LISTE, ces 3 entrées
+    // ne servent que de repli compact sous 1100px (le reste du temps, 3
+    // boutons autonomes suffisent, voir plus bas) — en GRILLE, une carte n'a
+    // JAMAIS de boutons autonomes, ce menu est son SEUL point d'action, donc
+    // toujours visible quelle que soit la largeur d'écran. "compact" contrôle
+    // laquelle des deux classes CSS s'applique aux entrées.
+    const renderMenu = (td: TypeDocumentDto, compact: boolean) => (
         <div className="action-menu-wrapper">
             <button
                 ref={(el) => { buttonRefs.current[td.id!] = el; }}
@@ -205,20 +210,20 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
                 >
                     <button
                         onClick={() => { closeMenu(); setViewingTd(td); setIsViewModalOpen(true); }}
-                        className="action-menu-item td-menu-item-compact"
+                        className={`action-menu-item ${compact ? 'td-menu-item-compact' : ''}`}
                     >
                         Voir
                     </button>
                     <button
                         onClick={() => { closeMenu(); setEditingTd(td); setIsUpdateModalOpen(true); }}
-                        className="action-menu-item td-menu-item-compact"
+                        className={`action-menu-item ${compact ? 'td-menu-item-compact' : ''}`}
                     >
                         Modifier
                     </button>
                     <button
                         onClick={() => { closeMenu(); handleDeleteRequest(td); }}
                         disabled={deleteInProgress}
-                        className="action-menu-item td-menu-item-compact"
+                        className={`action-menu-item ${compact ? 'td-menu-item-compact' : ''}`}
                     >
                         Supprimer
                     </button>
@@ -280,48 +285,50 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
                             key={td.id}
                             draggable
                             onDragStart={(e) => handleDragStart(e, td)}
-                            className={`td-grid-card ${selectedIds.has(td.id!) ? 'td-row-selected' : ''}`}
+                            className={`td-folder-card ${selectedIds.has(td.id!) ? 'td-row-selected' : ''}`}
                         >
-                            <div className="td-grid-card-header">
-                                <input
-                                    type="checkbox"
-                                    checked={selectedIds.has(td.id!)}
-                                    onChange={() => toggleSelect(td.id!)}
-                                />
-                                <span className="td-grid-title" title={td.nom}>{td.nom}</span>
-                            </div>
-                            <div className="td-grid-body">
-                                <span className="td-grid-fact">
-                                    Rétention : {td.retentionYears ?? 'Indéfinie'}
+                            {/* Case à cocher (sélection groupée) — même
+                                emplacement que le "+" du modèle éditeur
+                                (Mes documents), réutilisé pour un usage
+                                différent ici. stopPropagation : la carte
+                                elle-même n'a pas d'action au clic (contrairement
+                                au dossier éditeur, qui navigue à l'intérieur),
+                                mais autant éviter toute ambiguïté future. */}
+                            <input
+                                type="checkbox"
+                                className="td-folder-checkbox"
+                                checked={selectedIds.has(td.id!)}
+                                onChange={() => toggleSelect(td.id!)}
+                                onClick={(e) => e.stopPropagation()}
+                            />
+
+                            <div className="td-folder-icon-wrap">
+                                <div className="td-folder-tab" />
+                                <div className="td-folder-back" />
+                                <div className="td-folder-sheet">
+                                    <div className="td-folder-doc-line short" />
+                                    <div className="td-folder-doc-line" />
+                                    <div className="td-folder-doc-line" />
+                                </div>
+                                <div className="td-folder-glass" />
+                                {/* Pastille = nombre de champs de métadonnées
+                                    (pas un nombre de documents, il n'y en a
+                                    pas ici — c'est un TYPE, pas un dossier de
+                                    documents). */}
+                                <span className="td-folder-count">
+                                    {td.metaData?.length ?? 0}
                                 </span>
-                                <span className="td-grid-fact">
-                                    Grâce : {td.periodGrace ?? '—'} j
-                                </span>
-                                <span className="td-meta-count">
-                                    {td.metaData?.length ?? 0} champ{(td.metaData?.length ?? 0) > 1 ? 's' : ''}
-                                </span>
                             </div>
-                            <div className="td-actions">
-                                <button
-                                    className="action-button view"
-                                    onClick={() => { setViewingTd(td); setIsViewModalOpen(true); }}
-                                >
-                                    Voir
-                                </button>
-                                <button
-                                    className="action-button edit"
-                                    onClick={() => { setEditingTd(td); setIsUpdateModalOpen(true); }}
-                                >
-                                    Modifier
-                                </button>
-                                <button
-                                    className="td-delete-btn"
-                                    onClick={() => handleDeleteRequest(td)}
-                                    disabled={deleteInProgress}
-                                >
-                                    Supprimer
-                                </button>
-                            </div>
+
+                            <span className="td-folder-name" title={td.nom}>{td.nom}</span>
+                            <span className="td-folder-meta">
+                                Rétention : {td.retentionYears ?? 'Indéfinie'} · Grâce : {td.periodGrace ?? '—'} j
+                            </span>
+
+                            {/* Seul point d'action de la carte — pas de
+                                boutons autonomes en vue grille, contrairement
+                                à la vue liste (voir "compact" plus haut). */}
+                            {renderMenu(td, false)}
                         </div>
                     ))}
                 </div>
@@ -385,7 +392,7 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
                                             >
                                                 Supprimer
                                             </button>
-                                            {renderMenu(td)}
+                                            {renderMenu(td, true)}
                                         </div>
                                     </td>
                                 </tr>
