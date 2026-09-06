@@ -25,6 +25,7 @@ import lombok.extern.slf4j.Slf4j;
 import made.archive.config.DocumentExportProperties;
 import made.archive.dto.DocumentExportRow;
 import made.archive.dto.UOCheminProjection;
+import made.archive.entite.DocumentStatus;
 import made.archive.entite.ExportJob;
 import made.archive.entite.ExportJobStatus;
 import made.archive.entite.NotificationType;
@@ -155,6 +156,7 @@ public class DocumentExportGenerationService
                             cheminUO != null ? cheminUO : "",
                             doc.projetNom() != null ? doc.projetNom() : "",
                             doc.typeDocumentNom() != null ? doc.typeDocumentNom() : "",
+                            doc.status() == DocumentStatus.CORBEILLE ? "CORBEILLE" : "ACTIF",
                             doc.access() != null ? doc.access().name() : "",
                             doc.createAt() != null ? doc.createAt().format(FORMAT_DATE) : "",
                             cheminEntree,
@@ -202,14 +204,20 @@ public class DocumentExportGenerationService
     }
 
     /**
-     * <chemin complet UO>/<type>/[<projet>/]<titre>.pdf — reflète la vraie
-     * hiérarchie des UO (dossiers imbriqués, pas un nom aplati) et regroupe
-     * TOUJOURS par type de document, comme partout ailleurs dans l'app
-     * ("Mes documents" côté éditeur). Avant cette version, ni le type ni la
-     * hiérarchie n'apparaissaient : tous les documents d'une UO se
+     * <chemin complet UO>/<type>/[Corbeille/][<projet>/]<titre>.pdf — reflète
+     * la vraie hiérarchie des UO (dossiers imbriqués, pas un nom aplati) et
+     * regroupe TOUJOURS par type de document, comme partout ailleurs dans
+     * l'app ("Mes documents" côté éditeur). Avant cette version, ni le type
+     * ni la hiérarchie n'apparaissaient : tous les documents d'une UO se
      * retrouvaient à plat dans un seul dossier, types mélangés. La
      * séparation par projet reste optionnelle (job.isSeparateProjects) et
      * s'imbrique désormais SOUS le type plutôt qu'à sa place.
+     *
+     * Un document en corbeille (inclus seulement si excludeCorbeille=false —
+     * exclu par défaut) atterrit dans un sous-dossier "Corbeille" DANS son
+     * dossier de type, juste avant l'éventuel sous-dossier projet — sans
+     * cette distinction, il était indiscernable d'un document actif dans le
+     * ZIP (le manifeste, lui, porte aussi ce statut — voir genererManifestCsv).
      *
      * Le préfixe UUID du nom de fichier disparaît (redondant avec le
      * manifeste) au profit d'un titre lisible ; en cas de collision entre
@@ -223,6 +231,11 @@ public class DocumentExportGenerationService
         String typeDossier = nettoyer(doc.typeDocumentNom(), "Sans_type");
 
         StringBuilder chemin = new StringBuilder(uoDossier).append('/').append(typeDossier).append('/');
+
+        if (doc.status() == DocumentStatus.CORBEILLE)
+        {
+            chemin.append("Corbeille/");
+        }
 
         // Pas de dossier "Sans_projet" — inutile : un document sans projet
         // reste identifiable par sa seule présence dans le dossier de type,
@@ -301,7 +314,7 @@ public class DocumentExportGenerationService
         out.writeBytes(new byte[] { (byte) 0xEF, (byte) 0xBB, (byte) 0xBF }); // BOM UTF-8
 
         String entete = String.join(",",
-            "document_id", "titre", "uo", "projet", "type", "acces", "archive_le", "chemin_dans_zip");
+            "document_id", "titre", "uo", "projet", "type", "statut", "acces", "archive_le", "chemin_dans_zip");
         out.writeBytes((entete + "\n").getBytes(StandardCharsets.UTF_8));
 
         for (String[] ligne : lignes)

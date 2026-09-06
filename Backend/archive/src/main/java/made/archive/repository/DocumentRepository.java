@@ -198,7 +198,7 @@ public interface DocumentRepository extends JpaRepository<Document, UUID>, JpaSp
      * requête (pas de lazy loading a posteriori nécessaire).
      */
     @Query("SELECT new made.archive.dto.DocumentExportRow(" +
-           "d.id, d.titre, d.storageKey, d.access, d.createAt, " +
+           "d.id, d.titre, d.storageKey, d.access, d.status, d.createAt, " +
            "d.uniteOrganisationnelle.id, d.uniteOrganisationnelle.nom, " +
            "d.typeDocument.nom, p.nom) " +
            // LEFT JOIN explicite sur projet (nullable) : une navigation par
