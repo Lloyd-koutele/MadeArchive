@@ -326,9 +326,7 @@ function AdminDashboard() {
             // pour de bon après 2 jours, annulable jusque-là par n'importe quel admin.
             const ok = await confirm({
                 title: 'Supprimer cet utilisateur ?',
-                message: `Supprimer ${targetUser.nom} ${targetUser.prenom} (${targetUser.email}) ? `
-                    + `S'il n'a jamais servi, ce sera immédiat et définitif. Sinon, il sera bloqué puis `
-                    + `supprimé pour de bon dans 2 jours (annulable jusque-là).`,
+                message: `Supprimer ${targetUser.nom} ${targetUser.prenom} (${targetUser.email}) ? `,
                 confirmLabel: 'Supprimer',
                 danger: true,
             });
@@ -657,6 +655,14 @@ function AdminDashboard() {
                                     {viewingUser.actif === true || viewingUser.actif === 'true' ? 'Actif' : 'Bloqué'}
                                 </span>
                             </div>
+                            {viewingUser.suppressionPrevueLe && (
+                                <div className="details-row">
+                                    <strong>Suppression :</strong>
+                                    <span className="status-tag inactive">
+                                        Suppression le {new Date(viewingUser.suppressionPrevueLe).toLocaleDateString('fr-FR')}
+                                    </span>
+                                </div>
+                            )}
                             <div className="details-row">
                                 <strong>Rôles :</strong> {viewingUser.roles?.map(r => r.name).join(', ') || 'Aucun'}
                             </div>
