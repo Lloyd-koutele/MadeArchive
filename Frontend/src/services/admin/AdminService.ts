@@ -51,16 +51,35 @@ export const updateUserStatus = async(id, userData) => {
     }
 }
 
-// Suppression — réelle si le compte n'a jamais servi, sinon logique et
-// irréversible (mot de passe invalidé, clé PKI révoquée si EDITOR ; voir
-// UserService.supprimerUtilisateur côté serveur). Aucune réactivation possible
-// ensuite, contrairement à updateUserStatus.
+// DEMANDE de suppression — bloque le compte immédiatement (réversible), puis
+// exécute réellement l'action après un délai de grâce de 2 jours (réelle si le
+// compte n'a jamais servi, sinon logique et irréversible : mot de passe
+// invalidé, clé PKI révoquée si EDITOR ; voir UserService.demanderSuppression
+// côté serveur). Annulable jusque-là via annulerSuppressionUtilisateur.
 export const supprimerUtilisateur = async(id: string) => {
     try{
         if (!id) {
             throw new Error('ID utilisateur manquant');
         }
         const response = await api.delete(`/admin_uo/users/${id}`);
+        return response.data;
+    }catch(error){
+        console.error('Détails de l\'erreur:', error.response?.data || error);
+        throw error.response?.data?.message
+                ? new Error(error.response.data.message)
+                : error;
+    }
+}
+
+// Annule une suppression en attente — n'importe quel admin peut le faire, pas
+// seulement celui qui l'a demandée (c'est le levier de sécurité contre une
+// suppression demandée par un compte ADMIN malveillant ou compromis).
+export const annulerSuppressionUtilisateur = async(id: string) => {
+    try{
+        if (!id) {
+            throw new Error('ID utilisateur manquant');
+        }
+        const response = await api.put(`/admin_uo/users/${id}/annuler-suppression`);
         return response.data;
     }catch(error){
         console.error('Détails de l\'erreur:', error.response?.data || error);

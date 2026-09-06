@@ -1,6 +1,7 @@
 package made.archive.entite;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
@@ -117,15 +118,31 @@ public class User
     private String sessionInvalidationReason;
 
     /**
-     * Horodatage d'une suppression LOGIQUE (compte déjà utilisé au moins une fois —
-     * voir UserService.supprimerUtilisateur) — null tant que le compte n'est pas
-     * supprimé. Contrairement au blocage (actif=false, réversible), c'est
-     * irréversible : nom/prénom/email/id sont volontairement CONSERVÉS (ils restent
-     * lisibles sur les documents/projets/exports déjà réalisés par ce compte, et
-     * dans le journal d'audit), seuls le mot de passe (remplacé par une valeur
-     * aléatoire) et la clé PKI (révoquée si active) sont coupés. Un compte jamais
-     * connecté est supprimé pour de vrai (DELETE réel) à la place — voir la même
-     * méthode — ce champ ne concerne donc que le cas "a déjà servi".
+     * Date à partir de laquelle une suppression DEMANDÉE devient exécutable — voir
+     * UserService.demanderSuppression. Délai de grâce de 2 jours (raison de
+     * sécurité : un ADMIN malveillant ou dont le compte est compromis ne doit pas
+     * pouvoir détruire une identité de façon instantanée et irréversible — un autre
+     * ADMIN a le temps de voir la suppression en attente et de l'annuler, voir
+     * UserService.annulerSuppression). Non-null = suppression en attente ; le compte
+     * est immédiatement bloqué (actif=false, session invalidée) dès la demande —
+     * seule la partie IRRÉVERSIBLE (mot de passe invalidé pour de bon, clé PKI
+     * révoquée, ou DELETE réel si le compte n'a jamais servi) attend ce délai,
+     * exécutée par UserSuppressionCleanupScheduler. Remis à null si annulée, ou si
+     * le compte est déjà supprimé pour de bon (supprimeLe non-null).
+     */
+    private LocalDate suppressionPrevueLe;
+
+    /**
+     * Horodatage d'une suppression LOGIQUE déjà EXÉCUTÉE (compte qui avait déjà
+     * servi — voir UserService, méthode appelée par UserSuppressionCleanupScheduler
+     * une fois suppressionPrevueLe atteint) — null tant qu'elle ne l'est pas.
+     * Contrairement au blocage (actif=false seul, réversible), c'est irréversible :
+     * nom/prénom/email/id sont volontairement CONSERVÉS (ils restent lisibles sur
+     * les documents/projets/exports déjà réalisés par ce compte, et dans le journal
+     * d'audit), seuls le mot de passe (remplacé par une valeur aléatoire) et la clé
+     * PKI (révoquée si active) sont coupés. Un compte jamais connecté est supprimé
+     * pour de vrai (DELETE réel) à la place — ce champ ne concerne donc que le cas
+     * "a déjà servi".
      */
     private Instant supprimeLe;
 

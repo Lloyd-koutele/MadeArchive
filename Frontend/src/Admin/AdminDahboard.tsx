@@ -18,7 +18,7 @@ import AuditLogPanel from './AuditLogPanel';
 import DocumentsArchivesPanel from './DocumentsArchivesPanel';
 import Corbeille from '../document/Corbeille';
 import type { TypeDocumentDto } from '../services/document/TypedocumentService';
-import { getAllUsers, getUsersByUO, updateUserStatus as updateStatus, supprimerUtilisateur } from "../services/admin/AdminService";
+import { getAllUsers, getUsersByUO, updateUserStatus as updateStatus, supprimerUtilisateur, annulerSuppressionUtilisateur } from "../services/admin/AdminService";
 import {
     getAllUOs,
     createUO,
@@ -51,6 +51,8 @@ interface User {
     roles: RoleField[];
     uoId?: number | null;
     uoNom?: string | null;
+    /** Non-null = suppression en attente (délai de grâce de 2 jours) — voir UserTable. */
+    suppressionPrevueLe?: string | null;
 }
 
 interface UserFilters {
@@ -295,7 +297,7 @@ function AdminDashboard() {
         setMainView('contenu');
     };
 
-    const handleAction = async (userId: string, action: 'edit' | 'block-unblock' | 'delete' | 'view') => {
+    const handleAction = async (userId: string, action: 'edit' | 'block-unblock' | 'delete' | 'annuler-suppression' | 'view') => {
         const targetUser = users.find(u => u.id === userId);
         if (!targetUser) return;
 
@@ -317,13 +319,15 @@ function AdminDashboard() {
         }
 
         if (action === 'delete') {
-            // Le serveur seul décide si c'est réel (jamais connecté) ou logique
-            // (déjà servi — nom/prénom/email conservés, mot de passe invalidé,
-            // clé PKI révoquée si éditeur) : le message reste volontairement
-            // générique ici, irréversible dans tous les cas.
+            // Le compte est bloqué immédiatement (réversible), la suppression
+            // réelle (réelle si jamais connecté, sinon logique et irréversible —
+            // mot de passe invalidé, clé PKI révoquée si éditeur) n'a lieu
+            // qu'après un délai de grâce de 2 jours, annulable jusque-là par
+            // n'importe quel admin — voir UserService.demanderSuppression.
             const ok = await confirm({
                 title: 'Supprimer cet utilisateur ?',
-                message: `Supprimer définitivement ${targetUser.nom} ${targetUser.prenom} (${targetUser.email}) ? Cette action est irréversible.`,
+                message: `Bloquer puis supprimer ${targetUser.nom} ${targetUser.prenom} (${targetUser.email}) dans 2 jours ? `
+                    + `Annulable jusque-là ; passé ce délai, l'action devient irréversible.`,
                 confirmLabel: 'Supprimer',
                 danger: true,
             });
@@ -332,10 +336,23 @@ function AdminDashboard() {
             setActionInProgress(true);
             try {
                 await supprimerUtilisateur(userId);
-                notify.success("Utilisateur supprimé");
+                notify.success("Suppression programmée dans 2 jours (annulable jusque-là)");
                 fetchUsers(currentUOId);
             } catch (err: any) {
                 notify.error(err.message || "Erreur lors de la suppression de l'utilisateur");
+            } finally {
+                setActionInProgress(false);
+            }
+        }
+
+        if (action === 'annuler-suppression') {
+            setActionInProgress(true);
+            try {
+                await annulerSuppressionUtilisateur(userId);
+                notify.success("Suppression annulée");
+                fetchUsers(currentUOId);
+            } catch (err: any) {
+                notify.error(err.message || "Erreur lors de l'annulation de la suppression");
             } finally {
                 setActionInProgress(false);
             }
