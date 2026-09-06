@@ -1745,6 +1745,14 @@ label.bulk-file-item { cursor: pointer; }
     .med-actions-compact { display: inline-flex; }
 }
 
+/* ── Corbeille — responsive ────────────────────────────────────────────────
+   Même seuil (1100px) : ne restent que Titre / Type / Suppression
+   définitive / Actions. Seulement 2 boutons ici (Lire, Restaurer) — pas
+   besoin d'un menu "..." compact, ils tiennent déjà à toute largeur. */
+@media (max-width: 1100px) {
+    .corbeille-col-acces { display: none; }
+}
+
 /* Carte "fiche" — coin corné (comme une feuille qu'on aurait pliée), reprend
    le modèle de référence (.file-container) plutôt qu'une carte rectangulaire
    générique. */

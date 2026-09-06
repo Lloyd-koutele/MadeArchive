@@ -8,6 +8,7 @@ import type { DocumentListItemDto } from '../services/document/DocumentService';
 import { hasRole } from '../auth/authService';
 import Modal from '../Page/Modal';
 import VersionBadge from './VersionBadge';
+import { renderPdfFirstPageThumbnail } from '../services/document/PdfThumbnail';
 import { useNotify } from '../notifications/NotificationProvider';
 import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus';
 import '../Style/document/Filtre.css';
@@ -48,6 +49,18 @@ function Corbeille() {
     const [pdfLoading, setPdfLoading] = useState(false);
     const [isPdfOpen, setIsPdfOpen]   = useState(false);
 
+    // ── Mode d'affichage : liste (tableau) ou grille (aperçus PDF) — même
+    // bascule que "Documents accessibles"/"Mes documents". ─────────────────
+    type ViewMode = 'list' | 'grid';
+    const [viewMode, setViewMode] = useState<ViewMode>('list');
+
+    // Aperçus PDF pour la vue grille — même logique que MesDocumentsEditor :
+    // chargés à la demande, uniquement pour les documents de la page
+    // courante et uniquement en vue grille.
+    const [previews, setPreviews] = useState<Record<string, string>>({});
+    const [previewsEnCours, setPreviewsEnCours] = useState<Set<string>>(new Set());
+    const [previewsEchec, setPreviewsEchec] = useState<Set<string>>(new Set());
+
     const charger = useCallback(async (p: number) => {
         setIsLoading(true);
         try {
@@ -56,6 +69,11 @@ function Corbeille() {
             setTotal(result.totalElements);
             setTotalPages(result.totalPages);
             setPage(p);
+
+            // Nouvelle page → les aperçus déjà générés ne correspondent plus
+            // forcément aux documents affichés.
+            setPreviews({});
+            setPreviewsEchec(new Set());
         } catch (err: any) {
             notify.error(err.message ?? 'Erreur chargement de la corbeille');
         } finally {
@@ -65,6 +83,42 @@ function Corbeille() {
     }, []);
 
     useEffect(() => { charger(1); }, [charger]);
+
+    // ── Aperçus PDF pour la vue grille ──────────────────────────────────────
+    useEffect(() => {
+        if (viewMode !== 'grid' || documents.length === 0) return;
+        let annule = false;
+
+        const idsACharger = documents
+            .map(d => d.documentId)
+            .filter(id => !previews[id] && !previewsEnCours.has(id) && !previewsEchec.has(id));
+        if (idsACharger.length === 0) return;
+
+        setPreviewsEnCours(prev => new Set([...prev, ...idsACharger]));
+
+        idsACharger.forEach(async (id) => {
+            let blobUrl: string | null = null;
+            try {
+                blobUrl = await streamPdfAAsBlob(id);
+                const thumbnail = await renderPdfFirstPageThumbnail(blobUrl);
+                if (!annule) setPreviews(prev => ({ ...prev, [id]: thumbnail }));
+            } catch {
+                if (!annule) setPreviewsEchec(prev => new Set([...prev, id]));
+            } finally {
+                if (blobUrl) URL.revokeObjectURL(blobUrl);
+                if (!annule) {
+                    setPreviewsEnCours(prev => {
+                        const next = new Set(prev);
+                        next.delete(id);
+                        return next;
+                    });
+                }
+            }
+        });
+
+        return () => { annule = true; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [viewMode, documents]);
     useRefetchOnFocus(useCallback(() => charger(page), [charger, page]));
 
     const handleRestaurer = async (doc: DocumentListItemDto) => {
@@ -103,6 +157,28 @@ function Corbeille() {
         <div className="mes-docs-wrapper">
             <div className="mes-docs-header">
                 <h2 className="mes-docs-title">Corbeille</h2>
+                <div className="docs-header-actions">
+                    <div className="docs-view-toggle" role="group" aria-label="Mode d'affichage">
+                        <button
+                            type="button"
+                            className={`view-toggle-btn ${viewMode === 'list' ? 'active' : ''}`}
+                            onClick={() => setViewMode('list')}
+                            title="Vue liste"
+                            aria-label="Afficher en liste"
+                        >
+                            <i className="fa-solid fa-list" />
+                        </button>
+                        <button
+                            type="button"
+                            className={`view-toggle-btn ${viewMode === 'grid' ? 'active' : ''}`}
+                            onClick={() => setViewMode('grid')}
+                            title="Vue grille"
+                            aria-label="Afficher en grille"
+                        >
+                            <i className="fa-solid fa-table-cells-large" />
+                        </button>
+                    </div>
+                </div>
             </div>
 
             <p className="users-count" style={{ marginBottom: '0.5rem' }}>
@@ -127,6 +203,94 @@ function Corbeille() {
                     <i className="fa-solid fa-trash-can" style={{ fontSize: '2.5rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }} />
                     <p>La corbeille est vide.</p>
                 </div>
+            ) : viewMode === 'grid' ? (
+                <>
+                    <div className="documents-grid">
+                        {documents.map(doc => (
+                            <div key={doc.documentId} className="doc-grid-card">
+                                <div
+                                    className="doc-grid-preview"
+                                    onClick={() => openPdfViewer(doc)}
+                                    role="button"
+                                    tabIndex={0}
+                                    onKeyDown={e => e.key === 'Enter' && openPdfViewer(doc)}
+                                    aria-label={`Lire ${doc.titre}`}
+                                >
+                                    {previews[doc.documentId] ? (
+                                        <img
+                                            src={previews[doc.documentId]}
+                                            alt=""
+                                            className="doc-grid-preview-frame"
+                                        />
+                                    ) : previewsEchec.has(doc.documentId) ? (
+                                        <div className="doc-grid-preview-loading doc-grid-preview-echec">
+                                            <i className="fa-solid fa-file-pdf" />
+                                        </div>
+                                    ) : (
+                                        <div className="doc-grid-preview-loading">
+                                            <i className="fa-solid fa-spinner fa-spin" />
+                                        </div>
+                                    )}
+                                    <span className="doc-grid-tag">PDF</span>
+                                    <div className="doc-grid-preview-hint">
+                                        <i className="fa-solid fa-eye" /> Lire
+                                    </div>
+                                </div>
+
+                                <div className="doc-grid-body">
+                                    <p className="doc-grid-title" title={doc.titre}>
+                                        {doc.titre}
+                                        <VersionBadge label={doc.versionLabel} />
+                                    </p>
+                                    <p className="doc-grid-type">
+                                        {doc.typeDocumentNom} · Suppression : {formatDate(doc.suppressionPrevueLe)}
+                                    </p>
+
+                                    <div className="td-actions doc-grid-actions">
+                                        <button
+                                            className="action-button view"
+                                            onClick={() => openPdfViewer(doc)}
+                                            title="Lire le document"
+                                        >
+                                            <i className="fa-solid fa-eye" />
+                                        </button>
+                                        {peutRestaurer && (
+                                            <button
+                                                className="action-button edit"
+                                                onClick={() => handleRestaurer(doc)}
+                                                disabled={restaurationEnCoursId === doc.documentId}
+                                                title="Restaurer"
+                                            >
+                                                {restaurationEnCoursId === doc.documentId
+                                                    ? <i className="fa-solid fa-spinner fa-spin" />
+                                                    : <i className="fa-solid fa-clock-rotate-left" />
+                                                }
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {totalPages > 1 && (
+                        <div className="pagination">
+                            <button
+                                className="pagination-btn pagination-nav"
+                                onClick={() => charger(page - 1)}
+                                disabled={page === 1 || isLoading}
+                            >‹</button>
+                            <span className="pagination-btn pagination-active">
+                                {page} / {totalPages}
+                            </span>
+                            <button
+                                className="pagination-btn pagination-nav"
+                                onClick={() => charger(page + 1)}
+                                disabled={page === totalPages || isLoading}
+                            >›</button>
+                        </div>
+                    )}
+                </>
             ) : (
                 <>
                     <div className="td-table-container">
@@ -135,8 +299,9 @@ function Corbeille() {
                                 <tr>
                                     <th>Titre</th>
                                     <th>Type</th>
-                                    <th>Accès</th>
-                                    <th>Statut d'origine</th>
+                                    {/* Masquée sur écran réduit (voir Editor.css) — reste
+                                        consultable en ouvrant le document. */}
+                                    <th className="corbeille-col-acces">Accès</th>
                                     <th>Suppression définitive</th>
                                     <th>Actions</th>
                                 </tr>
@@ -149,17 +314,10 @@ function Corbeille() {
                                             <VersionBadge label={doc.versionLabel} />
                                         </td>
                                         <td>{doc.typeDocumentNom}</td>
-                                        <td>
+                                        <td className="corbeille-col-acces">
                                             <span className={`doc-access-tag ${doc.access === 'PUBLIC' ? 'public' : 'prive'}`}>
                                                 {doc.access === 'PUBLIC' ? 'Public' : 'Privé'}
                                             </span>
-                                        </td>
-                                        <td>
-                                            {doc.statutAvantCorbeille === 'CORRUPTED' ? (
-                                                <span className="status-tag corrupted">
-                                                    <i className="fa-solid fa-triangle-exclamation" /> Corrompu
-                                                </span>
-                                            ) : '—'}
                                         </td>
                                         <td>{formatDate(doc.suppressionPrevueLe)}</td>
                                         <td>
