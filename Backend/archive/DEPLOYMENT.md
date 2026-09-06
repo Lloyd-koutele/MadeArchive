@@ -246,12 +246,17 @@ répétitions/tests en local (VM Multipass, poste de développement).
 
 ## Limites connues (axes d'évolution, pas des blocages)
 
-- **Volume anonyme pour Meilisearch** — l'index de recherche ne survit pas
-  à un `docker compose down` fait sans y penser (se reconstruit tout seul
-  au prochain démarrage, rien de perdu côté documents). PostgreSQL et
-  MinIO utilisent déjà un volume nommé (MinIO l'était encore en volume
-  anonyme jusqu'à ce que ça cause une vraie perte de documents archivés en
-  conditions réelles — corrigé).
+- **Volumes anonymes pour MinIO et Meilisearch** — l'un et l'autre ne
+  survivent pas à un `docker compose down` fait sans y penser. Sans
+  conséquence pour Meilisearch (l'index se reconstruit tout seul au
+  prochain démarrage), mais MinIO perd alors les documents réellement
+  archivés — constaté en conditions réelles, un vrai problème pour un
+  système d'archivage. Passé en volume nommé une première fois puis
+  **délibérément repassé en anonyme pour la phase de développement**
+  (pratique pour repartir d'un stockage vierge en supprimant juste le
+  conteneur) — voir le commentaire dans `docker-compose.yml`, section
+  `minio`, pour repasser en persistant avant un vrai déploiement.
+  PostgreSQL utilise déjà un volume nommé (jamais remis en cause).
 - **Aucune sauvegarde automatisée** (base de données, fichiers MinIO) — à
   mettre en place séparément selon votre fournisseur.
 - **Publication d'image automatisée (CI), déploiement lui-même toujours
