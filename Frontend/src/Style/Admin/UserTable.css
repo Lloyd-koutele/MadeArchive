@@ -181,6 +181,51 @@
     background: rgba(155, 58, 58, 0.08);
 }
 
+/* Colonne "Rôle" — liste déroulante à partir de 3 rôles (voir UserTable.tsx) */
+.roles-dropdown-wrapper {
+    position: relative;
+    display: inline-block;
+}
+
+.roles-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.3rem 0.7rem;
+    border-radius: var(--radius-sm);
+    border: 1.5px solid var(--border);
+    background: var(--cream);
+    color: var(--dark-soft);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.roles-trigger:hover {
+    background: var(--white-choc);
+}
+
+.roles-trigger i {
+    font-size: 0.7rem;
+    color: var(--text-light);
+}
+
+/* Réutilise le gabarit visuel de .action-menu, mais son contenu n'est pas
+   cliquable (simple liste de lecture, pas d'actions) — voir .roles-menu-item. */
+.roles-menu {
+    padding: 0.3rem 0;
+}
+
+.roles-menu-item {
+    padding: 0.4rem 0.85rem;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.85rem;
+    color: var(--dark-soft);
+    white-space: nowrap;
+}
+
 .block-unblock {
     padding: 0.35rem 0.85rem;
     border-radius: var(--radius-sm);
