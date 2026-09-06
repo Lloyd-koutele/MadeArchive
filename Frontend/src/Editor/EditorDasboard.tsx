@@ -3,6 +3,7 @@ import Sidebar from '../Page/Sidebar';
 import Profile from '../Page/Profil';
 import Modal from '../Page/Modal';
 import ImportDocuments from '../document/ImportDocuments';
+import type { BulkUploadReportDto } from '../services/document/DocumentService';
 import MesDocumentsEditor from './MesDocumentsEditor';
 import DocumentsAccessibles from '../document/DocumentsAccessible';
 import Corbeille from '../document/Corbeille';
@@ -41,10 +42,39 @@ function EditorDashboard() {
 
     // ── Handlers ────────────────────────────────────────────────────────────
 
-    const handleUploadSuccess = () => {
+    // Avant : ignorait le rapport et affichait "Succès" inconditionnellement,
+    // y compris quand TOUS les documents avaient échoué (ex. signature PKI
+    // impossible — keystore HSM désynchronisé du mot de passe courant,
+    // constaté en conditions réelles) — l'échec réel n'apparaissait alors
+    // nulle part côté utilisateur. Le rapport (déjà renvoyé par
+    // ImportDocuments, juste jamais lu ici) distingue maintenant succès
+    // total / partiel / échec total.
+    const handleUploadSuccess = (report: BulkUploadReportDto) => {
         setIsUploadModalOpen(false);
-        notify.success("Document(s) uploadé(s) avec succès");
         setRefreshDocs(r => r + 1);
+
+        if (report.failed === 0)
+        {
+            notify.success(
+                report.success > 1
+                    ? `${report.success} documents uploadés avec succès`
+                    : "Document uploadé avec succès"
+            );
+        }
+        else if (report.success === 0)
+        {
+            const premiereErreur = report.details.find(d => d.status === 'FAILED')?.erreur;
+            notify.error(
+                `Échec de l'upload — ${report.failed} document(s) non archivé(s)`
+                + (premiereErreur ? ` : ${premiereErreur}` : '')
+            );
+        }
+        else
+        {
+            notify.warning(
+                `${report.success} document(s) archivé(s), ${report.failed} échec(s) — voir le détail`
+            );
+        }
     };
 
     const sidebarTitle = `${userInfo?.role || "ÉDITEUR"}${uoNom ? ` — ${uoNom}` : ''}`;

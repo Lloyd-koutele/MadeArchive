@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import Modal from '../Page/Modal';
 import GestionGroupe from '../document/GestionGroupe';
 import ImportDocuments from '../document/ImportDocuments';
+import type { BulkUploadReportDto } from '../services/document/DocumentService';
 import VersionBadge from '../document/VersionBadge';
 import { genererAttestation } from '../services/document/AttestationService';
 import { modifierEmplacementPhysique, modifierMetaDataDocument, modifierProjetDocument, verifierFusionGroupeProjet, getTypeDocumentById } from '../services/document/DocumentService';
@@ -606,10 +607,39 @@ function MesDocumentsEditor({
         }
     };
 
-    const handleUploadSuccess = () => {
+    // Avant : ignorait le rapport (aucune notification, même en cas d'échec
+    // total — ex. signature PKI impossible, keystore HSM désynchronisé du
+    // mot de passe courant, constaté en conditions réelles) — un upload qui
+    // échouait entièrement ne produisait rien de visible, juste une liste
+    // rechargée sans nouveau document. Voir EditorDasboard.tsx pour le même
+    // correctif, avec le détail du pourquoi.
+    const handleUploadSuccess = (report: BulkUploadReportDto) => {
         closeUpload();
         loadFolders();
         if (activeFolder) loadDocuments(activeFolder, listPage);
+
+        if (report.failed === 0)
+        {
+            notify.success(
+                report.success > 1
+                    ? `${report.success} documents uploadés avec succès`
+                    : "Document uploadé avec succès"
+            );
+        }
+        else if (report.success === 0)
+        {
+            const premiereErreur = report.details.find(d => d.status === 'FAILED')?.erreur;
+            notify.error(
+                `Échec de l'upload — ${report.failed} document(s) non archivé(s)`
+                + (premiereErreur ? ` : ${premiereErreur}` : '')
+            );
+        }
+        else
+        {
+            notify.warning(
+                `${report.success} document(s) archivé(s), ${report.failed} échec(s) — voir le détail`
+            );
+        }
     };
 
     // ─────────────────────────────────────────────────────────────────────────
