@@ -495,6 +495,9 @@ function AdminUoDashboard() {
                                     <FilterUsers
                                         filters={filters}
                                         onChange={(f) => { setFilters(f); setCurrentPage(1); }}
+                                        // Admin UO ne gère jamais d'administrateurs globaux —
+                                        // ce rôle n'a pas sa place dans son filtre.
+                                        excludeRoles={['ADMIN']}
                                     />
                                     <p className="users-count">
                                         <span>{filteredUsers.length}</span> utilisateur{filteredUsers.length > 1 ? 's' : ''} dans <span>{currentUO.nom}</span>
@@ -563,7 +566,6 @@ function AdminUoDashboard() {
                 <Modal isOpen={isViewModalOpen} onClose={handleCloseModal} title="Détails de l'utilisateur">
                     {viewingUser && (
                         <div className="user-details-card">
-                            <div className="details-row"><strong>Identifiant :</strong> {viewingUser.id}</div>
                             <div className="details-row"><strong>Nom complet :</strong> {viewingUser.nom} {viewingUser.prenom}</div>
                             <div className="details-row"><strong>Email :</strong> {viewingUser.email}</div>
                             <div className="details-row"><strong>Téléphone :</strong> {viewingUser.telephone}</div>
