@@ -239,3 +239,17 @@ button:disabled {
     .action-button.edit,
     .block-unblock { padding: 0.3rem 0.65rem; font-size: 0.75rem; }
 }
+
+/* En dessous d'un écran "réduit" (pas encore le seuil mobile 768px de
+   .toggle-button/la sidebar, un palier intermédiaire — même valeur que
+   Admin/AuditLogPanel.css et hooks/FilterUsers.css) : Rôle et Téléphone
+   disparaissent de la liste. Ni l'un ni l'autre n'est indispensable pour
+   scanner la liste d'un coup d'œil, et les deux restent consultables via
+   "Voir" — ne gardent que Utilisateur / Email / Actions, qui eux ne
+   peuvent pas être déplacés ailleurs (colonnes vues comme "col-role" et
+   "col-telephone" dans UserTable.tsx, pour cibler exactement ces deux-là
+   plutôt qu'un nth-child fragile si l'ordre des colonnes change un jour). */
+@media (max-width: 1100px) {
+    .col-role,
+    .col-telephone { display: none; }
+}
