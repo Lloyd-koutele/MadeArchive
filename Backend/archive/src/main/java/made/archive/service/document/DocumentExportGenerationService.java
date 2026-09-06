@@ -224,10 +224,14 @@ public class DocumentExportGenerationService
 
         StringBuilder chemin = new StringBuilder(uoDossier).append('/').append(typeDossier).append('/');
 
-        if (separateProjects)
+        // Pas de dossier "Sans_projet" — inutile : un document sans projet
+        // reste identifiable par sa seule présence dans le dossier de type,
+        // pas besoin d'un niveau de plus qui ne dirait rien de plus. Le
+        // sous-dossier projet n'apparaît QUE pour un document qui en a
+        // réellement un.
+        if (separateProjects && doc.projetNom() != null && !doc.projetNom().isBlank())
         {
-            String projetFolder = nettoyer(doc.projetNom(), "Sans_projet");
-            chemin.append(projetFolder).append('/');
+            chemin.append(nettoyer(doc.projetNom(), "Sans_projet")).append('/');
         }
 
         // Le titre archivé inclut déjà ".pdf" (ex. "invoice_..._36652.pdf") —

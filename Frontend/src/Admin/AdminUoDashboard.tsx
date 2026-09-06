@@ -69,7 +69,7 @@ interface UONode {
 }
 
 type MainView = 'profile' | 'contenu';
-type Tab = 'utilisateurs' | 'documents' | 'archives' | 'corbeille' | 'projets' | 'emplacements' | 'journal' | 'export';
+type Tab = 'utilisateurs' | 'documents' | 'archives' | 'corbeille' | 'projets' | 'emplacements' | 'journal';
 
 const isUserActive = (user: User): boolean => user.actif === true || user.actif === 'true';
 
@@ -99,6 +99,7 @@ function AdminUoDashboard() {
 
     const [users, setUsers] = useState<User[]>([]);
     const [isCreateUserModalOpen, setIsCreateUserModalOpen] = useState(false);
+    const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
     const [isViewModalOpen, setIsViewModalOpen] = useState(false);
     const [isCreateTdModalOpen, setIsCreateTdModalOpen] = useState(false);
@@ -392,6 +393,15 @@ function AdminUoDashboard() {
                                 </button>
                             </div>
 
+                            <div className="main-header">
+                                <button
+                                    onClick={() => setIsExportModalOpen(true)}
+                                    className="sidebar-btn"
+                                >
+                                    <i className="fa-solid fa-file-zipper" /> Exporter
+                                </button>
+                            </div>
+
                             <div className="sidebar-section-label">Organisation</div>
                             {rootUO && currentUOId && (
                                 <UOTree
@@ -481,12 +491,6 @@ function AdminUoDashboard() {
                                 >
                                     Journal d'audit
                                 </button>
-                                <button
-                                    className={`uo-tab ${tab === 'export' ? 'active' : ''}`}
-                                    onClick={() => setTab('export')}
-                                >
-                                    <i className="fa-solid fa-file-zipper" /> Export
-                                </button>
                             </div>
 
                             {tab === 'utilisateurs' && (
@@ -558,13 +562,16 @@ function AdminUoDashboard() {
                             )}
 
                             {tab === 'journal' && <AuditLogPanel />}
-
-                            {tab === 'export' && (
-                                <ExportPanel uoId={currentUOId} uoNom={currentUO.nom} />
-                            )}
                         </>
                     )}
                 </div>
+
+                <ExportPanel
+                    isOpen={isExportModalOpen}
+                    onClose={() => setIsExportModalOpen(false)}
+                    uos={treeNodes}
+                    defaultUoId={currentUOId}
+                />
 
                 <Modal isOpen={isCreateUserModalOpen} onClose={handleCloseModal} title="Créer un utilisateur">
                     <CreateUser onsuccess={handleUserUpdated} restrictToUO={restrictToUO} />
