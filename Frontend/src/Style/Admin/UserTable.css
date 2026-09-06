@@ -11,7 +11,12 @@
 .user-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.875rem;
+    /* Tailles fluides (clamp), pas un seul palier fixe — le tableau rétrécit
+       en continu avec l'écran plutôt que de sauter d'une taille à l'autre à
+       un seul seuil. ".table-container" (ci-dessus) reste le filet de
+       sécurité : au-delà de ce que le clamp peut réduire, on défile
+       horizontalement plutôt que de casser la mise en page. */
+    font-size: clamp(0.78rem, 1.3vw, 0.875rem);
 }
 
 .user-table thead {
@@ -19,11 +24,11 @@
 }
 
 .user-table thead th {
-    padding: 0.85rem 1rem;
+    padding: clamp(0.55rem, 1.8vw, 0.85rem) clamp(0.65rem, 2vw, 1rem);
     text-align: left;
     font-family: 'DM Sans', sans-serif;
     font-weight: 500;
-    font-size: 0.78rem;
+    font-size: clamp(0.68rem, 1vw, 0.78rem);
     letter-spacing: 0.8px;
     text-transform: uppercase;
     color: rgba(253,248,243,0.7);
@@ -41,10 +46,16 @@
 .user-table tbody tr:hover { background-color: var(--cream); }
 
 .user-table tbody td {
-    padding: 0.8rem 1rem;
+    padding: clamp(0.55rem, 1.8vw, 0.8rem) clamp(0.65rem, 2vw, 1rem);
     color: var(--dark-choc);
-    font-size: 0.875rem;
+    font-size: clamp(0.78rem, 1.3vw, 0.875rem);
     vertical-align: middle;
+    /* Chaque ligne tient sur UNE seule ligne visuelle (ex: "Marvin Lloyd",
+       "Administrateur d'unité, Éditeur, Utilisateur" ne doivent jamais
+       retomber sur 2 lignes et agrandir la hauteur de la ligne) — si le
+       contenu ne rentre pas, .table-container fait défiler horizontalement
+       plutôt que de laisser le texte s'enrouler. */
+    white-space: nowrap;
 }
 
 /* Actions */
@@ -219,10 +230,11 @@ button:disabled {
 .empty-state p { font-size: 0.875rem; }
 
 /* Responsive */
+/* th/td ne sont plus ici : leur padding/police est déjà fluide (clamp,
+   voir plus haut), ce palier fixe serait redondant. Les boutons d'action
+   gardent un ajustement dédié — leur contenu (icônes/libellés courts) a un
+   comportement différent d'un simple padding de cellule. */
 @media (max-width: 768px) {
-    .user-table thead th,
-    .user-table tbody td { padding: 0.65rem 0.75rem; }
-
     .action-button.view,
     .action-button.edit,
     .block-unblock { padding: 0.3rem 0.65rem; font-size: 0.75rem; }
