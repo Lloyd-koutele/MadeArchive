@@ -133,16 +133,11 @@ function TypeDocumentDetail({ td }: TypeDocumentDetailProps) {
                 )}
             </div>
 
-            {/* Règles d'extraction OCR */}
+            {/* Regex */}
             <div className="td-detail-section">
-                <h4 className="td-detail-subtitle">Règles d'extraction OCR</h4>
+                <h4 className="td-detail-subtitle">Regex</h4>
 
-                {!regexGenerated ? (
-                    <p className="td-detail-empty">
-                        Pas encore générées — elles le seront automatiquement au premier document
-                        archivé de ce type (en arrière-plan, sans bloquer l'archivage).
-                    </p>
-                ) : editingRegex ? (
+                {editingRegex ? (
                     <>
                         <p className="td-regex-hint">
                             Une regex par champ — une erreur de syntaxe sur une ligne n'empêche pas
@@ -191,14 +186,8 @@ function TypeDocumentDetail({ td }: TypeDocumentDetailProps) {
                             </button>
                         </div>
                     </>
-                ) : (
+                ) : regexGenerated ? (
                     <>
-                        <p className="td-regex-hint">
-                            Générées à partir d'un document déjà archivé. Si les suggestions OCR
-                            se trompent systématiquement, corrige-les ou réinitialise-les
-                            ci-dessous — dans ce dernier cas, elles seront régénérées au prochain
-                            document de ce type.
-                        </p>
                         {Object.keys(regexMap).length > 0 && (
                             <table className="td-meta-table">
                                 <thead>
@@ -233,6 +222,23 @@ function TypeDocumentDetail({ td }: TypeDocumentDetailProps) {
                                     : <><i className="fa-solid fa-rotate-left" /> Réinitialiser</>}
                             </button>
                         </div>
+                    </>
+                ) : (
+                    <>
+                        <p className="td-detail-empty">
+                            Pas encore générées — elles le seront automatiquement au premier document
+                            archivé de ce type (en arrière-plan, sans bloquer l'archivage), ou tu peux
+                            les définir toi-même dès maintenant.
+                        </p>
+                        {champsMeta.length > 0 && (
+                            <button
+                                type="button"
+                                className="td-regex-reset-btn"
+                                onClick={ouvrirEditionRegex}
+                            >
+                                <i className="fa-solid fa-plus" /> Créer les regex
+                            </button>
+                        )}
                     </>
                 )}
             </div>
