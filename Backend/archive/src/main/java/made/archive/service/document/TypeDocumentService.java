@@ -54,6 +54,8 @@ public class TypeDocumentService
 
     private final DocumentRetentionService documentRetentionService;
 
+    private final made.archive.util.TypeDocumentMapper typeDocumentMapper;
+
     public TypeDocumentService(
         TypeDocumentRepository typeDocumentRepository,
         DocumentRepository documentRepository,
@@ -62,7 +64,8 @@ public class TypeDocumentService
         MinioStorageService minioStorageService,
         UniteOrganisationnelleService uniteOrganisationnelleService,
         AuditLogService auditLogService,
-        DocumentRetentionService documentRetentionService)
+        DocumentRetentionService documentRetentionService,
+        made.archive.util.TypeDocumentMapper typeDocumentMapper)
     {
         this.typeDocumentRepository = typeDocumentRepository;
         this.documentRepository = documentRepository;
@@ -72,6 +75,7 @@ public class TypeDocumentService
         this.documentRetentionService = documentRetentionService;
         this.uniteOrganisationnelleService = uniteOrganisationnelleService;
         this.auditLogService = auditLogService;
+        this.typeDocumentMapper = typeDocumentMapper;
     }
 
     @Transactional
@@ -231,6 +235,70 @@ public class TypeDocumentService
         typeDocumentRepository.save(typeDocument);
 
         log.info("[TypeDocument] Regex réinitialisées pour le type {}", typeDocument.getId());
+    }
+
+    /**
+     * Correction manuelle des regex d'extraction par un administrateur — pour
+     * quand une regex générée automatiquement (voir RegexGenerationService)
+     * se trompe systématiquement mais que réinitialiser purement et
+     * simplement (resetRegex) forcerait à attendre un nouveau document avant
+     * d'avoir à nouveau des suggestions.
+     *
+     * Remplace intégralement la table champ→regex par celle soumise (pas de
+     * fusion) : le formulaire d'édition envoie systématiquement un champ par
+     * métadonnée existante, donc l'ensemble reçu représente déjà l'état
+     * complet voulu.
+     */
+    @Transactional
+    public TypeDocumentDto modifierRegex(Long id, Map<String, String> regexMap, User currentUser)
+    {
+        TypeDocument typeDocument = typeDocumentRepository.findByIdWithMetaData(id)
+            .orElseThrow(() -> new BusinessException(
+                "Type de document introuvable : " + id));
+
+        if (!uniteOrganisationnelleService.aAutoriteSur(
+                typeDocument.getUniteOrganisationnelle().getId(), currentUser))
+        {
+            throw new AccessDeniedException(
+                "Vous n'avez pas l'autorisation de modifier les regex de ce type");
+        }
+
+        if (regexMap == null || regexMap.isEmpty())
+        {
+            throw new BusinessException("Aucune regex fournie");
+        }
+
+        Set<String> champsConnus = typeDocument.getMetaData().stream()
+            .map(MetaData::getNom)
+            .collect(Collectors.toSet());
+
+        for (Map.Entry<String, String> entry : regexMap.entrySet())
+        {
+            if (!champsConnus.contains(entry.getKey()))
+            {
+                throw new BusinessException(
+                    "« " + entry.getKey() + "» ne correspond à aucune métadonnée de ce type");
+            }
+            try
+            {
+                java.util.regex.Pattern.compile(entry.getValue());
+            }
+            catch (java.util.regex.PatternSyntaxException e)
+            {
+                throw new BusinessException(
+                    "Regex invalide pour « " + entry.getKey() + " » : " + e.getMessage());
+            }
+        }
+
+        typeDocument.setExtractionRegexMap(regexMap);
+        typeDocumentRepository.save(typeDocument);
+
+        auditLogService.log(currentUser, AuditAction.TYPE_DOCUMENT_REGEX_MODIFIEE, AuditCible.TYPE_DOCUMENT,
+            id.toString(), typeDocument.getUniteOrganisationnelle().getId(),
+            "Correction manuelle des regex du type " + typeDocument.getNom()
+                + " par " + currentUser.getEmail(), true);
+
+        return typeDocumentMapper.toDto(typeDocument);
     }
 
     public void cleanupExternalStoresBeforeDeletion(Long typeDocumentId)

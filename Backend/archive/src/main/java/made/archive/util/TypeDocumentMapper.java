@@ -43,6 +43,9 @@ public class TypeDocumentMapper
             dto.setMetaData(List.of());
         }
 
+        dto.setRegexGenerated(entity.getRegexGenerated());
+        dto.setExtractionRegexJson(entity.getExtractionRegexJson());
+
         return dto;
     }
 

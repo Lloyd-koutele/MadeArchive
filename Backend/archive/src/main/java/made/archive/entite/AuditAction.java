@@ -57,6 +57,7 @@ public enum AuditAction
     TYPE_DOCUMENT_CREE,
     TYPE_DOCUMENT_MODIFIE,
     TYPE_DOCUMENT_REGEX_REINITIALISEE,
+    TYPE_DOCUMENT_REGEX_MODIFIEE,
     TYPE_DOCUMENT_SUPPRIME,
 
     // ── Projets ───────────────────────────────────────────────────────────────

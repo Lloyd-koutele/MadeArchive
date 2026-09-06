@@ -419,6 +419,39 @@
 .td-regex-reset-btn:hover:not(:disabled) { background: var(--dark-soft); }
 .td-regex-reset-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
+/* Regroupe "Modifier"/"Réinitialiser" (lecture) ou "Enregistrer"/"Annuler"
+   (édition) — remplace le margin-top individuel du bouton pour ne pas le
+   doubler quand il est accompagné d'un second bouton. */
+.td-regex-edit-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-top: 0.9rem;
+}
+
+.td-regex-edit-actions .td-regex-reset-btn { margin-top: 0; }
+
+/* Un champ texte par regex en édition — même table que la vue lecture
+   (.td-meta-table), juste la cellule "Regex" qui devient un input. */
+.td-regex-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.35rem 0.55rem;
+    font-size: 0.8rem;
+    font-family: 'DM Sans', monospace;
+    border: 1.5px solid var(--border);
+    border-radius: 5px;
+    background: var(--cream);
+    color: var(--dark-choc);
+}
+
+.td-regex-input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.td-regex-input:disabled { opacity: 0.6; }
+
 .td-regex-error {
     margin-top: 0.5rem;
     color: var(--error);

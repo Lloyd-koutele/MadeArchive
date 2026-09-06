@@ -159,6 +159,29 @@ public class TypeDocumentController
         }
     }
 
+    /**
+     * Corrige manuellement les regex d'extraction d'un type — pour quand une
+     * regex générée automatiquement se trompe systématiquement, sans avoir à
+     * réinitialiser (et donc attendre un nouveau document) via reset-regex.
+     * Body : { "NomChamp": "regex", ... } — un champ par métadonnée du type.
+     */
+    @Secured({"ROLE_ADMIN", "ROLE_ADMIN_UO"})
+    @PutMapping("/types-documents/{id}/regex")
+    public ResponseEntity<?> modifierRegex(@PathVariable Long id, @RequestBody Map<String, String> regexMap,
+                                            @AuthenticationPrincipal UserDetailsImpl currentUser)
+    {
+        try
+        {
+            TypeDocumentDto result = typeDocumentService.modifierRegex(id, regexMap, currentUser.getUser());
+            return ResponseEntity.ok(result);
+        }
+        catch (Exception e)
+        {
+            return ResponseEntity.badRequest()
+                .body(buildError("Erreur lors de la modification des regex : " + e.getMessage()));
+        }
+    }
+
     @Secured({"ROLE_ADMIN", "ROLE_ADMIN_UO"})
     @DeleteMapping("/types-documents/{id}")
     public ResponseEntity<?> deleteTypeDocumentById(@PathVariable Long id, @AuthenticationPrincipal UserDetailsImpl currentUser)
