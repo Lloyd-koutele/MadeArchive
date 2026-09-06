@@ -14,6 +14,7 @@ public class ExportApercuDocumentDto
     private UUID id;
     private String titre;
     private String uoNom;
+    private String typeDocumentNom;
     private String projetNom;
     private TypeAccess access;
 

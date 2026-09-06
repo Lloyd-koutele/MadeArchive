@@ -69,7 +69,6 @@ public class DocumentExportService
     private final NotificationService              notificationService;
     private final AuditLogService                  auditLogService;
     private final DocumentExportProperties         properties;
-    private final DocumentExportGenerationService  generationService;
 
     @Transactional(readOnly = true)
     public List<ExportApercuDocumentDto> apercu(ExportApercuRequestDto requete, User appelant)
@@ -91,6 +90,7 @@ public class DocumentExportService
                 doc.getId(),
                 doc.getTitre(),
                 doc.getUniteOrganisationnelle() != null ? doc.getUniteOrganisationnelle().getNom() : null,
+                doc.getTypeDocument() != null ? doc.getTypeDocument().getNom() : null,
                 doc.getProjet() != null ? doc.getProjet().getNom() : null,
                 doc.getAccess(),
                 estVisibleSansElevation(doc, appelant)))
@@ -171,7 +171,14 @@ public class DocumentExportService
             }
         }
 
-        generationService.genererExportAsync(saved.getId());
+        // Le déclenchement de la génération (@Async) se fait dans le contrôleur,
+        // APRÈS le retour de cette méthode — pas ici. Cette méthode est
+        // @Transactional : l'INSERT de "saved" n'est commité qu'au retour de la
+        // méthode (proxy Spring). Un appel synchrone à @Async ici planifie le
+        // thread quasi instantanément, largement avant ce commit — le thread
+        // async cherchait alors un job qui n'existait pas encore en base
+        // ("introuvable au démarrage de la génération"), constaté en conditions
+        // réelles (jamais détecté par les tests, qui mockent cette dépendance).
 
         return saved;
     }

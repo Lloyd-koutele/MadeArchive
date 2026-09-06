@@ -22,6 +22,7 @@ import made.archive.dto.ExportLancerRequestDto;
 import made.archive.entite.ExportJob;
 import made.archive.exception.BusinessException;
 import made.archive.security.UserDetailsImpl;
+import made.archive.service.document.DocumentExportGenerationService;
 import made.archive.service.document.DocumentExportService;
 
 /**
@@ -40,6 +41,7 @@ import made.archive.service.document.DocumentExportService;
 public class AdminDocumentExportController
 {
     private final DocumentExportService documentExportService;
+    private final DocumentExportGenerationService documentExportGenerationService;
 
     /**
      * POST /api/admin_uo/document-export/apercu
@@ -70,9 +72,15 @@ public class AdminDocumentExportController
 
     /**
      * POST /api/admin_uo/document-export/lancer
-     * Crée le job et démarre la génération du ZIP en tâche de fond — voir
+     * Crée le job puis démarre la génération du ZIP en tâche de fond — voir
      * DocumentExportGenerationService. Retourne immédiatement, avec le
      * statut initial (EN_ATTENTE, aussitôt basculé EN_COURS).
+     *
+     * Le déclenchement @Async est fait ICI, APRÈS le retour de
+     * lancerExport() (donc après le commit de sa transaction) — et non à
+     * l'intérieur de ce service @Transactional, où le thread async
+     * démarrerait avant que le job n'existe réellement en base (constaté en
+     * conditions réelles : "job introuvable au démarrage de la génération").
      */
     @Secured({"ROLE_ADMIN", "ROLE_ADMIN_UO"})
     @PostMapping("/lancer")
@@ -83,6 +91,7 @@ public class AdminDocumentExportController
         try
         {
             ExportJob job = documentExportService.lancerExport(requete, principal.getUser());
+            documentExportGenerationService.genererExportAsync(job.getId());
             return ResponseEntity.ok(documentExportService.getStatut(job.getId(), principal.getUser()));
         }
         catch (BusinessException e)

@@ -13,6 +13,7 @@ import CreateTypeDocument from "../document/Createtypedocument";
 import QuickCreateTypeDocumentsModal from '../document/QuickCreateTypeDocumentsModal';
 import ProjetsPanel from '../organisation/ProjetsPanel';
 import PhysicalLocationsPanel from '../organisation/PhysicalLocationsPanel';
+import ExportPanel from '../organisation/ExportPanel';
 import AuditLogPanel from './AuditLogPanel';
 import DocumentsArchivesPanel from './DocumentsArchivesPanel';
 import Corbeille from '../document/Corbeille';
@@ -68,7 +69,7 @@ interface UONode {
 }
 
 type MainView = 'profile' | 'contenu';
-type Tab = 'utilisateurs' | 'documents' | 'archives' | 'corbeille' | 'projets' | 'emplacements' | 'journal';
+type Tab = 'utilisateurs' | 'documents' | 'archives' | 'corbeille' | 'projets' | 'emplacements' | 'journal' | 'export';
 
 const GLOBAL_VIEW_ID = -1;
 const GLOBAL_VIEW_NODE: UONode = {
@@ -495,6 +496,12 @@ function AdminDashboard() {
                                 >
                                     Journal d'audit
                                 </button>
+                                <button
+                                    className={`uo-tab ${tab === 'export' ? 'active' : ''}`}
+                                    onClick={() => setTab('export')}
+                                >
+                                    <i className="fa-solid fa-file-zipper" /> Export
+                                </button>
                             </div>
 
 
@@ -570,6 +577,13 @@ function AdminDashboard() {
                             )}
 
                             {tab === 'journal' && <AuditLogPanel />}
+
+                            {tab === 'export' && (
+                                <ExportPanel
+                                    uoId={currentUO.id === GLOBAL_VIEW_ID ? null : currentUO.id}
+                                    uoNom={currentUO.id === GLOBAL_VIEW_ID ? undefined : currentUO.nom}
+                                />
+                            )}
                         </>
                     )}
                 </div>
@@ -585,7 +599,6 @@ function AdminDashboard() {
                 <Modal isOpen={isViewModalOpen} onClose={handleCloseModal} title="Détails de l'utilisateur">
                     {viewingUser && (
                         <div className="user-details-card">
-                            <div className="details-row"><strong>Identifiant :</strong> {viewingUser.id}</div>
                             <div className="details-row"><strong>Nom complet :</strong> {viewingUser.nom} {viewingUser.prenom}</div>
                             <div className="details-row"><strong>Email :</strong> {viewingUser.email}</div>
                             <div className="details-row"><strong>Téléphone :</strong> {viewingUser.telephone}</div>
