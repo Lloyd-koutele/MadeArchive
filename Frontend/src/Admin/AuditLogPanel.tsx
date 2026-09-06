@@ -366,12 +366,16 @@ function AuditLogPanel() {
                 <table className="td-table audit-log-table">
                     <thead>
                         <tr>
-                            <th>Date</th>
+                            {/* Masquées sous 1100px (voir AuditLogPanel.css) — ne restent
+                                que Acteur / Action / Résultat ; le reste redevient
+                                consultable en dépliant la ligne (voir la grille de
+                                détail plus bas, qui reprend Date/Cible/UO/Description). */}
+                            <th className="audit-col-date">Date</th>
                             <th>Acteur</th>
                             <th>Action</th>
-                            <th>Cible</th>
-                            <th>UO</th>
-                            <th>Description</th>
+                            <th className="audit-col-cible">Cible</th>
+                            <th className="audit-col-uo">UO</th>
+                            <th className="audit-col-description">Description</th>
                             <th>Résultat</th>
                         </tr>
                     </thead>
@@ -390,15 +394,15 @@ function AuditLogPanel() {
                                     className="audit-log-row"
                                     onClick={() => setExpandedId(expandedId === log.id ? null : log.id)}
                                 >
-                                    <td className="audit-log-date">{formatHorodatage(log.horodatage)}</td>
+                                    <td className="audit-log-date audit-col-date">{formatHorodatage(log.horodatage)}</td>
                                     <td>
                                         {log.acteurEmail ?? <span className="audit-log-anonyme">anonyme</span>}
                                         {log.acteurRole && <span className="audit-log-role"> · {log.acteurRole}</span>}
                                     </td>
                                     <td>{ACTION_LABELS[log.action] ?? log.action}</td>
-                                    <td>{log.cibleType ? CIBLE_LABELS[log.cibleType] : '—'}</td>
-                                    <td>{log.uoId != null ? (uoNomParId.get(log.uoId) ?? `#${log.uoId}`) : '—'}</td>
-                                    <td className="audit-log-description">{log.description}</td>
+                                    <td className="audit-col-cible">{log.cibleType ? CIBLE_LABELS[log.cibleType] : '—'}</td>
+                                    <td className="audit-col-uo">{log.uoId != null ? (uoNomParId.get(log.uoId) ?? `#${log.uoId}`) : '—'}</td>
+                                    <td className="audit-log-description audit-col-description">{log.description}</td>
                                     <td>
                                         <span className={`status-tag ${log.succes ? 'active' : 'inactive'}`}>
                                             {log.succes ? 'Succès' : 'Échec'}
@@ -409,12 +413,22 @@ function AuditLogPanel() {
                                     <tr className="audit-log-detail-row">
                                         <td colSpan={7}>
                                             <div className="audit-log-detail-grid">
+                                                {/* Date/Cible/UO/Description reprises ici : masquées de la
+                                                    ligne elle-même sous 1100px (voir .audit-col-*), mais
+                                                    jamais perdues — juste déplacées derrière le dépliant. */}
+                                                <span><strong>Date :</strong> {formatHorodatage(log.horodatage)}</span>
+                                                <span><strong>Cible :</strong> {log.cibleType ? CIBLE_LABELS[log.cibleType] : '—'}</span>
                                                 <span><strong>IP :</strong> {log.adresseIp ?? '—'}</span>
                                                 <span><strong>Cible ID :</strong> {log.cibleId ?? '—'}</span>
                                                 <span>
                                                     <strong>UO :</strong>{' '}
                                                     {log.uoId != null ? (uoNomParId.get(log.uoId) ?? `#${log.uoId}`) : '—'}
                                                 </span>
+                                                {log.description && (
+                                                    <span className="audit-log-detail-description">
+                                                        <strong>Description :</strong> {log.description}
+                                                    </span>
+                                                )}
                                                 {log.details && (
                                                     <pre className="audit-log-details-json">{
                                                         (() => {
