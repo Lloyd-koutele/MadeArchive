@@ -203,6 +203,23 @@
     background: var(--error, #9B3A3A) !important;
 }
 
+/* ── Responsive ───────────────────────────────────────────────────────────
+   Même seuil que UserTable/Typedocument/DocumentsAccessible (1100px) : les 5
+   boutons autonomes cèdent la place à un menu "..." qui reprend exactement
+   les mêmes actions/icônes. Ligne d'arbre plus dense qu'une cellule de
+   tableau (indentation + poignée de glisser-déposer + étiquette de type en
+   plus des actions) — se resserre plus vite qu'un tableau classique. */
+.pl-actions-compact { display: none; }
+
+@media (max-width: 1100px) {
+    /* Qualifié par .pl-actions (specificité 0,2,0) pour l'emporter sur la
+       règle générique .pl-actions button (0,1,1, voir plus haut) qui
+       s'appliquerait sinon avec une priorité plus forte qu'un simple
+       .pl-actions-standalone seul. */
+    .pl-actions .pl-actions-standalone { display: none; }
+    .pl-actions-compact { display: inline-flex; }
+}
+
 .pl-children {
     border-left: 1px dashed var(--border, #E8D9C5);
     margin-left: 1.1rem;
