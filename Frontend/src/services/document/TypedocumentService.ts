@@ -35,6 +35,26 @@ export const resetTypeDocumentRegex = async (id: number): Promise<void> => {
     }
 };
 
+/**
+ * PUT /api/admin_uo/types-documents/{id}/regex
+ * Corrige manuellement les regex d'extraction OCR d'un type — un champ par
+ * métadonnée existante. Réservé à ADMIN/ADMIN_UO ; le serveur valide que
+ * chaque regex compile avant d'enregistrer.
+ */
+export const modifierTypeDocumentRegex = async (
+    id: number,
+    regexParChamp: Record<string, string>
+): Promise<TypeDocumentDto> => {
+    try {
+        const response = await api.put(`/admin_uo/types-documents/${id}/regex`, regexParChamp);
+        return response.data;
+    } catch (error: any) {
+        throw error.response?.data?.message
+            ? new Error(error.response.data.message)
+            : error;
+    }
+};
+
 // Réservé ADMIN côté serveur — vue globale non scopée
 export const getAllTypeDocuments = async (): Promise<TypeDocumentDto[]> => {
     try {

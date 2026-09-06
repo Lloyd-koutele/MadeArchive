@@ -52,6 +52,7 @@ const ACTION_LABELS: Record<AuditAction, string> = {
     TYPE_DOCUMENT_CREE: 'Type de document créé',
     TYPE_DOCUMENT_MODIFIE: 'Type de document modifié',
     TYPE_DOCUMENT_REGEX_REINITIALISEE: 'Regex réinitialisées',
+    TYPE_DOCUMENT_REGEX_MODIFIEE: 'Regex modifiées',
     TYPE_DOCUMENT_SUPPRIME: 'Type de document supprimé',
     PROJET_CREE: 'Projet créé',
     PROJET_TYPES_AJOUTES: 'Types ajoutés au projet',

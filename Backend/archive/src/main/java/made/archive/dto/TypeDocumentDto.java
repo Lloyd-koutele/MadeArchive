@@ -20,5 +20,12 @@ public class TypeDocumentDto
     private Long periodGrace;
     private List <DocumentDetailDto> documents;  
     private Long uoId;
-    private String uoNom; 
+    private String uoNom;
+
+    // Reflètent TypeDocument.regexGenerated/extractionRegexJson — absents ici
+    // jusqu'à présent, le frontend recevait donc toujours `undefined` et
+    // affichait "Pas encore générées" même quand la base avait un vrai
+    // regex généré (voir TypeDocumentMapper.toDto).
+    private Boolean regexGenerated;
+    private String extractionRegexJson;
 }
