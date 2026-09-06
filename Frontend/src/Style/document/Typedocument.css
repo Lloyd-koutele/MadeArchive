@@ -425,17 +425,6 @@
     font-size: 0.82rem;
 }
 
-.td-type-badge {
-    display: inline-block;
-    padding: 0.18rem 0.55rem;
-    border-radius: 10px;
-    background: var(--cream);
-    border: 1px solid var(--border);
-    font-size: 0.75rem;
-    color: var(--dark-soft);
-    font-weight: 500;
-}
-
 .td-oblig-badge {
     display: inline-block;
     padding: 0.18rem 0.55rem;
@@ -494,8 +483,55 @@
    Admin/Admin UO (AdminDashboard.css), qui n'importe pas Editor.css. */
 .td-list-header {
     display: flex;
-    justify-content: flex-end;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
     margin-bottom: 0.85rem;
+}
+
+/* ─── Filtre (nom / rétention) ─── */
+.td-filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.td-filter-input {
+    padding: 0.5rem 0.85rem;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--white-choc);
+    color: var(--dark-choc);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.85rem;
+    outline: none;
+    transition: border-color var(--transition);
+}
+
+.td-filter-input:focus { border-color: var(--accent); }
+
+.td-filter-input-narrow { width: 150px; }
+
+.td-filter-reset-btn {
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--white-choc);
+    color: var(--text-light);
+    cursor: pointer;
+    transition: background var(--transition), color var(--transition), border-color var(--transition);
+}
+
+.td-filter-reset-btn:hover {
+    background: var(--cream);
+    color: var(--dark-choc);
+    border-color: var(--accent);
 }
 
 .td-view-toggle {

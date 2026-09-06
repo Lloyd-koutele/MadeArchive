@@ -36,6 +36,21 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
     // pour des types de document (pas d'aperçu PDF, juste les métadonnées).
     const [viewMode, setViewMode] = useState<ViewMode>('list');
 
+    // Filtre — entièrement local (pas de requête réseau : la liste des
+    // types est déjà chargée en entier, filtrer côté client suffit et
+    // reste instantané). Rétention : comparaison EXACTE sur le nombre
+    // d'années (pas une vraie "date" au sens calendaire — c'est ainsi que
+    // le champ est stocké, voir TypeDocumentDto.retentionYears).
+    const [filterNom, setFilterNom] = useState('');
+    const [filterRetention, setFilterRetention] = useState('');
+
+    const typeDocumentsFiltres = typeDocuments.filter(td => {
+        const nomOk = td.nom.toLowerCase().includes(filterNom.trim().toLowerCase());
+        const retentionOk = filterRetention.trim() === ''
+            || String(td.retentionYears ?? '') === filterRetention.trim();
+        return nomOk && retentionOk;
+    });
+
     const [viewingTd, setViewingTd] = useState<TypeDocumentDto | null>(null);
     const [isViewModalOpen, setIsViewModalOpen] = useState(false);
 
@@ -238,6 +253,37 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
 
             {typeDocuments.length > 0 && (
                 <div className="td-list-header">
+                    <div className="td-filter-bar">
+                        <input
+                            type="text"
+                            className="td-filter-input"
+                            placeholder="Nom"
+                            aria-label="Filtrer par nom"
+                            value={filterNom}
+                            onChange={e => setFilterNom(e.target.value)}
+                        />
+                        <input
+                            type="number"
+                            className="td-filter-input td-filter-input-narrow"
+                            placeholder="Rétention (ans)"
+                            aria-label="Filtrer par rétention (années)"
+                            min={0}
+                            value={filterRetention}
+                            onChange={e => setFilterRetention(e.target.value)}
+                        />
+                        {(filterNom || filterRetention) && (
+                            <button
+                                type="button"
+                                className="td-filter-reset-btn"
+                                title="Réinitialiser les filtres"
+                                aria-label="Réinitialiser les filtres"
+                                onClick={() => { setFilterNom(''); setFilterRetention(''); }}
+                            >
+                                <i className="fa-solid fa-rotate-left" />
+                            </button>
+                        )}
+                    </div>
+
                     <div className="td-view-toggle" role="group" aria-label="Mode d'affichage">
                         <button
                             type="button"
@@ -278,9 +324,14 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
                     <p>Aucun type de document créé.</p>
                     <span>Utilisez le bouton "Créer un type" pour commencer.</span>
                 </div>
+            ) : typeDocumentsFiltres.length === 0 ? (
+                <div className="td-empty">
+                    <p>Aucun type ne correspond à ce filtre.</p>
+                    <span>Essayez un autre nom ou une autre rétention.</span>
+                </div>
             ) : viewMode === 'grid' ? (
                 <div className="td-grid">
-                    {typeDocuments.map(td => (
+                    {typeDocumentsFiltres.map(td => (
                         <div
                             key={td.id}
                             draggable
@@ -346,7 +397,7 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
                             </tr>
                         </thead>
                         <tbody>
-                            {typeDocuments.map(td => (
+                            {typeDocumentsFiltres.map(td => (
                                 <tr
                                     key={td.id}
                                     draggable
