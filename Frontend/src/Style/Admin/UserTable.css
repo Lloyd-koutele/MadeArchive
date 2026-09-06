@@ -266,14 +266,20 @@
 .deletion-badge-wrapper {
     position: relative;
     display: inline-flex;
+    align-items: center;
 }
 
 .deletion-badge {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
     width: 30px;
     height: 30px;
+    padding: 0;
+    line-height: 0; /* sans ça, l'icône reste calée sur la ligne de base du
+                       texte ambiant au lieu du centre du cercle — décalage
+                       classique des polices d'icônes dans un badge rond. */
     border-radius: 50%;
     border: 1.5px solid rgba(155,58,58,0.25);
     background: rgba(155,58,58,0.1);
@@ -281,6 +287,10 @@
     font-size: 0.85rem;
     cursor: pointer;
     transition: background var(--transition), box-shadow var(--transition);
+}
+
+.deletion-badge i {
+    display: block;
 }
 
 .deletion-badge:hover {
