@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
     getDocumentsAccessibles,
     streamPdfAAsBlob,
@@ -104,6 +105,51 @@ function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
     const [selectionModeActive, setSelectionModeActive] = useState(false);
     const [suppressionMasseEnCours, setSuppressionMasseEnCours] = useState(false);
     const longPressTimer = useRef<number | null>(null);
+
+    // ── Menu "..." compact (vue liste, écran réduit uniquement — voir
+    // DocumentsArchivesPanel.css) : regroupe "Voir le PDF" et "Télécharger
+    // PDF/A" derrière un seul point d'entrée quand les boutons autonomes
+    // (.doc-actions-standalone) disparaissent sous 1100px. Volontairement
+    // limité à ces deux actions — Détail, accès et corbeille ne sont pas
+    // dupliqués ici, contrairement au menu de UserTable. ────────────────
+    const [openMenuDocId, setOpenMenuDocId] = useState<string | null>(null);
+    const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+    const menuRef = useRef<HTMLDivElement | null>(null);
+    const menuButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+    const closeCompactMenu = () => {
+        setOpenMenuDocId(null);
+        setMenuPos(null);
+    };
+
+    const toggleCompactMenu = (documentId: string) => {
+        if (openMenuDocId === documentId) { closeCompactMenu(); return; }
+        const btn = menuButtonRefs.current[documentId];
+        if (btn) {
+            const rect = btn.getBoundingClientRect();
+            setMenuPos({ top: rect.bottom + window.scrollY + 4, left: rect.right + window.scrollX });
+        }
+        setOpenMenuDocId(documentId);
+    };
+
+    useEffect(() => {
+        if (!openMenuDocId) return;
+        const handleClickOutside = (event: MouseEvent) => {
+            const target = event.target as Node;
+            const clickedToggle = menuButtonRefs.current[openMenuDocId]?.contains(target);
+            const clickedMenu = menuRef.current?.contains(target);
+            if (!clickedToggle && !clickedMenu) closeCompactMenu();
+        };
+        const handleScrollOrResize = () => closeCompactMenu();
+        document.addEventListener('mousedown', handleClickOutside);
+        window.addEventListener('scroll', handleScrollOrResize, true);
+        window.addEventListener('resize', handleScrollOrResize);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            window.removeEventListener('scroll', handleScrollOrResize, true);
+            window.removeEventListener('resize', handleScrollOrResize);
+        };
+    }, [openMenuDocId]);
 
     // ── Filtres ───────────────────────────────────────────────────────────
     // Une seule source de vérité — la recherche se déclenche toute seule
@@ -937,10 +983,13 @@ function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
                                     )}
                                     <th>Titre</th>
                                     <th>Type</th>
-                                    <th>Accès</th>
-                                    <th>Statut</th>
-                                    <th>Archivé le</th>
-                                    <th>Rétention</th>
+                                    {/* Masquées sur écran réduit (voir DocumentsArchivesPanel.css) —
+                                        seuls Titre / Type / Actions restent, le reste est consultable
+                                        via le détail ("i"). */}
+                                    <th className="doc-col-acces">Accès</th>
+                                    <th className="doc-col-statut">Statut</th>
+                                    <th className="doc-col-archive">Archivé le</th>
+                                    <th className="doc-col-retention">Rétention</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
@@ -977,32 +1026,34 @@ function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
                                             <VersionBadge label={doc.versionLabel} />
                                         </td>
                                         <td>{doc.typeDocumentNom}</td>
-                                        <td>
+                                        <td className="doc-col-acces">
                                             <span className={`doc-access-tag ${doc.access === 'PUBLIC' ? 'public' : 'prive'}`}>
                                                 {doc.access === 'PUBLIC' ? 'Public' : 'Privé'}
                                             </span>
                                         </td>
-                                        <td>
+                                        <td className="doc-col-statut">
                                             <span className={`status-tag ${STATUS_CLASS[doc.status] ?? 'inactive'}`}>
                                                 {STATUS_LABELS[doc.status] ?? doc.status}
                                             </span>
                                         </td>
-                                        <td>{formatDate(doc.createAt)}</td>
-                                        <td>{doc.retentionUntil ? formatDate(doc.retentionUntil) : 'Indéfinie'}</td>
+                                        <td className="doc-col-archive">{formatDate(doc.createAt)}</td>
+                                        <td className="doc-col-retention">{doc.retentionUntil ? formatDate(doc.retentionUntil) : 'Indéfinie'}</td>
                                         <td onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>
                                             <div className="td-actions">
-                                                {/* Détail */}
+                                                {/* Masqués sur écran réduit (voir DocumentsArchivesPanel.css,
+                                                    .doc-actions-standalone) — repris dans le menu "..."
+                                                    juste en dessous (Voir le PDF / Télécharger uniquement,
+                                                    volontairement limité à ces deux actions). */}
                                                 <button
-                                                    className="action-button edit"
+                                                    className="action-button edit doc-actions-standalone"
                                                     onClick={() => openDetail(doc)}
                                                     title="Détail"
                                                 >
                                                     <i className="fa-solid fa-circle-info" />
                                                 </button>
 
-                                                {/* Télécharger PDF/A */}
                                                 <button
-                                                    className="action-button"
+                                                    className="action-button doc-actions-standalone"
                                                     onClick={() => handleDownloadPdfA(doc)}
                                                     disabled={downloadingId === doc.documentId + '_pdfa'}
                                                     title="Télécharger PDF/A"
@@ -1016,7 +1067,7 @@ function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
                                                 {/* Qui a accès (documents privés uniquement) */}
                                                 {doc.access === 'PRIVE' && (
                                                     <button
-                                                        className="action-button"
+                                                        className="action-button doc-actions-standalone"
                                                         onClick={() => openGroupe(doc)}
                                                         title="Voir qui a accès à ce document"
                                                     >
@@ -1027,13 +1078,51 @@ function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
                                                 {/* Envoyer à la corbeille */}
                                                 {doc.peutGererCorbeille && (
                                                     <button
-                                                        className="action-button delete"
+                                                        className="action-button delete doc-actions-standalone"
                                                         onClick={() => handleEnvoyerCorbeilleRapide(doc)}
                                                         title="Envoyer à la corbeille"
                                                     >
                                                         <i className="fa-solid fa-trash" />
                                                     </button>
                                                 )}
+
+                                                {/* Menu "..." compact — visible uniquement sous 1100px
+                                                    (voir DocumentsArchivesPanel.css) : regroupe Voir le
+                                                    PDF et Télécharger, les deux seules actions reprises
+                                                    ici pour ne pas surcharger un écran déjà réduit. */}
+                                                <div className="action-menu-wrapper doc-actions-compact">
+                                                    <button
+                                                        ref={(el) => { menuButtonRefs.current[doc.documentId] = el; }}
+                                                        onClick={() => toggleCompactMenu(doc.documentId)}
+                                                        className="action-button menu-toggle"
+                                                        aria-label="Plus d'actions"
+                                                        aria-expanded={openMenuDocId === doc.documentId}
+                                                    >
+                                                        <i className="fa-solid fa-ellipsis" />
+                                                    </button>
+
+                                                    {openMenuDocId === doc.documentId && menuPos && createPortal(
+                                                        <div
+                                                            ref={menuRef}
+                                                            className="action-menu"
+                                                            style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, transform: 'translateX(-100%)' }}
+                                                        >
+                                                            <button
+                                                                onClick={() => { closeCompactMenu(); openPdfViewer(doc); }}
+                                                                className="action-menu-item"
+                                                            >
+                                                                <i className="fa-solid fa-eye" /> Voir le PDF
+                                                            </button>
+                                                            <button
+                                                                onClick={() => { closeCompactMenu(); handleDownloadPdfA(doc); }}
+                                                                className="action-menu-item"
+                                                            >
+                                                                <i className="fa-solid fa-file-pdf" /> Télécharger
+                                                            </button>
+                                                        </div>,
+                                                        document.body
+                                                    )}
+                                                </div>
                                             </div>
                                         </td>
                                     </tr>
