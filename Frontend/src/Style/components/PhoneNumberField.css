@@ -1,0 +1,55 @@
+/* PhoneNumberField.tsx — habillage de react-phone-number-input pour qu'il
+   se fonde dans .form-field-input (un seul cadre visuel : drapeau + numéro,
+   pas deux champs bordés séparément). Voir CreateUser.css/UpdateUser.css/
+   Profil.css pour les tokens (--border, --cream, --accent...) déjà en place. */
+
+.phone-number-field {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 0 0.6rem;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--cream);
+    transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
+}
+
+.phone-number-field:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(139,94,60,0.12);
+    background: var(--white-choc);
+}
+
+.phone-number-field .PhoneInputCountry {
+    margin-right: 0.6rem;
+    padding-right: 0.6rem;
+    border-right: 1.5px solid var(--border);
+}
+
+.phone-number-field .PhoneInputCountryIcon {
+    width: 1.4em;
+    height: 1.05em;
+    box-shadow: none;
+}
+
+.phone-number-field .PhoneInputCountrySelectArrow {
+    color: var(--text-light);
+    opacity: 1;
+}
+
+.phone-number-field .PhoneInputInput {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    background: transparent;
+    padding: 0.7rem 0;
+    color: var(--dark-choc);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.9rem;
+    outline: none;
+}
+
+.phone-number-field .PhoneInputInput::placeholder {
+    color: var(--text-light);
+    opacity: 1;
+}

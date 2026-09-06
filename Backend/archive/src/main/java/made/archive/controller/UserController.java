@@ -13,6 +13,7 @@ import org.springframework.security.access.annotation.Secured;
 import org.springframework.http.ResponseEntity;
 import java.util.UUID;
 import org.springframework.web.bind.annotation.PathVariable;
+import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/user")
@@ -57,7 +58,7 @@ public class UserController
 
     @Secured("ROLE_USER")
     @PutMapping("/update-me/{id}")
-    public ResponseEntity<UserDto> updateMyProfile(@PathVariable UUID id, @RequestBody UserDto dto)
+    public ResponseEntity<UserDto> updateMyProfile(@PathVariable UUID id, @Valid @RequestBody UserDto dto)
     {
         try
         {

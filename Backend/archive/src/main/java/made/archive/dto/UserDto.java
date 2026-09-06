@@ -2,6 +2,7 @@ package made.archive.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.NoArgsConstructor;
@@ -31,7 +32,12 @@ public class UserDto
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String password;
     
-    @Size(min = 8, max = 20, message = "Le numéro de téléphone doit contenir entre 8 et 20 caractères")
+    // E.164 : '+' suivi de 8 à 15 chiffres, jamais un 0 en tête (indicatif pays
+    // compris — voir PhoneNumberField.tsx côté client, qui produit ce format).
+    // N'impose ce format qu'aux numéros SAISIS/MODIFIÉS désormais : les valeurs
+    // déjà en base avant ce changement (formats hétérogènes, un indicatif
+    // manquant, etc.) ne sont pas retouchées rétroactivement.
+    @Pattern(regexp = "^\\+[1-9]\\d{7,14}$", message = "Le numéro de téléphone doit être valide (avec l'indicatif du pays)")
     private String telephone;
 
     private Boolean actif =true;

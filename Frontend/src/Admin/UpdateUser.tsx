@@ -3,6 +3,7 @@ import { updateUser as updateUserAPI } from "../services/admin/AdminService";
 import { getAllUOs } from "../services/organisation/UOService";
 import UOTreeSelect from "../organisation/UOTreeSelect";
 import { useNotify } from '../notifications/NotificationProvider';
+import PhoneNumberField, { isValidPhoneNumber } from '../components/PhoneNumberField';
 import '../Style/Admin/UpdateUser.css';
 
 interface RoleField {
@@ -65,6 +66,10 @@ function UpdateUser({ initialData, onsuccess, restrictToUO }: UpdateUserProps) {
         setUser({ ...user, [e.target.name]: e.target.value });
     };
 
+    const handleTelephoneChange = (value: string) => {
+        setUser({ ...user, telephone: value });
+    };
+
     const handleRoleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const value = e.target.value as RoleField["name"];
         const checked = e.target.checked;
@@ -87,8 +92,8 @@ function UpdateUser({ initialData, onsuccess, restrictToUO }: UpdateUserProps) {
     };
 
     const validateForm = (): boolean => {
-        if (user.telephone.trim().length < 8) {
-            notify.error('Le numéro de téléphone doit contenir au moins 8 caractères');
+        if (!isValidPhoneNumber(user.telephone.trim())) {
+            notify.error('Le numéro de téléphone est invalide pour le pays sélectionné');
             return false;
         }
         if (user.password && user.password.length < 6) {
@@ -187,14 +192,10 @@ function UpdateUser({ initialData, onsuccess, restrictToUO }: UpdateUserProps) {
                     </div>
 
                     <div className="form-field">
-                        <input
+                        <PhoneNumberField
                             id="user-telephone"
-                            type="text"
-                            name="telephone"
-                            placeholder="Téléphone" aria-label="Téléphone"
-                            className="form-field-input"
                             value={user.telephone}
-                            onChange={handleChange}
+                            onChange={handleTelephoneChange}
                             required
                         />
                     </div>
