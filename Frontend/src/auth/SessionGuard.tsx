@@ -7,7 +7,7 @@ const POLL_INTERVAL_MS = 20_000;
 const COUNTDOWN_SECONDS = 3;
 
 interface SessionInvalidatedDetail {
-    reason: 'SESSION_INVALIDATED' | 'ACCOUNT_BLOCKED';
+    reason: 'SESSION_INVALIDATED' | 'ACCOUNT_BLOCKED' | 'UO_CHANGEE';
     message: string;
 }
 
@@ -15,11 +15,11 @@ interface SessionInvalidatedDetail {
  * Monté sur chaque route authentifiée (voir PrivateRoute dans App.tsx).
  *
  * Détecte, même si l'utilisateur reste inactif dans l'onglet, qu'un admin a
- * bloqué son compte ou qu'un rôle/mot de passe a changé — via un heartbeat
- * périodique ET via tout appel API qui échouerait entre-temps (l'intercepteur
- * dans services/api.ts déclenche le même événement). Affiche alors un message
- * et déconnecte l'utilisateur après un court délai, au lieu d'une redirection
- * brutale et silencieuse.
+ * bloqué son compte, changé son rôle/mot de passe, ou transféré son UO — via
+ * un heartbeat périodique ET via tout appel API qui échouerait entre-temps
+ * (l'intercepteur dans services/api.ts déclenche le même événement). Affiche
+ * alors un message et déconnecte l'utilisateur après un court délai, au lieu
+ * d'une redirection brutale et silencieuse.
  */
 function SessionGuard() {
     const [detail, setDetail] = useState<SessionInvalidatedDetail | null>(null);

@@ -97,11 +97,24 @@ public class User
 
     /**
      * Horodatage de la dernière invalidation forcée de session (blocage du
-     * compte, changement de rôle, changement de mot de passe). Tout JWT émis
-     * AVANT cet instant est rejeté par {@link made.archive.security.JwtAuthFilter},
-     * même s'il n'est pas encore expiré — cela force une reconnexion.
+     * compte, changement de rôle, changement de mot de passe, transfert
+     * d'UO). Tout JWT émis AVANT cet instant est rejeté par
+     * {@link made.archive.security.JwtAuthFilter}, même s'il n'est pas
+     * encore expiré — cela force une reconnexion.
      */
     private Instant sessionInvalidatedAt;
+
+    /**
+     * Pourquoi la session a été invalidée (voir sessionInvalidatedAt) — permet à
+     * JwtAuthFilter de renvoyer un message adapté au client ("UO_CHANGEE",
+     * "SESSION_INVALIDATED"...) plutôt qu'un message générique unique. Le blocage
+     * de compte n'a pas besoin de cette valeur : "ACCOUNT_BLOCKED" est déterminé
+     * dynamiquement à partir de actif (voir JwtAuthFilter.resolveFailureReason),
+     * pas stocké ici. Peut rester null (invalidations existantes avant l'ajout de
+     * ce champ, ou rôle/mot de passe changé) — le filtre retombe alors sur
+     * "SESSION_INVALIDATED".
+     */
+    private String sessionInvalidationReason;
 
     @OneToMany(mappedBy = "user", fetch = FetchType.LAZY)
     @JsonIgnore

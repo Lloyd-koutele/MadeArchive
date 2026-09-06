@@ -59,8 +59,11 @@ public class UniteOrganisationnelleService
     private final UOTreeCacheService uoTreeCacheService;
     // Idem : NotificationService (écriture seule ici) ne dépend pas de ce service.
     private final NotificationService notificationService;
+    // Idem : ni SessionInvalidationService ni ses propres dépendances (AuthCacheService,
+    // UserActiveTokenRepository) ne dépendent de ce service — voir sa Javadoc.
+    private final made.archive.security.SessionInvalidationService sessionInvalidationService;
 
-    public UniteOrganisationnelleService(UniteOrganisationnelleRepository uoRepository, UserRepository userRepository, TypeDocumentRepository typeDocumentRepository, MembreUORepository membreUORepository, AuditLogService auditLogService, UOTreeCacheService uoTreeCacheService, NotificationService notificationService)
+    public UniteOrganisationnelleService(UniteOrganisationnelleRepository uoRepository, UserRepository userRepository, TypeDocumentRepository typeDocumentRepository, MembreUORepository membreUORepository, AuditLogService auditLogService, UOTreeCacheService uoTreeCacheService, NotificationService notificationService, made.archive.security.SessionInvalidationService sessionInvalidationService)
     {
         this.uoRepository = uoRepository;
         this.userRepository = userRepository;
@@ -69,6 +72,7 @@ public class UniteOrganisationnelleService
         this.auditLogService = auditLogService;
         this.uoTreeCacheService = uoTreeCacheService;
         this.notificationService = notificationService;
+        this.sessionInvalidationService = sessionInvalidationService;
     }
 
     @Transactional
@@ -719,6 +723,16 @@ public class UniteOrganisationnelleService
             cible.getEmail() + " transféré vers l'UO " + nouvelleUO.getNom(), true,
             Map.of("uoOrigine", ancienneMembership.getUniteOrganisationnelle().getNom(),
                    "uoDestination", nouvelleUO.getNom()));
+
+        // Une session déjà ouverte de l'utilisateur transféré (JWT encore valide) porte
+        // potentiellement des droits/notifications liés à l'ancienne UO — on la force à se
+        // reconnecter, comme pour un blocage de compte ou un changement de rôle. Le client
+        // (SessionGuard) affiche d'abord un message dédié ("UO_CHANGEE", voir SecurityConfig)
+        // le temps d'un court délai avant la déconnexion effective, plutôt qu'une coupure brutale.
+        sessionInvalidationService.invalider(cible, made.archive.security.SessionInvalidationService.RAISON_UO_CHANGEE);
+        auditLogService.log(demandePar, AuditAction.SESSION_INVALIDEE, AuditCible.UTILISATEUR,
+            cible.getId().toString(), nouvelUoId,
+            "Session invalidée suite au transfert d'UO de " + cible.getEmail(), true);
     }
 
     public boolean aUOActive(UUID userId)

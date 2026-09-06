@@ -22,12 +22,15 @@ import made.archive.repository.MembreUORepository;
 import made.archive.repository.TypeDocumentRepository;
 import made.archive.repository.UniteOrganisationnelleRepository;
 import made.archive.repository.UserRepository;
+import made.archive.security.SessionInvalidationService;
 import made.archive.service.audit.AuditLogService;
 import made.archive.service.notification.NotificationService;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -47,6 +50,7 @@ class UniteOrganisationnelleServiceTest
     @Mock private AuditLogService                   auditLogService;
     @Mock private UOTreeCacheService                uoTreeCacheService;
     @Mock private NotificationService               notificationService;
+    @Mock private SessionInvalidationService        sessionInvalidationService;
 
     @InjectMocks
     private UniteOrganisationnelleService service;
@@ -125,5 +129,35 @@ class UniteOrganisationnelleServiceTest
         Set<Long> autorisees = service.getUoIdsSousAutorite(adminUo);
 
         assertThat(autorisees).isEmpty();
+    }
+
+    @Test
+    void changerUOUtilisateurInvalideLaSessionDeLUtilisateurTransfere()
+    {
+        User admin = utilisateurAvecRole(Role_Name.ADMIN);
+        User cible = utilisateurAvecRole(Role_Name.EDITOR);
+        cible.setEmail("cible@esp.sn");
+
+        UniteOrganisationnelle ancienneUO = new UniteOrganisationnelle();
+        ancienneUO.setId(1L);
+        ancienneUO.setNom("Esp");
+        UniteOrganisationnelle nouvelleUO = new UniteOrganisationnelle();
+        nouvelleUO.setId(2L);
+        nouvelleUO.setNom("MPI");
+
+        MembreUniteOrganisationnelle ancienneMembership = new MembreUniteOrganisationnelle();
+        ancienneMembership.setUniteOrganisationnelle(ancienneUO);
+
+        when(userRepository.findById(cible.getId())).thenReturn(Optional.of(cible));
+        when(membreUORepository.findByUserIdAndActifTrue(cible.getId()))
+            .thenReturn(Optional.of(ancienneMembership));
+        when(uoRepository.findById(2L)).thenReturn(Optional.of(nouvelleUO));
+
+        service.changerUOUtilisateur(cible.getId(), 2L, admin);
+
+        // Le transfert doit forcer la reconnexion de l'utilisateur déplacé — pas de
+        // celui qui a demandé le transfert — avec la raison dédiée "UO_CHANGEE", pour
+        // que SessionGuard côté client affiche le bon message (voir SecurityConfig).
+        verify(sessionInvalidationService).invalider(eq(cible), eq(SessionInvalidationService.RAISON_UO_CHANGEE));
     }
 }

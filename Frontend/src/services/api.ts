@@ -30,9 +30,10 @@ api.interceptors.request.use(
 /**
  * Nom de l'événement déclenché quand le serveur signale explicitement (voir
  * `reason` dans le corps 401) que la session a été invalidée côté serveur —
- * compte bloqué, ou rôle/mot de passe changé — par opposition à un simple
- * jeton absent/expiré. Écouté par SessionGuard pour afficher un message
- * avant la déconnexion, au lieu d'une redirection immédiate et silencieuse.
+ * compte bloqué, rôle/mot de passe changé, ou UO changée (transfert) — par
+ * opposition à un simple jeton absent/expiré. Écouté par SessionGuard pour
+ * afficher un message avant la déconnexion, au lieu d'une redirection
+ * immédiate et silencieuse.
  */
 export const SESSION_INVALIDATED_EVENT = 'session-invalidated';
 
@@ -46,7 +47,7 @@ api.interceptors.response.use(
         if (error.response?.status === 401 && !isAuthRoute) {
             const reason = error.response?.data?.reason;
 
-            if (reason === 'SESSION_INVALIDATED' || reason === 'ACCOUNT_BLOCKED') {
+            if (reason === 'SESSION_INVALIDATED' || reason === 'ACCOUNT_BLOCKED' || reason === 'UO_CHANGEE') {
                 // Le serveur a explicitement invalidé cette session (elle ne redeviendra
                 // jamais valide) : on laisse SessionGuard afficher le message et gérer
                 // la déconnexion différée, plutôt que de rediriger immédiatement.
