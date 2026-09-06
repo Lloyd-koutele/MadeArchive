@@ -132,6 +132,12 @@ public class SecurityConfig
                                     message = "Votre unité organisationnelle a été modifiée par un administrateur. "
                                             + "Vous pourrez vous reconnecter avec votre email et votre mot de passe.";
                                 }
+                                else if ("COMPTE_SUPPRIME".equals(reasonStr))
+                                {
+                                    // Pas d'invitation à se reconnecter, contrairement aux autres raisons :
+                                    // le mot de passe a été invalidé, une reconnexion échouerait de toute façon.
+                                    message = "Votre compte a été supprimé par un administrateur.";
+                                }
                                 else
                                 {
                                     message = "Votre session n'est plus valide, veuillez vous reconnecter.";

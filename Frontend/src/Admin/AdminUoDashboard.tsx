@@ -18,7 +18,7 @@ import ExportPanel from '../organisation/ExportPanel';
 import AuditLogPanel from './AuditLogPanel';
 import DocumentsArchivesPanel from './DocumentsArchivesPanel';
 import type { TypeDocumentDto } from '../services/document/TypedocumentService';
-import { getUsersByUO, updateUserStatus as updateStatus } from "../services/admin/AdminService";
+import { getUsersByUO, updateUserStatus as updateStatus, supprimerUtilisateur } from "../services/admin/AdminService";
 import {
     getMyUO,
     getSousArbre,
@@ -302,6 +302,30 @@ function AdminUoDashboard() {
                 if (currentUOId) fetchUsers(currentUOId);
             } catch {
                 notify.error("Erreur lors du changement de statut");
+            } finally {
+                setActionInProgress(false);
+            }
+        }
+
+        if (action === 'delete') {
+            // Le serveur seul décide si c'est réel (jamais connecté) ou logique
+            // (déjà servi — nom/prénom/email conservés, mot de passe invalidé,
+            // clé PKI révoquée si éditeur) : irréversible dans tous les cas.
+            const ok = await confirm({
+                title: 'Supprimer cet utilisateur ?',
+                message: `Supprimer définitivement ${targetUser.nom} ${targetUser.prenom} (${targetUser.email}) ? Cette action est irréversible.`,
+                confirmLabel: 'Supprimer',
+                danger: true,
+            });
+            if (!ok) return;
+
+            setActionInProgress(true);
+            try {
+                await supprimerUtilisateur(userId);
+                notify.success("Utilisateur supprimé");
+                if (currentUOId) fetchUsers(currentUOId);
+            } catch (err: any) {
+                notify.error(err.message || "Erreur lors de la suppression de l'utilisateur");
             } finally {
                 setActionInProgress(false);
             }

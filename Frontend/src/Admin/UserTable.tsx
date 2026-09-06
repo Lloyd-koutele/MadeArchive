@@ -236,6 +236,15 @@ const UserTable = memo(({ user, onAction, actionInProgress, onRemoveFromUO, onRe
                                                             Modifier
                                                         </button>
                                                     )}
+                                                    {/* Le serveur reste seul juge (autorité, dernier ADMIN du
+                                                        système, auto-suppression) - le bouton reste toujours
+                                                        visible, l'erreur exacte remonte au clic si refusé. */}
+                                                    <button
+                                                        onClick={() => { closeMenu(); onAction(singleUser.id, 'delete'); }}
+                                                        className="action-menu-item action-menu-item-danger"
+                                                    >
+                                                        Supprimer
+                                                    </button>
                                                 </div>,
                                                 document.body
                                             )}

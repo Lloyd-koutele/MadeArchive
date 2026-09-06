@@ -47,7 +47,7 @@ api.interceptors.response.use(
         if (error.response?.status === 401 && !isAuthRoute) {
             const reason = error.response?.data?.reason;
 
-            if (reason === 'SESSION_INVALIDATED' || reason === 'ACCOUNT_BLOCKED' || reason === 'UO_CHANGEE') {
+            if (reason === 'SESSION_INVALIDATED' || reason === 'ACCOUNT_BLOCKED' || reason === 'UO_CHANGEE' || reason === 'COMPTE_SUPPRIME') {
                 // Le serveur a explicitement invalidé cette session (elle ne redeviendra
                 // jamais valide) : on laisse SessionGuard afficher le message et gérer
                 // la déconnexion différée, plutôt que de rediriger immédiatement.

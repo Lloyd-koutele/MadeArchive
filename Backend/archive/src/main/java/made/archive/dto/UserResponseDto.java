@@ -1,5 +1,6 @@
 package made.archive.dto;
 
+import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
 
@@ -36,4 +37,7 @@ public class UserResponseDto
     Long uoId;
 
     String uoNom;
+
+    /** null = pas supprimé ; sinon date de la suppression LOGIQUE (irréversible) — voir User.supprimeLe. */
+    private Instant supprimeLe;
 }

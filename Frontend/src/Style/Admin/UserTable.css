@@ -171,6 +171,16 @@
     background: var(--cream);
 }
 
+/* Suppression — action irréversible, distincte visuellement des autres
+   entrées du menu (Voir/Retirer/Transférer/Modifier, toutes réversibles). */
+.action-menu-item-danger {
+    color: var(--error, #9B3A3A);
+}
+
+.action-menu-item-danger:hover {
+    background: rgba(155, 58, 58, 0.08);
+}
+
 .block-unblock {
     padding: 0.35rem 0.85rem;
     border-radius: var(--radius-sm);

@@ -19,6 +19,7 @@ public enum AuditAction
     UTILISATEUR_MODIFIE,
     UTILISATEUR_BLOQUE,
     UTILISATEUR_REACTIVE,
+    UTILISATEUR_SUPPRIME,
     PROFIL_MODIFIE,
 
     // ── Organisation (UO) ────────────────────────────────────────────────────
