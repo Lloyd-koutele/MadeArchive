@@ -1,8 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
     getDocumentsCorbeille,
     restaurerDocumentDepuisCorbeille,
     streamPdfAAsBlob,
+    downloadPdfA,
 } from '../services/document/DocumentService';
 import type { DocumentListItemDto } from '../services/document/DocumentService';
 import { hasRole } from '../auth/authService';
@@ -44,6 +46,49 @@ function Corbeille() {
     const [isLoading, setIsLoading] = useState(false);
 
     const [restaurationEnCoursId, setRestaurationEnCoursId] = useState<string | null>(null);
+    const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+    // ── Menu "..." compact (vue liste, écran réduit uniquement — voir
+    // Editor.css) : regroupe Voir, Restaurer et Télécharger derrière un seul
+    // point d'entrée quand les boutons autonomes disparaissent sous 1100px.
+    const [openMenuDocId, setOpenMenuDocId] = useState<string | null>(null);
+    const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+    const menuRef = useRef<HTMLDivElement | null>(null);
+    const menuButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+    const closeCompactMenu = () => {
+        setOpenMenuDocId(null);
+        setMenuPos(null);
+    };
+
+    const toggleCompactMenu = (documentId: string) => {
+        if (openMenuDocId === documentId) { closeCompactMenu(); return; }
+        const btn = menuButtonRefs.current[documentId];
+        if (btn) {
+            const rect = btn.getBoundingClientRect();
+            setMenuPos({ top: rect.bottom + window.scrollY + 4, left: rect.right + window.scrollX });
+        }
+        setOpenMenuDocId(documentId);
+    };
+
+    useEffect(() => {
+        if (!openMenuDocId) return;
+        const handleClickOutside = (event: MouseEvent) => {
+            const target = event.target as Node;
+            const clickedToggle = menuButtonRefs.current[openMenuDocId]?.contains(target);
+            const clickedMenu = menuRef.current?.contains(target);
+            if (!clickedToggle && !clickedMenu) closeCompactMenu();
+        };
+        const handleScrollOrResize = () => closeCompactMenu();
+        document.addEventListener('mousedown', handleClickOutside);
+        window.addEventListener('scroll', handleScrollOrResize, true);
+        window.addEventListener('resize', handleScrollOrResize);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            window.removeEventListener('scroll', handleScrollOrResize, true);
+            window.removeEventListener('resize', handleScrollOrResize);
+        };
+    }, [openMenuDocId]);
 
     const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
     const [pdfLoading, setPdfLoading] = useState(false);
@@ -131,6 +176,17 @@ function Corbeille() {
             notify.error(err.message ?? 'Erreur lors de la restauration');
         } finally {
             setRestaurationEnCoursId(null);
+        }
+    };
+
+    const handleDownload = async (doc: DocumentListItemDto) => {
+        setDownloadingId(doc.documentId);
+        try {
+            await downloadPdfA(doc.documentId, doc.titre);
+        } catch (err: any) {
+            notify.error(err.message ?? 'Erreur lors du téléchargement');
+        } finally {
+            setDownloadingId(null);
         }
     };
 
@@ -267,6 +323,17 @@ function Corbeille() {
                                                 }
                                             </button>
                                         )}
+                                        <button
+                                            className="action-button"
+                                            onClick={() => handleDownload(doc)}
+                                            disabled={downloadingId === doc.documentId}
+                                            title="Télécharger PDF/A"
+                                        >
+                                            {downloadingId === doc.documentId
+                                                ? <i className="fa-solid fa-spinner fa-spin" />
+                                                : <i className="fa-solid fa-file-pdf" />
+                                            }
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -320,10 +387,13 @@ function Corbeille() {
                                             </span>
                                         </td>
                                         <td>{formatDate(doc.suppressionPrevueLe)}</td>
-                                        <td>
+                                        <td onClick={e => e.stopPropagation()}>
                                             <div className="td-actions">
+                                                {/* Masqués sur écran réduit (voir Editor.css,
+                                                    .corbeille-actions-standalone) — repris dans
+                                                    le menu "..." juste en dessous. */}
                                                 <button
-                                                    className="action-button view"
+                                                    className="action-button view corbeille-actions-standalone"
                                                     onClick={() => openPdfViewer(doc)}
                                                     title="Lire le document"
                                                 >
@@ -331,7 +401,7 @@ function Corbeille() {
                                                 </button>
                                                 {peutRestaurer && (
                                                     <button
-                                                        className="action-button edit"
+                                                        className="action-button edit corbeille-actions-standalone"
                                                         onClick={() => handleRestaurer(doc)}
                                                         disabled={restaurationEnCoursId === doc.documentId}
                                                         title="Restaurer"
@@ -342,6 +412,61 @@ function Corbeille() {
                                                         }
                                                     </button>
                                                 )}
+                                                <button
+                                                    className="action-button corbeille-actions-standalone"
+                                                    onClick={() => handleDownload(doc)}
+                                                    disabled={downloadingId === doc.documentId}
+                                                    title="Télécharger PDF/A"
+                                                >
+                                                    {downloadingId === doc.documentId
+                                                        ? <i className="fa-solid fa-spinner fa-spin" />
+                                                        : <i className="fa-solid fa-file-pdf" />
+                                                    }
+                                                </button>
+
+                                                {/* Menu "..." compact — visible uniquement sous
+                                                    1100px (voir Editor.css). */}
+                                                <div className="action-menu-wrapper corbeille-actions-compact">
+                                                    <button
+                                                        ref={(el) => { menuButtonRefs.current[doc.documentId] = el; }}
+                                                        onClick={() => toggleCompactMenu(doc.documentId)}
+                                                        className="action-button menu-toggle"
+                                                        aria-label="Plus d'actions"
+                                                        aria-expanded={openMenuDocId === doc.documentId}
+                                                    >
+                                                        <i className="fa-solid fa-ellipsis" />
+                                                    </button>
+
+                                                    {openMenuDocId === doc.documentId && menuPos && createPortal(
+                                                        <div
+                                                            ref={menuRef}
+                                                            className="action-menu"
+                                                            style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, transform: 'translateX(-100%)' }}
+                                                        >
+                                                            <button
+                                                                onClick={() => { closeCompactMenu(); openPdfViewer(doc); }}
+                                                                className="action-menu-item"
+                                                            >
+                                                                <i className="fa-solid fa-eye" /> Voir
+                                                            </button>
+                                                            {peutRestaurer && (
+                                                                <button
+                                                                    onClick={() => { closeCompactMenu(); handleRestaurer(doc); }}
+                                                                    className="action-menu-item"
+                                                                >
+                                                                    <i className="fa-solid fa-clock-rotate-left" /> Restaurer
+                                                                </button>
+                                                            )}
+                                                            <button
+                                                                onClick={() => { closeCompactMenu(); handleDownload(doc); }}
+                                                                className="action-menu-item"
+                                                            >
+                                                                <i className="fa-solid fa-file-pdf" /> Télécharger
+                                                            </button>
+                                                        </div>,
+                                                        document.body
+                                                    )}
+                                                </div>
                                             </div>
                                         </td>
                                     </tr>
