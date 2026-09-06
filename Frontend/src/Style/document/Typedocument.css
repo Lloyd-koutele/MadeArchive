@@ -487,6 +487,129 @@
     margin-bottom: 1rem;
 }
 
+/* ─── Bascule vue liste / vue grille ───
+   Même idée que côté éditeur pour les documents (docs-view-toggle,
+   Style/Editor/Editor.css) — classes distinctes (préfixe td-) et redéfinies
+   ici plutôt que réutilisées telles quelles : ce composant est monté côté
+   Admin/Admin UO (AdminDashboard.css), qui n'importe pas Editor.css. */
+.td-list-header {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 0.85rem;
+}
+
+.td-view-toggle {
+    display: flex;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+}
+
+.td-view-toggle-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border: none;
+    background: var(--white-choc);
+    color: var(--text-light);
+    cursor: pointer;
+    transition: background var(--transition), color var(--transition);
+}
+
+.td-view-toggle-btn + .td-view-toggle-btn {
+    border-left: 1px solid var(--border);
+}
+
+.td-view-toggle-btn:hover {
+    background: var(--cream);
+    color: var(--dark-choc);
+}
+
+.td-view-toggle-btn.active {
+    background: var(--dark-choc);
+    color: var(--white-choc);
+}
+
+/* ─── Vue grille ─── */
+.td-grid {
+    display: grid;
+    /* auto-fill + minmax : le nombre de colonnes s'ajuste tout seul à la
+       largeur disponible, aucun palier de media query nécessaire ici — une
+       vraie grille fluide, pas une liste de cartes en colonne unique forcée. */
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 1rem;
+}
+
+.td-grid-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    padding: 1rem;
+    background: var(--white-choc);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    transition: box-shadow var(--transition);
+}
+
+.td-grid-card:hover { box-shadow: var(--shadow-md); }
+
+.td-grid-card.td-row-selected {
+    background: rgba(214, 158, 46, 0.08);
+    border-color: rgba(214, 158, 46, 0.4);
+}
+
+.td-grid-card-header {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.td-grid-title {
+    font-weight: 600;
+    color: var(--dark-choc);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.td-grid-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+    color: var(--text-light);
+}
+
+.td-grid-fact { color: var(--dark-soft); }
+
+/* ─── Colonnes masquées à taille réduite (liste) ───
+   Sous 1100px (même seuil que Admin/UserTable.css et AuditLogPanel.css) :
+   ne garde que Nom / Rétention / Actions. Grâce et Métadonnées restent
+   consultables via "Voir" — classes dédiées plutôt qu'un nth-child fragile
+   si l'ordre des colonnes change un jour. */
+@media (max-width: 1100px) {
+    .td-col-grace,
+    .td-col-meta { display: none; }
+}
+
+/* ─── Actions compactes à taille réduite (liste) ───
+   Sous 1100px, les 3 boutons ("Voir"/"Modifier"/"Supprimer") disparaissent
+   en tant que boutons autonomes et rejoignent le menu "..." déjà présent —
+   mêmes classes que UserTable.css (.action-menu-wrapper/.action-menu/
+   .action-menu-item/.menu-toggle : déjà chargées, TypeDocumentList est
+   monté sur les mêmes pages qu'UserTable côté Admin/Admin UO), seuls les
+   doublons de menu ont une classe dédiée (td-menu-item-compact) pour ne
+   jamais se dupliquer avec les boutons autonomes au-dessus de 1100px. */
+.td-menu-item-compact { display: none; }
+
+@media (max-width: 1100px) {
+    .td-actions-standalone { display: none; }
+    .td-menu-item-compact { display: block; }
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .td-form-grid { grid-template-columns: 1fr; }

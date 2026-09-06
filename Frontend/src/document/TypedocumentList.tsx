@@ -1,5 +1,6 @@
 // document/TypedocumentList.tsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { getAllTypeDocuments, getTypeDocumentsByUO, deleteTypeDocument, deleteTypeDocumentList } from '../services/document/TypedocumentService';
 import type { TypeDocumentDto } from '../services/document/TypedocumentService';
 import TypeDocumentDetail from './Typedocumentdetail';
@@ -16,12 +17,24 @@ interface TypeDocumentListProps {
     uoId: number | null;
 }
 
+type ViewMode = 'list' | 'grid';
+
+interface MenuPosition {
+    top: number;
+    left: number;
+}
+
 function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
     const notify = useNotify();
     const confirm = useConfirm();
     const [typeDocuments, setTypeDocuments] = useState<TypeDocumentDto[]>([]);
     const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
     const [isLoading, setIsLoading] = useState(true);
+
+    // Vue liste (tableau) / grille (cartes) — même bascule que côté éditeur
+    // pour les documents (voir document/DocumentsAccessible.tsx), adaptée ici
+    // pour des types de document (pas d'aperçu PDF, juste les métadonnées).
+    const [viewMode, setViewMode] = useState<ViewMode>('list');
 
     const [viewingTd, setViewingTd] = useState<TypeDocumentDto | null>(null);
     const [isViewModalOpen, setIsViewModalOpen] = useState(false);
@@ -30,6 +43,13 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
     const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
 
     const [deleteInProgress, setDeleteInProgress] = useState(false);
+
+    // Menu d'actions compact ("..."), affiché à la place des 3 boutons sous
+    // 1100px (voir Typedocument.css) — même mécanique que UserTable.tsx.
+    const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+    const [menuPos, setMenuPos] = useState<MenuPosition | null>(null);
+    const menuRef = useRef<HTMLDivElement | null>(null);
+    const buttonRefs = useRef<Record<number, HTMLButtonElement | null>>({});
 
     useEffect(() => { fetchAll(); }, [refreshTrigger, uoId]);
 
@@ -109,8 +129,132 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
         e.dataTransfer.effectAllowed = 'copy';
     };
 
+    const closeMenu = () => {
+        setOpenMenuId(null);
+        setMenuPos(null);
+    };
+
+    const toggleMenu = (id: number) => {
+        if (openMenuId === id) {
+            closeMenu();
+            return;
+        }
+        const btn = buttonRefs.current[id];
+        if (btn) {
+            const rect = btn.getBoundingClientRect();
+            setMenuPos({
+                top: rect.bottom + window.scrollY + 4,
+                left: rect.right + window.scrollX, // ancré au bord droit du bouton
+            });
+        }
+        setOpenMenuId(id);
+    };
+
+    // Fermeture du menu au clic en dehors (menu OU bouton toggle), et au
+    // scroll/resize pour éviter un menu mal positionné — même logique que
+    // UserTable.tsx.
+    useEffect(() => {
+        if (openMenuId === null) return;
+
+        const handleClickOutside = (event: MouseEvent) => {
+            const target = event.target as Node;
+            const clickedToggle = buttonRefs.current[openMenuId]?.contains(target);
+            const clickedMenu = menuRef.current?.contains(target);
+            if (!clickedToggle && !clickedMenu) closeMenu();
+        };
+
+        const handleScrollOrResize = () => closeMenu();
+
+        document.addEventListener('mousedown', handleClickOutside);
+        window.addEventListener('scroll', handleScrollOrResize, true);
+        window.addEventListener('resize', handleScrollOrResize);
+
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            window.removeEventListener('scroll', handleScrollOrResize, true);
+            window.removeEventListener('resize', handleScrollOrResize);
+        };
+    }, [openMenuId]);
+
+    // Menu déroulant "..." — portalé dans <body> pour échapper à
+    // overflow:hidden/auto des conteneurs ancêtres (même raison que
+    // NotificationBell/UserTable). Partagé entre la vue liste et la vue
+    // grille.
+    const renderMenu = (td: TypeDocumentDto) => (
+        <div className="action-menu-wrapper">
+            <button
+                ref={(el) => { buttonRefs.current[td.id!] = el; }}
+                onClick={() => toggleMenu(td.id!)}
+                className="action-button menu-toggle"
+                aria-label="Plus d'actions"
+                aria-expanded={openMenuId === td.id}
+            >
+                <i className="fa-solid fa-ellipsis"></i>
+            </button>
+
+            {openMenuId === td.id && menuPos && createPortal(
+                <div
+                    ref={menuRef}
+                    className="action-menu"
+                    style={{
+                        position: 'fixed',
+                        top: menuPos.top,
+                        left: menuPos.left,
+                        transform: 'translateX(-100%)',
+                    }}
+                >
+                    <button
+                        onClick={() => { closeMenu(); setViewingTd(td); setIsViewModalOpen(true); }}
+                        className="action-menu-item td-menu-item-compact"
+                    >
+                        Voir
+                    </button>
+                    <button
+                        onClick={() => { closeMenu(); setEditingTd(td); setIsUpdateModalOpen(true); }}
+                        className="action-menu-item td-menu-item-compact"
+                    >
+                        Modifier
+                    </button>
+                    <button
+                        onClick={() => { closeMenu(); handleDeleteRequest(td); }}
+                        disabled={deleteInProgress}
+                        className="action-menu-item td-menu-item-compact"
+                    >
+                        Supprimer
+                    </button>
+                </div>,
+                document.body
+            )}
+        </div>
+    );
+
     return (
         <div className="td-list-wrapper">
+
+            {typeDocuments.length > 0 && (
+                <div className="td-list-header">
+                    <div className="td-view-toggle" role="group" aria-label="Mode d'affichage">
+                        <button
+                            type="button"
+                            className={`td-view-toggle-btn ${viewMode === 'list' ? 'active' : ''}`}
+                            onClick={() => setViewMode('list')}
+                            title="Vue liste"
+                            aria-label="Afficher en liste"
+                        >
+                            <i className="fa-solid fa-list" />
+                        </button>
+                        <button
+                            type="button"
+                            className={`td-view-toggle-btn ${viewMode === 'grid' ? 'active' : ''}`}
+                            onClick={() => setViewMode('grid')}
+                            title="Vue grille"
+                            aria-label="Afficher en grille"
+                        >
+                            <i className="fa-solid fa-table-cells-large" />
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {selectedIds.size > 0 && (
                 <div className="td-bulk-bar">
@@ -129,6 +273,58 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
                     <p>Aucun type de document créé.</p>
                     <span>Utilisez le bouton "Créer un type" pour commencer.</span>
                 </div>
+            ) : viewMode === 'grid' ? (
+                <div className="td-grid">
+                    {typeDocuments.map(td => (
+                        <div
+                            key={td.id}
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, td)}
+                            className={`td-grid-card ${selectedIds.has(td.id!) ? 'td-row-selected' : ''}`}
+                        >
+                            <div className="td-grid-card-header">
+                                <input
+                                    type="checkbox"
+                                    checked={selectedIds.has(td.id!)}
+                                    onChange={() => toggleSelect(td.id!)}
+                                />
+                                <span className="td-grid-title" title={td.nom}>{td.nom}</span>
+                            </div>
+                            <div className="td-grid-body">
+                                <span className="td-grid-fact">
+                                    Rétention : {td.retentionYears ?? 'Indéfinie'}
+                                </span>
+                                <span className="td-grid-fact">
+                                    Grâce : {td.periodGrace ?? '—'} j
+                                </span>
+                                <span className="td-meta-count">
+                                    {td.metaData?.length ?? 0} champ{(td.metaData?.length ?? 0) > 1 ? 's' : ''}
+                                </span>
+                            </div>
+                            <div className="td-actions">
+                                <button
+                                    className="action-button view"
+                                    onClick={() => { setViewingTd(td); setIsViewModalOpen(true); }}
+                                >
+                                    Voir
+                                </button>
+                                <button
+                                    className="action-button edit"
+                                    onClick={() => { setEditingTd(td); setIsUpdateModalOpen(true); }}
+                                >
+                                    Modifier
+                                </button>
+                                <button
+                                    className="td-delete-btn"
+                                    onClick={() => handleDeleteRequest(td)}
+                                    disabled={deleteInProgress}
+                                >
+                                    Supprimer
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
             ) : (
                 <div className="td-table-container">
                     <table className="td-table">
@@ -137,8 +333,8 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
                                 <th></th>
                                 <th>Nom</th>
                                 <th>Rétention (ans)</th>
-                                <th>Période de grâce (j)</th>
-                                <th>Métadonnées</th>
+                                <th className="td-col-grace">Période de grâce (j)</th>
+                                <th className="td-col-meta">Métadonnées</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -159,33 +355,37 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
                                     </td>
                                     <td className="td-nom">{td.nom}</td>
                                     <td>{td.retentionYears ?? 'Indéfinie'}</td>
-                                    <td>{td.periodGrace ?? '—'}</td>
-                                    <td>
+                                    <td className="td-col-grace">{td.periodGrace ?? '—'}</td>
+                                    <td className="td-col-meta">
                                         <span className="td-meta-count">
                                             {td.metaData?.length ?? 0} champ{(td.metaData?.length ?? 0) > 1 ? 's' : ''}
                                         </span>
                                     </td>
                                     <td>
                                         <div className="td-actions">
+                                            {/* Masqués sous 1100px (td-actions-standalone, voir
+                                                Typedocument.css) — repris comme entrées du menu
+                                                "..." juste en dessous plutôt que disparaître. */}
                                             <button
-                                                className="action-button view"
+                                                className="action-button view td-actions-standalone"
                                                 onClick={() => { setViewingTd(td); setIsViewModalOpen(true); }}
                                             >
                                                 Voir
                                             </button>
                                             <button
-                                                className="action-button edit"
+                                                className="action-button edit td-actions-standalone"
                                                 onClick={() => { setEditingTd(td); setIsUpdateModalOpen(true); }}
                                             >
                                                 Modifier
                                             </button>
                                             <button
-                                                className="td-delete-btn"
+                                                className="td-delete-btn td-actions-standalone"
                                                 onClick={() => handleDeleteRequest(td)}
                                                 disabled={deleteInProgress}
                                             >
                                                 Supprimer
                                             </button>
+                                            {renderMenu(td)}
                                         </div>
                                     </td>
                                 </tr>
