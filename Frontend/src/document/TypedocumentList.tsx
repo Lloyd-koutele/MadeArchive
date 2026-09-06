@@ -201,7 +201,7 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
     // toujours visible quelle que soit la largeur d'écran. "compact" contrôle
     // laquelle des deux classes CSS s'applique aux entrées.
     const renderMenu = (td: TypeDocumentDto, compact: boolean) => (
-        <div className="action-menu-wrapper">
+        <div className="action-menu-wrapper" onDoubleClick={(e) => e.stopPropagation()}>
             <button
                 ref={(el) => { buttonRefs.current[td.id!] = el; }}
                 onClick={() => toggleMenu(td.id!)}
@@ -336,21 +336,25 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
                             key={td.id}
                             draggable
                             onDragStart={(e) => handleDragStart(e, td)}
+                            onDoubleClick={() => { setViewingTd(td); setIsViewModalOpen(true); }}
                             className={`td-folder-card ${selectedIds.has(td.id!) ? 'td-row-selected' : ''}`}
                         >
                             {/* Case à cocher (sélection groupée) — même
                                 emplacement que le "+" du modèle éditeur
                                 (Mes documents), réutilisé pour un usage
                                 différent ici. stopPropagation : la carte
-                                elle-même n'a pas d'action au clic (contrairement
+                                elle-même n'a pas d'action au clic simple (contrairement
                                 au dossier éditeur, qui navigue à l'intérieur),
-                                mais autant éviter toute ambiguïté future. */}
+                                mais le double-clic, lui, ouvre le détail (voir
+                                onDoubleClick ci-dessus) — la case ne doit donc pas
+                                le déclencher non plus. */}
                             <input
                                 type="checkbox"
                                 className="td-folder-checkbox"
                                 checked={selectedIds.has(td.id!)}
                                 onChange={() => toggleSelect(td.id!)}
                                 onClick={(e) => e.stopPropagation()}
+                                onDoubleClick={(e) => e.stopPropagation()}
                             />
 
                             <div className="td-folder-icon-wrap">
@@ -402,9 +406,10 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
                                     key={td.id}
                                     draggable
                                     onDragStart={(e) => handleDragStart(e, td)}
+                                    onDoubleClick={() => { setViewingTd(td); setIsViewModalOpen(true); }}
                                     className={selectedIds.has(td.id!) ? 'td-row-selected' : ''}
                                 >
-                                    <td>
+                                    <td onDoubleClick={(e) => e.stopPropagation()}>
                                         <input
                                             type="checkbox"
                                             checked={selectedIds.has(td.id!)}
@@ -419,7 +424,7 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
                                             {td.metaData?.length ?? 0} champ{(td.metaData?.length ?? 0) > 1 ? 's' : ''}
                                         </span>
                                     </td>
-                                    <td>
+                                    <td onDoubleClick={(e) => e.stopPropagation()}>
                                         <div className="td-actions">
                                             {/* Masqués sous 1100px (td-actions-standalone, voir
                                                 Typedocument.css) — repris comme entrées du menu
