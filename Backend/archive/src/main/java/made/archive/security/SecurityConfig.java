@@ -110,7 +110,10 @@ public class SecurityConfig
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint((req, res, e) -> {
                             res.setStatus(401);
-                            res.setContentType("application/json");
+                            // charset=UTF-8 explicite : sans lui, HttpServletResponse retombe sur
+                            // ISO-8859-1 et corrompt tout caractère accentué écrit ci-dessous (constaté
+                            // en conditions réelles sur les messages ACCOUNT_BLOCKED et UO_CHANGEE).
+                            res.setContentType("application/json;charset=UTF-8");
 
                             // Posée par JwtAuthFilter quand le token est structurellement valide
                             // mais que le compte a été bloqué / le rôle ou le mot de passe changé
@@ -145,7 +148,7 @@ public class SecurityConfig
                         })
                         .accessDeniedHandler((req, res, e) -> {
                             res.setStatus(403);
-                            res.setContentType("application/json");
+                            res.setContentType("application/json;charset=UTF-8");
                             res.getWriter().write(
                                     "{\"error\":\"Forbidden\",\"message\":\"Access denied\"}");
                         }))
