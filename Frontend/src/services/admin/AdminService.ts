@@ -51,6 +51,25 @@ export const updateUserStatus = async(id, userData) => {
     }
 }
 
+// Suppression — réelle si le compte n'a jamais servi, sinon logique et
+// irréversible (mot de passe invalidé, clé PKI révoquée si EDITOR ; voir
+// UserService.supprimerUtilisateur côté serveur). Aucune réactivation possible
+// ensuite, contrairement à updateUserStatus.
+export const supprimerUtilisateur = async(id: string) => {
+    try{
+        if (!id) {
+            throw new Error('ID utilisateur manquant');
+        }
+        const response = await api.delete(`/admin_uo/users/${id}`);
+        return response.data;
+    }catch(error){
+        console.error('Détails de l\'erreur:', error.response?.data || error);
+        throw error.response?.data?.message
+                ? new Error(error.response.data.message)
+                : error;
+    }
+}
+
 // Vue globale — réservée à ADMIN côté serveur
 export const getAllUsers = async() =>{
     try{

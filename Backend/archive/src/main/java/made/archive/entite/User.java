@@ -116,6 +116,19 @@ public class User
      */
     private String sessionInvalidationReason;
 
+    /**
+     * Horodatage d'une suppression LOGIQUE (compte déjà utilisé au moins une fois —
+     * voir UserService.supprimerUtilisateur) — null tant que le compte n'est pas
+     * supprimé. Contrairement au blocage (actif=false, réversible), c'est
+     * irréversible : nom/prénom/email/id sont volontairement CONSERVÉS (ils restent
+     * lisibles sur les documents/projets/exports déjà réalisés par ce compte, et
+     * dans le journal d'audit), seuls le mot de passe (remplacé par une valeur
+     * aléatoire) et la clé PKI (révoquée si active) sont coupés. Un compte jamais
+     * connecté est supprimé pour de vrai (DELETE réel) à la place — voir la même
+     * méthode — ce champ ne concerne donc que le cas "a déjà servi".
+     */
+    private Instant supprimeLe;
+
     @OneToMany(mappedBy = "user", fetch = FetchType.LAZY)
     @JsonIgnore
     private List<TypeDocument> typeDocuments;

@@ -7,7 +7,7 @@ const POLL_INTERVAL_MS = 20_000;
 const COUNTDOWN_SECONDS = 3;
 
 interface SessionInvalidatedDetail {
-    reason: 'SESSION_INVALIDATED' | 'ACCOUNT_BLOCKED' | 'UO_CHANGEE';
+    reason: 'SESSION_INVALIDATED' | 'ACCOUNT_BLOCKED' | 'UO_CHANGEE' | 'COMPTE_SUPPRIME';
     message: string;
 }
 

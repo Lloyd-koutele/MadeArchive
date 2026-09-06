@@ -9,6 +9,7 @@ import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.annotation.Secured;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -154,6 +155,26 @@ public class AdminController
         catch (Exception e)
         {
             return errorResponse("Erreur lors de la mise à jour de l'utilisateur: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Suppression d'un compte — réelle (DELETE) s'il n'a jamais servi, sinon
+     * logique et irréversible (voir UserService.supprimerUtilisateur). Aucune
+     * réactivation possible ensuite, contrairement à /users/status/{id}.
+     */
+    @Secured({"ROLE_ADMIN", "ROLE_ADMIN_UO"})
+    @DeleteMapping("/users/{id}")
+    public ResponseEntity<?> supprimerUtilisateur(@PathVariable UUID id, @AuthenticationPrincipal UserDetailsImpl currentUser)
+    {
+        try
+        {
+            userService.supprimerUtilisateur(id, currentUser.getUser());
+            return ResponseEntity.ok().build();
+        }
+        catch (Exception e)
+        {
+            return errorResponse("Erreur lors de la suppression de l'utilisateur: " + e.getMessage());
         }
     }
 

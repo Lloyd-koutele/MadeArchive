@@ -34,6 +34,10 @@ public class SessionInvalidationService
     /** Transfert vers une autre UO — voir UniteOrganisationnelleService.changerUOUtilisateur. */
     public static final String RAISON_UO_CHANGEE = "UO_CHANGEE";
 
+    /** Suppression logique du compte — voir UserService.supprimerUtilisateur. Contrairement
+     *  à ACCOUNT_BLOCKED, la reconnexion n'est plus jamais possible (mot de passe invalidé). */
+    public static final String RAISON_COMPTE_SUPPRIME = "COMPTE_SUPPRIME";
+
     private final UserRepository userRepository;
     private final UserActiveTokenRepository activeTokenRepository;
     private final AuthCacheService authCacheService;

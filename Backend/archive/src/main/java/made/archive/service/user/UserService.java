@@ -70,6 +70,15 @@ public class UserService
     @Autowired
     private made.archive.security.AuthCacheService authCacheService;
 
+    @Autowired
+    private made.archive.security.SessionInvalidationService sessionInvalidationService;
+
+    @Autowired
+    private made.archive.repository.MembreUORepository membreUORepository;
+
+    @Autowired
+    private made.archive.repository.JournalAuditRepository journalAuditRepository;
+
     /** UO actuelle de l'utilisateur, pour le contexte du journal d'audit (null si aucune / ADMIN). */
     private Long uoDe(UUID userId)
     {
@@ -116,7 +125,8 @@ public class UserService
                 u.isActif(),
                 u.getRoles(),
                 uo != null ? uo.getId() : null,
-                uo != null ? uo.getNom() : null
+                uo != null ? uo.getNom() : null,
+                u.getSupprimeLe()
             );
         }).toList();
     }
@@ -227,6 +237,11 @@ public class UserService
         User user = userRepository.findById(id)
             .orElseThrow(() -> new BusinessException("Utilisateur non trouvé avec l'ID: " + id));
 
+        if (user.getSupprimeLe() != null)
+        {
+            throw new BusinessException("Ce compte a été supprimé, son statut ne peut plus être modifié");
+        }
+
         if (!uniteOrganisationnelleService.aAutoriteSurUtilisateur(id, currentUser))
         {
             throw new AccessDeniedException("Vous n'avez pas l'autorité sur cet utilisateur");
@@ -255,6 +270,114 @@ public class UserService
         }
 
         return userRepository.save(user);
+    }
+
+    /**
+     * Supprime un compte — réellement (DELETE) s'il n'a JAMAIS servi, sinon
+     * logiquement (irréversible, mais nom/prénom/email/id conservés pour rester
+     * lisibles sur ce que ce compte a déjà produit et dans le journal d'audit).
+     *
+     * Autorité : même modèle que retirerMembre — un ADMIN_UO ne peut jamais viser
+     * un ADMIN ni un autre ADMIN_UO (même dans son propre sous-arbre), et doit
+     * avoir autorité sur l'UO actuelle de la cible. Un ADMIN peut tout, sauf se
+     * supprimer lui-même et sauf supprimer le dernier ADMIN du système (sans quoi
+     * plus personne ne pourrait administrer l'application).
+     */
+    @Transactional
+    public void supprimerUtilisateur(UUID id, User currentUser)
+    {
+        if (id == null || currentUser == null)
+        {
+            throw new BusinessException("Les données sont invalides");
+        }
+        if (currentUser.getId().equals(id))
+        {
+            throw new BusinessException("Vous ne pouvez pas supprimer votre propre compte");
+        }
+
+        User cible = userRepository.findById(id)
+            .orElseThrow(() -> new BusinessException("Utilisateur non trouvé avec l'ID: " + id));
+
+        if (cible.getSupprimeLe() != null)
+        {
+            throw new BusinessException("Ce compte est déjà supprimé");
+        }
+
+        boolean cibleEstAdmin = cible.getRoles().stream().anyMatch(r -> r.getName() == Role_Name.ADMIN);
+        boolean cibleEstAdminUo = cible.getRoles().stream().anyMatch(r -> r.getName() == Role_Name.ADMIN_UO);
+        boolean acteurEstAdmin = currentUser.getRoles().stream().anyMatch(r -> r.getName() == Role_Name.ADMIN);
+
+        if (!acteurEstAdmin)
+        {
+            // ADMIN_UO : jamais sur un ADMIN ni un autre ADMIN_UO — même garde que
+            // UniteOrganisationnelleService.retirerMembre, pour une action bien plus
+            // grave (irréversible) que le retrait.
+            if (cibleEstAdmin || cibleEstAdminUo)
+            {
+                throw new AccessDeniedException("Vous n'avez pas l'autorité pour supprimer ce compte");
+            }
+            if (!uniteOrganisationnelleService.aAutoriteSurUtilisateur(id, currentUser))
+            {
+                throw new AccessDeniedException("Vous n'avez pas l'autorité sur cet utilisateur");
+            }
+        }
+
+        // Dernier ADMIN du système : jamais, quel que soit son statut (actif ou
+        // bloqué) — sinon plus personne ne pourrait ni administrer l'application
+        // ni réactiver un compte bloqué.
+        if (cibleEstAdmin && userRepository.findByRoleName(Role_Name.ADMIN).size() <= 1)
+        {
+            throw new BusinessException("Impossible de supprimer le dernier administrateur du système");
+        }
+
+        Long uoCible = uoDe(id);
+        boolean dejaConnecte = journalAuditRepository.existsByActeurIdAndAction(id, AuditAction.LOGIN_REUSSI);
+        String emailCible = cible.getEmail();
+
+        if (!dejaConnecte)
+        {
+            // Suppression réelle : ce compte n'a jamais servi. La seule ligne qui
+            // peut le référencer à ce stade est son adhésion UO — créée à la
+            // création du compte par l'admin (pas une action de l'utilisateur
+            // lui-même, voir createUser) — on la retire d'abord pour ne pas violer
+            // la contrainte de clé étrangère. Si un document/projet/export/etc.
+            // existe malgré tout (ne devrait jamais arriver sans connexion
+            // préalable), le DELETE échoue sur une violation de contrainte plutôt
+            // que de risquer une perte silencieuse de données réelles.
+            membreUORepository.deleteAll(membreUORepository.findByUserId(id));
+            userRepository.delete(cible);
+            auditLogService.log(currentUser, AuditAction.UTILISATEUR_SUPPRIME, AuditCible.UTILISATEUR,
+                id.toString(), uoCible, "Suppression définitive (compte jamais utilisé) de " + emailCible, true);
+            return;
+        }
+
+        // Suppression logique : le compte a déjà servi. On coupe tout ce qui
+        // permettrait de s'en servir à nouveau, mais on garde nom/prénom/email/id
+        // intacts — ils restent affichés sur les documents/projets/exports déjà
+        // réalisés par ce compte, et dans le journal d'audit (voir la Javadoc de
+        // JournalAudit : un snapshot texte y survit de toute façon, mais l'attente
+        // ici est de garder aussi l'affichage "live" — ex. sur un document).
+        membreUORepository.findByUserIdAndActifTrue(id).ifPresent(m -> {
+            m.setActif(false);
+            m.setDateRetrait(LocalDateTime.now());
+            m.setRetirePar(currentUser);
+            membreUORepository.save(m);
+        });
+
+        if (cible.getPkiKeyStatus() == PkiKeyStatus.ACTIVE)
+        {
+            cible.setPkiKeyStatus(PkiKeyStatus.REVOKED);
+        }
+        cible.setActif(false);
+        cible.setPassword(passwordEncoder.encode(UUID.randomUUID().toString()));
+        cible.setSupprimeLe(Instant.now());
+        userRepository.save(cible);
+
+        sessionInvalidationService.invalider(cible, made.archive.security.SessionInvalidationService.RAISON_COMPTE_SUPPRIME);
+
+        auditLogService.log(currentUser, AuditAction.UTILISATEUR_SUPPRIME, AuditCible.UTILISATEUR,
+            id.toString(), uoCible,
+            "Suppression logique de " + emailCible + " (mot de passe invalidé, clé PKI révoquée si active)", true);
     }
 
     @Transactional(readOnly = true)
@@ -398,6 +521,11 @@ public class UserService
 
         User user = userRepository.findById(id)
             .orElseThrow(() -> new BusinessException("Utilisateur non trouvé avec l'ID: " + id));
+
+        if (user.getSupprimeLe() != null)
+        {
+            throw new BusinessException("Ce compte a été supprimé, il ne peut plus être modifié");
+        }
 
         Set<Role> nouveauxRoles = new HashSet<>();
         for (Role roleDto : dto.getRoles())
