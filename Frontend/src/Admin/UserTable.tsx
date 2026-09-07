@@ -46,9 +46,8 @@ const UserTable = memo(({ user, onAction, actionInProgress, onRemoveFromUO, onRe
 
     // Liste déroulante des rôles — indépendante du menu d'actions ci-dessus
     // (même mécanique : bouton + portail positionné en fixed, fermeture au clic
-    // extérieur/scroll/resize), affichée uniquement à partir de 3 rôles (voir
-    // le rendu de la colonne "Rôle" plus bas) — en dessous, la liste tient déjà
-    // sur une ligne, pas besoin de la replier.
+    // extérieur/scroll/resize), affichée dès 2 rôles (voir le rendu de la
+    // colonne "Rôle" plus bas) — avec 0 ou 1 seul rôle, rien à replier.
     const [openRolesId, setOpenRolesId] = useState<string | null>(null);
     const [rolesMenuPos, setRolesMenuPos] = useState<MenuPosition | null>(null);
     const rolesMenuRef = useRef<HTMLDivElement | null>(null);
@@ -282,10 +281,10 @@ const UserTable = memo(({ user, onAction, actionInProgress, onRemoveFromUO, onRe
                                 <td className="col-role">
                                     {!singleUser.roles || singleUser.roles.length === 0 ? (
                                         'Aucun rôle'
-                                    ) : singleUser.roles.length <= 2 ? (
+                                    ) : singleUser.roles.length < 2 ? (
                                         singleUser.roles.map(r => getRoleLabel(r.name)).join(', ')
                                     ) : (() => {
-                                        // 3 rôles ou plus : un seul affiché en titre (le plus élevé
+                                        // 2 rôles ou plus : un seul affiché en titre (le plus élevé
                                         // dans la hiérarchie), les autres repliés dans la liste
                                         // déroulante plutôt que d'allonger la ligne indéfiniment.
                                         const [rolePrincipal, ...autres] = rolesParPriorite(singleUser);
