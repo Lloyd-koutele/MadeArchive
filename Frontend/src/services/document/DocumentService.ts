@@ -191,17 +191,24 @@ export const getMesFolders = async (): Promise<DocumentFolderDto[]> => {
 };
 
 /**
- * GET /api/user/docs/par-type/{typeId}?page=&size=
+ * GET /api/user/docs/par-type/{typeId}?page=&size=&dateDebut=&dateFin=
  * Documents d'un type, paginés depuis la BD.
+ * dateDebut/dateFin optionnels (ISO yyyy-MM-dd) — filtre sur la date d'archivage.
  */
 export const getMesDocumentsByType = async (
     typeId: number,
     page   = 1,
     size   = 10,
+    dateDebut?: string,
+    dateFin?:   string,
 ): Promise<DocumentPageDto> => {
     try {
         const response = await api.get(`/user/docs/par-type/${typeId}`, {
-            params: { page, size },
+            params: {
+                page, size,
+                ...(dateDebut ? { dateDebut } : {}),
+                ...(dateFin   ? { dateFin }   : {}),
+            },
         });
         return response.data;
     } catch (error: any) {
@@ -216,20 +223,25 @@ export const getMesDocumentsByType = async (
 // └─────────────────────────────────────────────────────────────────────────┘
 
 /**
- * GET /api/user/docs/recherche?q=&typeId=&page=&size=
+ * GET /api/user/docs/recherche?q=&typeId=&page=&size=&dateDebut=&dateFin=
  * Recherche full-text (Meilisearch → BD).
+ * dateDebut/dateFin optionnels (ISO yyyy-MM-dd) — filtre sur la date d'archivage.
  */
 export const rechercherDocuments = async (
     q?:     string,
     typeId?: number,
     page   = 1,
     size   = 10,
+    dateDebut?: string,
+    dateFin?:   string,
 ): Promise<DocumentPageDto> => {
     try {
         const response = await api.get('/user/docs/recherche', {
             params: {
-                ...(q      ? { q }      : {}),
-                ...(typeId ? { typeId } : {}),
+                ...(q         ? { q }         : {}),
+                ...(typeId    ? { typeId }    : {}),
+                ...(dateDebut ? { dateDebut } : {}),
+                ...(dateFin   ? { dateFin }   : {}),
                 page,
                 size,
             },

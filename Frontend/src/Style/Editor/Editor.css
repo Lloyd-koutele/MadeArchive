@@ -742,6 +742,7 @@ label.bulk-file-item { cursor: pointer; }
 
 .mes-docs-search {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.5rem;
     align-items: center;
 }
@@ -749,6 +750,14 @@ label.bulk-file-item { cursor: pointer; }
 .mes-docs-search-btn {
     padding: 0.55rem 0.9rem;
     width: auto;
+}
+
+/* Filtre par date d'archivage, dans la barre de recherche d'un type — largeur
+   fixe (libellé + calendrier natif), ne doit pas se partager l'espace avec le
+   champ de recherche texte comme le ferait .filter-input seul (flex: 1 1 0),
+   même convention que .filtre-field-date (Filtre.css). */
+.mes-docs-search-date {
+    flex: 0 0 8.6rem;
 }
 
 /* ── Recherche ── */
