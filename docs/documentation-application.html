@@ -208,6 +208,35 @@
   }
   .role-card p{ font-size:0.85rem; margin:0; color:var(--muted); }
 
+  .container-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(270px,1fr));
+    gap:0.9rem;
+    margin-bottom:0.5rem;
+  }
+  .container-card{
+    background:var(--paper-raised);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:1rem 1.15rem;
+    box-shadow:var(--shadow);
+  }
+  .container-card .container-name{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:0.85rem;
+    color:var(--accent);
+    font-weight:600;
+  }
+  .container-card .container-image{
+    display:block;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:0.65rem;
+    color:var(--muted);
+    margin:0.15rem 0 0.55rem;
+  }
+  .container-card p{ font-size:0.83rem; margin:0; color:var(--ink); }
+  .container-card p.why{ color:var(--muted); font-size:0.78rem; margin-top:0.5rem; font-style:italic; }
+
   .lifecycle{
     display:flex;
     flex-wrap:wrap;
@@ -322,6 +351,9 @@
     <a href="#export">Export administratif</a>
     <a href="#audit">Journal d'audit</a>
     <a href="#notifications">Notifications</a>
+
+    <div class="toc-group">Infrastructure</div>
+    <a href="#infrastructure">Conteneurs Docker</a>
 
     <div class="toc-group">Bilan</div>
     <a href="#recap">Tableau récapitulatif</a>
@@ -577,8 +609,69 @@
       </div>
     </section>
 
+    <section id="infrastructure">
+      <h2><span class="section-num">23</span>Infrastructure — conteneurs Docker</h2>
+      <p>L'application tourne comme dix conteneurs séparés (<code>docker-compose.yml</code>) plutôt qu'un seul gros processus — chacun isolé pour une raison précise : une charge de travail différente, un besoin de sécurité distinct, ou simplement un métier qui n'a rien à voir avec les autres.</p>
+      <div class="container-grid">
+        <div class="container-card">
+          <span class="container-name">app</span>
+          <span class="container-image">ghcr.io/lloyd-koutele/madearchive-app</span>
+          <p>Le backend Spring Boot — toute la logique métier décrite dans ce document. Le seul conteneur autorisé à parler à tous les autres ; aucun port publié directement, joignable uniquement via Traefik.</p>
+        </div>
+        <div class="container-card">
+          <span class="container-name">frontend</span>
+          <span class="container-image">ghcr.io/lloyd-koutele/madearchive-frontend</span>
+          <p>L'interface React, servie statiquement. Même durcissement que "app" : aucun accès direct, uniquement via Traefik.</p>
+        </div>
+        <div class="container-card">
+          <span class="container-name">postgres</span>
+          <span class="container-image">postgres:16-alpine</span>
+          <p>Base de données relationnelle — LA source de vérité (documents, utilisateurs, UO, métadonnées).</p>
+          <p class="why">Seul conteneur en volume nommé dès le départ : ses données doivent survivre à un redémarrage sans exception possible.</p>
+        </div>
+        <div class="container-card">
+          <span class="container-name">minio</span>
+          <span class="container-image">minio/minio:latest</span>
+          <p>Stockage objet compatible S3 — seul endroit où les PDF/A archivés, chiffrés, sont réellement conservés.</p>
+        </div>
+        <div class="container-card">
+          <span class="container-name">meilisearch</span>
+          <span class="container-image">getmeili/meilisearch:latest</span>
+          <p>Moteur de recherche plein texte (voir Recherche hybride) — ne fait jamais autorité sur le contenu ou les droits d'accès, seulement sur la pertinence.</p>
+        </div>
+        <div class="container-card">
+          <span class="container-name">redis</span>
+          <span class="container-image">redis:7-alpine</span>
+          <p>Cache d'authentification — reconstruit le principal de sécurité (rôles, statut de session) à chaque requête sans retaper PostgreSQL à chaque fois.</p>
+        </div>
+        <div class="container-card">
+          <span class="container-name">gotenberg</span>
+          <span class="container-image">gotenberg/gotenberg:8</span>
+          <p>Conteneur LibreOffice persistant, dédié à la conversion de tout format bureautique ou image en PDF (voir Pipeline d'archivage).</p>
+          <p class="why">Remplace un "soffice --headless" relancé à chaque fichier — coût de démarrage à froid de plusieurs secondes payé sur CHAQUE document. Gotenberg garde son pool LibreOffice chaud en permanence, dans un conteneur dont la RAM/CPU ne concurrence jamais celles de l'appli.</p>
+        </div>
+        <div class="container-card">
+          <span class="container-name">ollama</span>
+          <span class="container-image">ollama/ollama — modèle qwen2.5-coder:7b</span>
+          <p>Sert le modèle de langage local (Qwen) qui génère les règles d'extraction automatique (voir Extraction assistée par IA).</p>
+        </div>
+        <div class="container-card">
+          <span class="container-name">chromium</span>
+          <span class="container-image">ghcr.io/browserless/chromium:v2.56.0</span>
+          <p>Navigateur headless dédié à l'import de documents par navigation web assistée (voir Import en lot &amp; import web).</p>
+          <p class="why">Mémoire et CPU strictement plafonnés (1&nbsp;Go, 1&nbsp;cœur) — un afflux de demandes d'import web ne peut jamais déborder de ces limites ni affecter le reste de l'application.</p>
+        </div>
+        <div class="container-card">
+          <span class="container-name">traefik</span>
+          <span class="container-image">image maison, basée sur Traefik</span>
+          <p>Unique point d'entrée public (ports 80/443) : termine le HTTPS (Let's Encrypt, ou certificat local en développement), redirige tout HTTP vers HTTPS, et route vers "frontend" ou "app" selon le chemin.</p>
+          <p class="why">Aucun autre conteneur n'est exposé directement à l'extérieur — un accès qui contournerait le HTTPS est structurellement impossible, pas seulement déconseillé.</p>
+        </div>
+      </div>
+    </section>
+
     <section id="recap">
-      <h2><span class="section-num">23</span>Tableau récapitulatif</h2>
+      <h2><span class="section-num">24</span>Tableau récapitulatif</h2>
       <p>Chaque fonctionnalité, le problème qu'elle résout, et sa limite connue le cas échéant.</p>
       <div class="legend">
         <span><span class="dot ok"></span> Aucune limite majeure identifiée</span>
