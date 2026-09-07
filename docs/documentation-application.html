@@ -237,6 +237,21 @@
   .container-card p{ font-size:0.83rem; margin:0; color:var(--ink); }
   .container-card p.why{ color:var(--muted); font-size:0.78rem; margin-top:0.5rem; font-style:italic; }
 
+  pre.codeblock{
+    background:var(--code-bg);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:0.9rem 1.15rem;
+    overflow-x:auto;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:0.78rem;
+    line-height:1.55;
+    color:var(--ink);
+    margin:0.7rem 0;
+    max-width:100%;
+  }
+  pre.codeblock .cm{ color:var(--muted); }
+
   .lifecycle{
     display:flex;
     flex-wrap:wrap;
@@ -354,6 +369,7 @@
 
     <div class="toc-group">Infrastructure</div>
     <a href="#infrastructure">Conteneurs Docker</a>
+    <a href="#traefik">Traefik en détail</a>
     <a href="#initialisation">Initialisation &amp; démarrage</a>
     <a href="#mise-a-lechelle">Mise à l'échelle</a>
 
@@ -672,8 +688,67 @@
       </div>
     </section>
 
+    <section id="traefik">
+      <h2><span class="section-num">24</span>Traefik en détail</h2>
+      <p>Traefik revient dans presque toutes les décisions d'architecture de ce document (routage, HTTPS, mise à l'échelle) — assez central pour mériter sa propre section plutôt que des mentions éparpillées.</p>
+
+      <div class="feature">
+        <h3>Rôle général</h3>
+        <p>Un reverse proxy et répartiteur de charge HTTP(S). Dans MadeArchive, c'est le <strong>seul</strong> conteneur exposé sur les ports 80/443 : tout le trafic public passe par lui, qui décide ensuite vers quel service interne router chaque requête. Il termine aussi le TLS — les autres conteneurs ne se parlent qu'en clair sur le réseau Docker interne, jamais exposés directement au monde extérieur.</p>
+      </div>
+
+      <div class="feature">
+        <h3>Initialisation — image maison, pas l'image officielle telle quelle</h3>
+        <p>Un point d'entrée personnalisé (<code>traefik/docker-entrypoint.sh</code>) régénère <code>dynamic.yml</code> depuis un gabarit (<code>dynamic.yml.template</code>) à <em>chaque</em> démarrage du conteneur, en substituant <code>${APP_DOMAIN}</code> par sa vraie valeur (<code>.env</code>, via <code>sed</code> — <code>envsubst</code> n'existe pas dans l'image officielle). Le fichier réellement lu par Traefik n'est jamais versionné : il n'existe qu'à l'intérieur du conteneur, reconstruit à chaque redémarrage.</p>
+        <div class="callout why"><span class="lbl">Pourquoi</span> Avant, le domaine était écrit en dur dans ce fichier ET séparément dans <code>.env</code> (pour CORS et les liens de QR code) — deux copies manuelles du même domaine, sans lien entre elles. Une coquille dans l'une des deux cassait la connexion (rejet CORS) sans rapport apparent avec la vraie cause. Avec ce gabarit, <code>.env</code> est la seule source.</div>
+      </div>
+
+      <div class="feature">
+        <h3>Fournisseur "file", pas "docker"</h3>
+        <p>Traefik peut découvrir automatiquement les conteneurs via le socket Docker (fournisseur "docker"), ou lire une configuration statique (fournisseur "file", celui utilisé ici).</p>
+        <div class="callout limit"><span class="lbl">Limite connue</span> Le fournisseur "docker" a été essayé et abandonné : incompatible avec la version de Docker Desktop utilisée en développement (400 Bad Request au démarrage, constaté en le testant directement) — jamais retesté sur un vrai hôte Linux de production, où le problème ne se reproduit pas forcément. Le fournisseur "file" actuel fonctionne, mais sa configuration est <strong>statique</strong> : Traefik n'a plus besoin du socket Docker, mais il faut éditer et recharger le gabarit à la main pour tout changement de topologie (voir plus bas).</div>
+      </div>
+
+      <div class="feature">
+        <h3>Règles de routage actuelles</h3>
+        <p>Un seul domaine public, routage par chemin : <code>/api/*</code> → <span class="pill">app</span> (priorité 10), tout le reste → <span class="pill">frontend</span> (priorité 1). Deux routeurs de secours (<code>api-lan</code>/<code>frontend-lan</code>, condition <code>!Host(...)</code>) permettent d'accéder à l'application depuis un autre appareil du réseau local sans lui faire résoudre le domaine.</p>
+        <p>Certificat : mkcert en développement (sélectionné automatiquement par SNI), Let's Encrypt dès qu'un vrai domaine public et un email ACME sont configurés — même fichier, aucune bascule à coder.</p>
+      </div>
+
+      <div class="feature">
+        <h3>Concrètement : ajouter plusieurs instances de "app"</h3>
+        <p>La liste des serveurs derrière le service <code>app</code> ne contient aujourd'hui qu'une seule adresse :</p>
+        <pre class="codeblock">services:
+  app:
+    loadBalancer:
+      servers:
+        - url: "http://app:8080"</pre>
+        <p>Ajouter des réplicas revient à lister plusieurs adresses :</p>
+        <pre class="codeblock">services:
+  app:
+    loadBalancer:
+      servers:
+        - url: "http://app:8080"
+        - url: "http://app-2:8080"
+        - url: "http://app-3:8080"</pre>
+        <div class="callout limit"><span class="lbl">Limite connue</span> Cette liste est statique — chaque URL doit résoudre vers un conteneur réellement joignable (soit un bloc de service distinct par réplica dans <code>docker-compose.yml</code>, chacun avec son propre <code>container_name</code>, soit un fournisseur Docker natif pour une vraie découverte automatique). Ajouter ou retirer une instance veut dire éditer ce gabarit et relancer Traefik — ça ne s'adapte pas tout seul au nombre réel de conteneurs actifs.</div>
+      </div>
+
+      <div class="feature">
+        <h3>Concrètement : ajouter plusieurs instances d'Ollama (Qwen)</h3>
+        <p>Même mécanisme, mais pour un service <strong>interne</strong> (jamais exposé publiquement) : un routeur et un service Traefik supplémentaires, avec plusieurs adresses Ollama en <code>loadBalancer.servers</code>, puis <code>OLLAMA_BASE_URL</code> pointant vers ce point d'entrée unique plutôt que directement vers un conteneur.</p>
+        <pre class="codeblock">services:
+  ollama:
+    loadBalancer:
+      servers:
+        - url: "http://ollama:11434"
+        - url: "http://ollama-2:11434"</pre>
+        <div class="callout why"><span class="lbl">Pourquoi ce n'est probablement pas nécessaire</span> Ce modèle n'est appelé qu'une fois <em>par type de document</em>, jamais par document — le débit réel demandé est déjà faible. Le réglage de concurrence interne d'Ollama (<code>OLLAMA_NUM_PARALLEL</code>) absorbe généralement plusieurs requêtes de front avant qu'il soit utile de dupliquer le conteneur entier. Aucun changement de code Java dans les deux cas : uniquement de la configuration Traefik.</div>
+      </div>
+    </section>
+
     <section id="initialisation">
-      <h2><span class="section-num">24</span>Initialisation &amp; démarrage</h2>
+      <h2><span class="section-num">25</span>Initialisation &amp; démarrage</h2>
       <p><code>docker compose up -d</code> démarre les dix conteneurs dans un ordre de dépendance strict — <span class="pill">app</span> attend que <em>tous</em> les autres répondent sains à leur <em>healthcheck</em> avant de démarrer lui-même (voir <code>depends_on</code> dans <code>docker-compose.yml</code>).</p>
 
       <div class="lifecycle">
@@ -704,7 +779,7 @@
     </section>
 
     <section id="mise-a-lechelle">
-      <h2><span class="section-num">25</span>Mise à l'échelle</h2>
+      <h2><span class="section-num">26</span>Mise à l'échelle</h2>
       <p>Aujourd'hui, une seule instance de chaque service. Faire tourner plusieurs instances de "app" (l'API) ou d'Ollama (Qwen) est possible, mais pas en changeant seulement un chiffre — voici précisément ce qui marche déjà, ce qui casse, et ce qu'il faudrait changer.</p>
 
       <div class="feature">
@@ -723,7 +798,7 @@
     </section>
 
     <section id="recap">
-      <h2><span class="section-num">26</span>Tableau récapitulatif</h2>
+      <h2><span class="section-num">27</span>Tableau récapitulatif</h2>
       <p>Chaque fonctionnalité, le problème qu'elle résout, et sa limite connue le cas échéant.</p>
       <div class="legend">
         <span><span class="dot ok"></span> Aucune limite majeure identifiée</span>
