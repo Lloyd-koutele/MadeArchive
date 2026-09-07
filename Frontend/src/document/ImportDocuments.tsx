@@ -55,6 +55,16 @@ type ImportMode = 'local' | 'lien';
 
 /** État de validation pour un fichier : valeurs saisies + sessionId */
 interface FileValidationState {
+    // Clé React STABLE et UNIQUE pour ce fichier dans le lot — voir
+    // construireFileStates. À NE PAS confondre avec sessionId : sessionId
+    // vaut '' pour TOUS les fichiers en erreur (pas de session OCR créée),
+    // donc react key={fs.sessionId} collisionnait entre tous les fichiers en
+    // erreur du lot. React ne peut alors plus distinguer ces éléments d'un
+    // rendu à l'autre et réutilise le mauvais nœud DOM après un retrait
+    // (retirerDuLotValide) : le fichier retiré reste visible et d'autres,
+    // pourtant valides, se retrouvent affichés comme "en erreur" à sa place
+    // — constaté en conditions réelles sur un lot de ~1000 fichiers.
+    id: string;
     sessionId: string;
     nomFichier: string;
     metaValues: Record<string, string>;
@@ -225,6 +235,11 @@ function ImportDocuments({ onsuccess, preselectedTypeId, precedentDocument }: Im
             }
 
             return {
+                // Un sessionId réel (succès) est déjà unique — pour un
+                // échec (sessionId absent pour TOUS), on retombe sur l'index
+                // de construction, unique une seule fois ici puis figé pour
+                // le reste de la vie de cet objet (voir le champ `id`).
+                id:           item.sessionId ?? `err-${idx}`,
                 sessionId:    item.sessionId ?? '',
                 nomFichier:   item.nomFichier ?? fallbackNames?.[idx] ?? `fichier_${idx + 1}`,
                 metaValues,
@@ -747,7 +762,7 @@ function ImportDocuments({ onsuccess, preselectedTypeId, precedentDocument }: Im
                                 <div className="bulk-nav-tabs">
                                     {fileStates.map((fs, idx) => (
                                         <button
-                                            key={fs.sessionId}
+                                            key={fs.id}
                                             type="button"
                                             className={`bulk-nav-tab ${idx === currentIdx ? 'active' : ''} ${fs.hasError ? 'error' : ''}`}
                                             onClick={() => goTo(idx)}
