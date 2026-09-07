@@ -1,0 +1,639 @@
+<title>Documentation MadeArchive</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --paper:#FDF8F3;
+    --paper-raised:#FFFFFF;
+    --ink:#2C1A0E;
+    --accent:#8B5E3C;
+    --gold:#B5813F;
+    --line:#E8D9C5;
+    --muted:#8A7460;
+    --ok-bg:#E4EFE6; --ok-fg:#3E7A52;
+    --warn-bg:#F8ECD2; --warn-fg:#8A5A1E;
+    --info-bg:#E9E1F6; --info-fg:#5B4A96;
+    --code-bg:#F3E9DA;
+    --shadow: 0 8px 24px rgba(44,26,14,0.08);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --paper:#19110A; --paper-raised:#241708; --ink:#F2E7D9;
+      --accent:#CB9A62; --gold:#D9AE6C; --line:#3A2A1C; --muted:#B8A692;
+      --ok-bg:#1D3324; --ok-fg:#8FD1A3;
+      --warn-bg:#3A2C10; --warn-fg:#E8BE72;
+      --info-bg:#2A2140; --info-fg:#C6B8ED;
+      --code-bg:#2A1D10;
+      --shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#19110A; --paper-raised:#241708; --ink:#F2E7D9;
+    --accent:#CB9A62; --gold:#D9AE6C; --line:#3A2A1C; --muted:#B8A692;
+    --ok-bg:#1D3324; --ok-fg:#8FD1A3;
+    --warn-bg:#3A2C10; --warn-fg:#E8BE72;
+    --info-bg:#2A2140; --info-fg:#C6B8ED;
+    --code-bg:#2A1D10;
+    --shadow: 0 8px 24px rgba(0,0,0,0.4);
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'DM Sans', sans-serif;
+    font-size:15.5px;
+    line-height:1.6;
+  }
+  h1,h2,h3,h4{
+    font-family:'Cormorant Garamond', serif;
+    text-wrap:balance;
+    margin:0;
+    color:var(--ink);
+  }
+  code, .mono{
+    font-family:'IBM Plex Mono', monospace;
+  }
+  a{ color:var(--accent); }
+
+  /* ── Structure générale : nav collante + contenu ── */
+  .layout{
+    display:grid;
+    grid-template-columns:250px minmax(0,1fr);
+    max-width:1180px;
+    margin:0 auto;
+  }
+  nav.toc{
+    position:sticky;
+    top:0;
+    align-self:start;
+    height:100vh;
+    overflow-y:auto;
+    padding:2.2rem 1.3rem 2rem 0;
+    border-right:1px solid var(--line);
+  }
+  nav.toc .toc-eyebrow{
+    font-size:0.68rem;
+    letter-spacing:0.1em;
+    text-transform:uppercase;
+    color:var(--muted);
+    margin-bottom:0.9rem;
+  }
+  nav.toc a{
+    display:block;
+    font-size:0.82rem;
+    color:var(--ink);
+    text-decoration:none;
+    padding:0.32rem 0;
+    border-left:2px solid transparent;
+    padding-left:0.7rem;
+    margin-left:-0.72rem;
+  }
+  nav.toc a:hover{ color:var(--accent); }
+  nav.toc .toc-group{
+    font-size:0.68rem;
+    letter-spacing:0.07em;
+    text-transform:uppercase;
+    color:var(--muted);
+    margin:1.1rem 0 0.2rem;
+  }
+  nav.toc .toc-group:first-of-type{ margin-top:0; }
+
+  main{ padding:2.4rem 2.6rem 5rem 2.6rem; min-width:0; }
+
+  .doc-header{ margin-bottom:2.6rem; max-width:640px; }
+  .doc-header .kicker{
+    font-size:0.7rem;
+    letter-spacing:0.12em;
+    text-transform:uppercase;
+    color:var(--muted);
+    margin-bottom:0.6rem;
+  }
+  .doc-header h1{ font-size:2.6rem; font-weight:600; margin-bottom:0.7rem; }
+  .doc-header p{ color:var(--muted); font-size:0.95rem; max-width:60ch; }
+
+  section{ margin-bottom:3.1rem; scroll-margin-top:1.5rem; }
+  section > h2{
+    font-size:1.55rem;
+    font-weight:600;
+    padding-bottom:0.55rem;
+    border-bottom:1px solid var(--line);
+    margin-bottom:1.2rem;
+  }
+  section > h2 .section-num{
+    color:var(--muted);
+    font-family:'IBM Plex Mono', monospace;
+    font-size:0.85rem;
+    font-weight:400;
+    margin-right:0.6rem;
+  }
+  h3{ font-size:1.18rem; font-weight:600; margin-bottom:0.5rem; }
+  p{ margin:0 0 0.85rem; max-width:70ch; }
+  p:last-child{ margin-bottom:0; }
+  ul, ol{ margin:0 0 0.85rem; padding-left:1.3rem; max-width:68ch; }
+  li{ margin-bottom:0.3rem; }
+
+  .feature{
+    background:var(--paper-raised);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:1.35rem 1.5rem;
+    margin-bottom:1.1rem;
+    box-shadow:var(--shadow);
+  }
+  .feature h3{
+    display:flex;
+    align-items:baseline;
+    gap:0.6rem;
+    flex-wrap:wrap;
+  }
+  .feature .roles{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:0.68rem;
+    color:var(--muted);
+    font-weight:400;
+  }
+  .callout{
+    display:flex;
+    gap:0.6rem;
+    align-items:flex-start;
+    font-size:0.86rem;
+    border-radius:8px;
+    padding:0.55rem 0.75rem;
+    margin-top:0.7rem;
+  }
+  .callout .lbl{
+    flex:0 0 auto;
+    font-size:0.65rem;
+    letter-spacing:0.06em;
+    text-transform:uppercase;
+    font-weight:600;
+    padding-top:0.1rem;
+  }
+  .callout.why{ background:var(--info-bg); }
+  .callout.why .lbl{ color:var(--info-fg); }
+  .callout.limit{ background:var(--warn-bg); }
+  .callout.limit .lbl{ color:var(--warn-fg); }
+
+  .pill{
+    display:inline-block;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:0.68rem;
+    background:var(--code-bg);
+    color:var(--ink);
+    padding:0.1rem 0.45rem;
+    border-radius:5px;
+  }
+
+  .role-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(220px,1fr));
+    gap:0.9rem;
+    margin-bottom:0.5rem;
+  }
+  .role-card{
+    background:var(--paper-raised);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:1rem 1.15rem;
+    box-shadow:var(--shadow);
+  }
+  .role-card .role-name{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:0.75rem;
+    color:var(--accent);
+    font-weight:500;
+    margin-bottom:0.35rem;
+  }
+  .role-card p{ font-size:0.85rem; margin:0; color:var(--muted); }
+
+  .lifecycle{
+    display:flex;
+    flex-wrap:wrap;
+    gap:0;
+    margin-bottom:0.5rem;
+  }
+  .lifecycle .step{
+    background:var(--paper-raised);
+    border:1px solid var(--line);
+    padding:0.7rem 0.95rem;
+    font-size:0.78rem;
+    flex:1 1 130px;
+    position:relative;
+  }
+  .lifecycle .step:not(:last-child)::after{
+    content:"→";
+    position:absolute;
+    right:-0.85rem;
+    top:50%;
+    transform:translateY(-50%);
+    color:var(--muted);
+    z-index:1;
+    font-size:0.85rem;
+  }
+  .lifecycle .step b{ display:block; font-size:0.82rem; margin-bottom:0.15rem; }
+  .lifecycle .step span{ color:var(--muted); font-size:0.72rem; }
+
+  /* ── Table récap ── */
+  .table-scroll{ overflow-x:auto; border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow); }
+  table{ width:100%; border-collapse:collapse; font-size:0.83rem; background:var(--paper-raised); }
+  thead th{
+    text-align:left;
+    font-size:0.66rem;
+    letter-spacing:0.06em;
+    text-transform:uppercase;
+    color:var(--muted);
+    font-weight:600;
+    padding:0.7rem 0.9rem;
+    border-bottom:1px solid var(--line);
+    position:sticky; top:0;
+    background:var(--paper-raised);
+  }
+  tbody td{
+    padding:0.65rem 0.9rem;
+    border-bottom:1px solid var(--line);
+    vertical-align:top;
+  }
+  tbody tr:last-child td{ border-bottom:none; }
+  tbody tr:hover{ background:var(--code-bg); }
+  td.feat-name{ font-weight:600; white-space:nowrap; }
+  td.limit-cell{ color:var(--warn-fg); }
+  td.limit-cell.none{ color:var(--ok-fg); font-style:italic; }
+
+  .legend{ display:flex; gap:1.2rem; flex-wrap:wrap; margin:0.9rem 0 1.6rem; font-size:0.78rem; color:var(--muted); }
+  .legend span{ display:inline-flex; align-items:center; gap:0.4rem; }
+  .dot{ width:8px; height:8px; border-radius:50%; display:inline-block; }
+  .dot.ok{ background:var(--ok-fg); }
+  .dot.warn{ background:var(--warn-fg); }
+
+  footer{
+    max-width:70ch;
+    color:var(--muted);
+    font-size:0.8rem;
+    border-top:1px solid var(--line);
+    padding-top:1.2rem;
+    margin-top:2.5rem;
+  }
+
+  @media (max-width: 900px){
+    .layout{ grid-template-columns:1fr; }
+    nav.toc{ position:static; height:auto; border-right:none; border-bottom:1px solid var(--line); padding:1.4rem; }
+    main{ padding:1.6rem 1.3rem 3rem; }
+    .doc-header h1{ font-size:2rem; }
+  }
+</style>
+
+<div class="layout">
+  <nav class="toc">
+    <div class="toc-eyebrow">MadeArchive</div>
+    <a href="#vue-ensemble">Vue d'ensemble</a>
+    <a href="#roles">Rôles &amp; permissions</a>
+    <a href="#cycle-de-vie">Cycle de vie d'un document</a>
+
+    <div class="toc-group">Identité &amp; organisation</div>
+    <a href="#auth">Authentification &amp; sessions</a>
+    <a href="#uo">Unités organisationnelles</a>
+    <a href="#utilisateurs">Utilisateurs</a>
+
+    <div class="toc-group">Archivage</div>
+    <a href="#pipeline">Pipeline d'archivage</a>
+    <a href="#ia-extraction">Extraction assistée par IA</a>
+    <a href="#import-lot">Import en lot &amp; import web</a>
+    <a href="#doublons">Détection de doublons</a>
+
+    <div class="toc-group">Preuve &amp; vérification</div>
+    <a href="#integrite">Preuve d'intégrité</a>
+    <a href="#verification-publique">Vérification publique</a>
+    <a href="#fixite">Contrôle de fixité</a>
+
+    <div class="toc-group">Consultation</div>
+    <a href="#miniatures">Miniatures PDF</a>
+    <a href="#recherche">Recherche hybride</a>
+    <a href="#documents-accessibles">Documents accessibles</a>
+
+    <div class="toc-group">Organisation du contenu</div>
+    <a href="#projets">Projets</a>
+    <a href="#emplacements">Emplacements physiques</a>
+    <a href="#groupes">Groupes d'accès privés</a>
+
+    <div class="toc-group">Cycle de vie &amp; gouvernance</div>
+    <a href="#corbeille">Corbeille &amp; rétention</a>
+    <a href="#export">Export administratif</a>
+    <a href="#audit">Journal d'audit</a>
+    <a href="#notifications">Notifications</a>
+
+    <div class="toc-group">Bilan</div>
+    <a href="#recap">Tableau récapitulatif</a>
+  </nav>
+
+  <main>
+    <div class="doc-header">
+      <div class="kicker">Documentation technique</div>
+      <h1>MadeArchive</h1>
+      <p>Plateforme d'archivage institutionnel à valeur probante — chaque fonctionnalité ci-dessous existe pour répondre à un besoin précis d'intégrité, de traçabilité ou de gouvernance documentaire. Ce document couvre ce que fait l'application, pourquoi, et où sont ses limites connues aujourd'hui.</p>
+    </div>
+
+    <section id="vue-ensemble">
+      <h2><span class="section-num">00</span>Vue d'ensemble</h2>
+      <p>MadeArchive numérise et archive des documents institutionnels (factures, contrats, correspondances…) avec une exigence centrale : prouver, des années plus tard, qu'un document n'a pas été altéré depuis son archivage. Chaque document suit le même principe — la base de données PostgreSQL est la source de vérité, Meilisearch n'intervient que pour la recherche plein texte, et MinIO ne stocke que le PDF/A final, chiffré.</p>
+      <p>L'organisation est hiérarchique : des Unités Organisationnelles (UO) emboîtées, chacune avec ses éditeurs, ses types de documents et ses règles d'accès public/privé.</p>
+    </section>
+
+    <section id="roles">
+      <h2><span class="section-num">01</span>Rôles &amp; permissions</h2>
+      <p>Quatre rôles, hérités en cascade (<span class="pill">ADMIN</span> ⊃ <span class="pill">ADMIN_UO</span> ⊃ <span class="pill">EDITOR</span> ⊃ <span class="pill">USER</span>) — un rôle supérieur hérite automatiquement de tous les droits des rôles inférieurs.</p>
+      <div class="role-grid">
+        <div class="role-card">
+          <div class="role-name">ADMIN</div>
+          <p>Autorité sur toute l'organisation, toutes les UO confondues. Seul rôle à voir les documents privés dont il n'est pas membre (export administratif) et à gérer les UO racines.</p>
+        </div>
+        <div class="role-card">
+          <div class="role-name">ADMIN_UO</div>
+          <p>Autorité restreinte à son UO et aux UO descendantes — gestion des membres, des emplacements physiques, lecture élargie de l'audit et de la corbeille sur son périmètre.</p>
+        </div>
+        <div class="role-card">
+          <div class="role-name">EDITOR</div>
+          <p>Seul rôle habilité à archiver — nécessite une clé PKI active. Gère ses propres documents, projets, et leur confidentialité.</p>
+        </div>
+        <div class="role-card">
+          <div class="role-name">USER</div>
+          <p>Le plancher de la hiérarchie — consultation des documents publics de son UO, ou privés s'il est membre du groupe d'accès.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="cycle-de-vie">
+      <h2><span class="section-num">02</span>Cycle de vie d'un document</h2>
+      <p>Six statuts possibles, chacun avec ses propres règles de visibilité : <span class="pill">PENDING</span> → <span class="pill">ACTIVE</span> / <span class="pill">ACTIVE_WARNING</span> → <span class="pill">CORRUPTED</span> → <span class="pill">CORBEILLE</span> → <span class="pill">DELETED</span>.</p>
+      <div class="lifecycle">
+        <div class="step"><b>Upload</b><span>docx, odt, jpg, pdf…</span></div>
+        <div class="step"><b>OCR + suggestions</b><span>métadonnées pré-remplies</span></div>
+        <div class="step"><b>Conversion PDF/A-3b</b><span>LibreOffice + PDFBox</span></div>
+        <div class="step"><b>Signature PKI</b><span>clé HSM de l'éditeur</span></div>
+        <div class="step"><b>Chiffrement</b><span>AES-256-GCM</span></div>
+        <div class="step"><b>Archivage MinIO</b><span>ACTIVE</span></div>
+      </div>
+    </section>
+
+    <section id="auth">
+      <h2><span class="section-num">03</span>Authentification &amp; sessions</h2>
+      <div class="feature">
+        <h3>JWT + invalidation serveur immédiate <span class="roles">tous rôles</span></h3>
+        <p>Connexion par JWT (access + refresh token). Au-delà de l'expiration naturelle, une session peut être invalidée <em>immédiatement</em> côté serveur — changement de rôle, de mot de passe, transfert d'UO, ou suppression de compte — sans attendre que le token expire de lui-même.</p>
+        <div class="callout why"><span class="lbl">Pourquoi</span> Un JWT est valide jusqu'à expiration par nature — sans ce mécanisme, un utilisateur transféré, rétrogradé ou supprimé garderait un accès complet avec ses anciens droits jusqu'à l'expiration du token (souvent des heures).</div>
+      </div>
+    </section>
+
+    <section id="uo">
+      <h2><span class="section-num">04</span>Unités organisationnelles</h2>
+      <div class="feature">
+        <h3>Hiérarchie d'UO &amp; transfert d'utilisateurs <span class="roles">ADMIN, ADMIN_UO</span></h3>
+        <p>Les UO s'emboîtent en arbre (une UO racine, des UO filles). Un utilisateur appartient à une UO active à la fois ; le transférer désactive son ancienne appartenance et déconnecte sa session en cours (avec un message affiché avant la déconnexion, pas une coupure silencieuse).</p>
+        <div class="callout why"><span class="lbl">Pourquoi</span> Une institution réelle a des départements/filiales avec des périmètres de documents distincts — la visibilité publique d'un document reste bornée à l'UO de son propriétaire et à ses UO descendantes, jamais à l'organisation entière par défaut.</div>
+      </div>
+    </section>
+
+    <section id="utilisateurs">
+      <h2><span class="section-num">05</span>Utilisateurs</h2>
+      <div class="feature">
+        <h3>Suppression à deux temps <span class="roles">ADMIN, ADMIN_UO</span></h3>
+        <p>Demander la suppression d'un compte le désactive immédiatement (mot de passe invalidé, clé PKI révoquée si éditeur) mais ne l'efface pas tout de suite : un délai de grâce de 2 jours précède la purge définitive, annulable entre-temps. Exception : un compte qui ne s'est <em>jamais</em> connecté est supprimé immédiatement (rien à protéger).</p>
+        <div class="callout why"><span class="lbl">Pourquoi</span> Une suppression instantanée et irréversible expose à l'erreur humaine ou à un admin malveillant qui détruirait des comptes sans recours. Le délai de grâce laisse le temps d'annuler.</div>
+      </div>
+      <div class="feature">
+        <h3>Protection du dernier administrateur</h3>
+        <p>Le système refuse de désactiver, rétrograder ou supprimer le dernier compte ADMIN (ou le dernier ADMIN_UO d'une UO), et un ADMIN_UO ne peut jamais agir sur un compte ADMIN ou ADMIN_UO.</p>
+        <div class="callout why"><span class="lbl">Pourquoi</span> Sans cette garde, une erreur de manipulation peut rendre l'organisation entière — ou une UO — sans administrateur, donc ingérable.</div>
+      </div>
+    </section>
+
+    <section id="pipeline">
+      <h2><span class="section-num">06</span>Pipeline d'archivage</h2>
+      <div class="feature">
+        <h3>Upload en deux phases <span class="roles">EDITOR</span></h3>
+        <p>Phase 1 (aperçu) : le fichier est converti, OCRisé, ses métadonnées suggérées — rien n'est encore écrit en base. Phase 2 (finalisation) : l'éditeur valide/corrige les métadonnées, et seulement alors le document est signé, chiffré et stocké.</p>
+        <div class="callout why"><span class="lbl">Pourquoi</span> Séparer aperçu et finalisation évite d'archiver un document avec des métadonnées fausses ou incomplètes — l'éditeur voit et corrige avant que l'archivage devienne définitif.</div>
+      </div>
+      <div class="feature">
+        <h3>Conversion universelle vers PDF/A-3b</h3>
+        <p>N'importe quel format supporté (Word, Excel, PowerPoint, OpenDocument, images, texte) est converti en PDF via un conteneur LibreOffice dédié (Gotenberg), puis marqué PDF/A-3b (norme d'archivage à long terme) via PDFBox.</p>
+        <div class="callout why"><span class="lbl">Pourquoi</span> Un format bureautique dépend d'un logiciel pour rester lisible dans 20 ans ; le PDF/A est un format normalisé pensé pour l'archivage pérenne, indépendant de toute application propriétaire.</div>
+      </div>
+    </section>
+
+    <section id="ia-extraction">
+      <h2><span class="section-num">07</span>Extraction assistée par IA</h2>
+      <div class="feature">
+        <h3>Génération automatique de règles d'extraction <span class="roles">Ollama / Qwen</span></h3>
+        <p>Au premier document d'un type donné, un modèle de langage local (Qwen via Ollama) analyse le texte OCR et génère des règles regex pour en extraire les champs de métadonnées. Les documents suivants du même type profitent de ces règles sans nouvel appel au modèle — combinées à une extraction positionnelle (le libellé du champ retrouvé directement sur le document).</p>
+        <div class="callout why"><span class="lbl">Pourquoi</span> Sans ça, chaque champ de chaque document devrait être ressaisi manuellement — le modèle "apprend" une fois par type, le gain se répète ensuite gratuitement sur tous les documents suivants.</div>
+      </div>
+    </section>
+
+    <section id="import-lot">
+      <h2><span class="section-num">08</span>Import en lot &amp; import web</h2>
+      <div class="feature">
+        <h3>Archivage d'un même type par lot <span class="roles">EDITOR</span></h3>
+        <p>Jusqu'à 10 000 fichiers en une seule sélection (dossier entier), tous du même type de document, chacun traité indépendamment — un fichier en erreur n'interrompt pas le lot, il est simplement exclu de l'archivage final. Un aperçu avant archivage permet de retirer un fichier du lot sans le supprimer du disque.</p>
+        <div class="callout why"><span class="lbl">Pourquoi</span> Un archivage rétroactif porte souvent sur des milliers de documents déjà numérisés — les faire passer un par un serait impraticable.</div>
+      </div>
+      <div class="feature">
+        <h3>Import depuis un lien web</h3>
+        <p>Variante de l'import en lot qui télécharge les fichiers depuis une page web (liens directs, ou navigation assistée par un navigateur headless) avant de leur appliquer exactement le même traitement OCR.</p>
+      </div>
+    </section>
+
+    <section id="doublons">
+      <h2><span class="section-num">09</span>Détection de doublons</h2>
+      <div class="feature">
+        <h3>Hash SHA-256 du fichier original, scopé par UO</h3>
+        <p>Chaque fichier original reçoit un SHA-256 calculé sur ses octets bruts, avant toute conversion. Une contrainte unique en base (<code>original_sha256 + uo_id</code>) empêche une même UO d'archiver deux fois le même fichier — deux UO différentes peuvent en revanche archiver le même fichier sans conflit.</p>
+        <div class="callout why"><span class="lbl">Pourquoi</span> Le fichier original n'est jamais conservé en stockage (seul le PDF/A l'est) — son hash est la seule trace permettant de reconnaître "j'ai déjà vu ce fichier exact".</div>
+        <div class="callout limit"><span class="lbl">Limite connue</span> Un hash exact ne détecte que des octets identiques. Le même contenu réuploadé après une conversion de format (ex. le <code>.docx</code> déjà archivé, réexporté en <code>.pdf</code> par un autre outil, puis réuploadé) produit un hash différent et n'est pas détecté comme doublon — vérifié en conditions réelles. Corriger ça demanderait une comparaison de contenu (texte extrait ou empreinte visuelle), pas un hash — mise de côté pour l'instant, la complexité ne semblait pas justifiée face au risque.</div>
+      </div>
+    </section>
+
+    <section id="integrite">
+      <h2><span class="section-num">10</span>Preuve d'intégrité</h2>
+      <div class="feature">
+        <h3>Second hash SHA-256, sur le PDF/A archivé</h3>
+        <p>Un second hash, distinct du premier, est calculé sur le PDF/A final (après conversion), en clair, avant chiffrement. C'est celui qui compte une fois le fichier original jeté — c'est lui qu'on recalcule pour vérifier qu'aucun bit du fichier réellement conservé n'a changé.</p>
+      </div>
+      <div class="feature">
+        <h3>Signature PKI (HSM) <span class="roles">EDITOR actif</span></h3>
+        <p>Le hash du PDF/A est signé avec la clé privée <em>personnelle</em> de l'éditeur qui archive, conservée dans un HSM (module de sécurité matériel, ici simulé par un fichier keystore) — la clé privée ne sort jamais du HSM, seule la signature en ressort.</p>
+        <div class="callout why"><span class="lbl">Pourquoi</span> La signature identifie nommément QUI a archivé le document et engage sa responsabilité — sans clé personnelle, on ne pourrait prouver que "quelqu'un dans l'organisation" a signé, jamais qui précisément.</div>
+      </div>
+      <div class="feature">
+        <h3>Horodatage &amp; ancrage blockchain (optionnel)</h3>
+        <p>Un horodatage authentifie la date de la signature. Pour les documents en niveau d'intégrité <span class="pill">BLOCKCHAIN</span> (au choix, pas systématique), le hash est en plus enregistré sur la blockchain Polygon — une preuve d'existence à une date donnée, publique et infalsifiable a posteriori, indépendante de MadeArchive lui-même.</p>
+      </div>
+    </section>
+
+    <section id="verification-publique">
+      <h2><span class="section-num">11</span>Vérification publique</h2>
+      <div class="feature">
+        <h3>Attestation d'archivage avec QR code <span class="roles">public, sans authentification</span></h3>
+        <p>Un PDF généré à la demande, avec l'empreinte SHA-256 du document, ses métadonnées à l'archivage, et un QR code vers un lien de vérification public. Accessible par jeton, jamais par l'identifiant réel du document.</p>
+        <div class="callout why"><span class="lbl">Pourquoi</span> Un tiers (auditeur, partenaire, autorité) doit pouvoir vérifier l'authenticité d'un document sans avoir de compte MadeArchive — et sans que le lien de vérification expose l'UUID interne du document.</div>
+      </div>
+    </section>
+
+    <section id="fixite">
+      <h2><span class="section-num">12</span>Contrôle de fixité</h2>
+      <div class="feature">
+        <h3>Vérification périodique automatique</h3>
+        <p>Une tâche planifiée retélécharge chaque PDF/A archivé, le déchiffre, recalcule son SHA-256, et le compare à la valeur enregistrée à l'archivage. Un écart marque le document <span class="pill">CORRUPTED</span>.</p>
+        <div class="callout why"><span class="lbl">Pourquoi</span> Sans contrôle actif, une corruption de stockage (disque, bit-rot, incident MinIO) ne serait découverte que le jour où quelqu'un tente d'ouvrir le document — potentiellement des années plus tard.</div>
+      </div>
+    </section>
+
+    <section id="miniatures">
+      <h2><span class="section-num">13</span>Miniatures PDF</h2>
+      <div class="feature">
+        <h3>Génération et mise en cache côté serveur</h3>
+        <p>La miniature de la première page (vues en grille) est rasterisée une seule fois par PDFBox côté serveur, mise en cache chiffrée, puis simplement relue à chaque affichage suivant — plus de PDF complet téléchargé et rasterisé côté client à chaque rendu de grille.</p>
+        <div class="callout why"><span class="lbl">Pourquoi</span> L'ancienne approche (PDF entier + pdf.js côté client) coûtait un téléchargement + déchiffrement + rendu complet à CHAQUE affichage, par CHAQUE utilisateur — ingérable dès que le catalogue grandit.</div>
+        <div class="callout limit"><span class="lbl">Limite connue</span> Génération à la demande (lazy) — le tout premier affichage d'un document jamais vu paie le coût de génération ; pas de génération proactive à l'archivage.</div>
+      </div>
+    </section>
+
+    <section id="recherche">
+      <h2><span class="section-num">14</span>Recherche hybride</h2>
+      <div class="feature">
+        <h3>Meilisearch (IDs) → PostgreSQL (données)</h3>
+        <p>La recherche plein texte (titre, contenu OCR, métadonnées) interroge Meilisearch pour obtenir des identifiants pertinents, puis charge les données complètes depuis PostgreSQL — jamais l'inverse. Meilisearch ne fait jamais autorité sur le contenu ou les droits d'accès.</p>
+        <div class="callout why"><span class="lbl">Pourquoi</span> PostgreSQL reste la seule source de vérité pour la sécurité (statut, propriétaire, confidentialité) — un moteur de recherche externe ne doit jamais pouvoir décider seul qui voit quoi.</div>
+        <div class="callout limit"><span class="lbl">Limite connue</span> Sur la branche recherche textuelle, la pagination retourne toujours <code>totalPages: 1</code> — imprécis dès qu'une recherche dépasse une page de résultats.</div>
+      </div>
+    </section>
+
+    <section id="documents-accessibles">
+      <h2><span class="section-num">15</span>Documents accessibles &amp; Mes documents</h2>
+      <div class="feature">
+        <h3>Listes paginées, filtrables par date <span class="roles">tous rôles</span></h3>
+        <p>Deux vues complémentaires : "Mes documents" (ce que j'ai uploadé, par type) et "Documents accessibles" (tout ce à quoi j'ai droit, public ou privé). Toutes deux paginées côté SQL (jamais un chargement complet envoyé au client), avec filtres par titre, type, accès, statut et plage de dates.</p>
+      </div>
+    </section>
+
+    <section id="projets">
+      <h2><span class="section-num">16</span>Projets</h2>
+      <div class="feature">
+        <h3>Regroupement de documents par affaire <span class="roles">EDITOR (écriture)</span></h3>
+        <p>Un projet définit les types de documents attendus et peut être privé (visible à ses seuls membres, sans exception même pour un admin). Entièrement piloté par son créateur.</p>
+        <div class="callout why"><span class="lbl">Pourquoi</span> Un dossier papier réel (une affaire, un marché) regroupe plusieurs types de documents liés — le classement par type seul ne suffit pas à représenter cette relation.</div>
+      </div>
+    </section>
+
+    <section id="emplacements">
+      <h2><span class="section-num">17</span>Emplacements physiques</h2>
+      <div class="feature">
+        <h3>Localisation de l'original papier <span class="roles">ADMIN, ADMIN_UO (gestion)</span></h3>
+        <p>Un arbre de localisation (bâtiment → salle → rayon → carton…) auquel un document numérisé peut être rattaché, pour retrouver l'original papier physique si besoin.</p>
+        <div class="callout why"><span class="lbl">Pourquoi</span> Numériser n'élimine pas toujours l'obligation de conserver l'original papier (contraintes légales) — sans cette traçabilité, l'original redevient introuvable dans un dépôt d'archives.</div>
+      </div>
+    </section>
+
+    <section id="groupes">
+      <h2><span class="section-num">18</span>Groupes d'accès privés</h2>
+      <div class="feature">
+        <h3>Liste nominative pour un document ou projet privé</h3>
+        <p>Un document ou projet marqué privé n'est visible qu'à une liste explicite de membres, gérée par un éditeur y ayant lui-même accès — jamais par un rôle seul.</p>
+      </div>
+    </section>
+
+    <section id="corbeille">
+      <h2><span class="section-num">19</span>Corbeille &amp; rétention</h2>
+      <div class="feature">
+        <h3>Délai de grâce de 3 jours avant purge définitive</h3>
+        <p>Envoyer un document à la corbeille (n'importe quel document, pas seulement un corrompu) le rend restaurable pendant 3 jours avant sa suppression réellement définitive, exécutée par une tâche planifiée.</p>
+        <div class="callout why"><span class="lbl">Pourquoi</span> Même logique que pour les utilisateurs — une suppression instantanée et sans recours expose à l'erreur humaine sur un document potentiellement irremplaçable.</div>
+      </div>
+    </section>
+
+    <section id="export">
+      <h2><span class="section-num">20</span>Export administratif</h2>
+      <div class="feature">
+        <h3>Export en masse pour migration <span class="roles">ADMIN, ADMIN_UO</span></h3>
+        <p>Génère une archive ZIP contenant les documents déchiffrés d'une ou plusieurs UO — pensé pour une migration ou un changement de système, pas pour un usage courant. Le ZIP est temporaire, purgé automatiquement après un délai de rétention.</p>
+        <div class="callout why"><span class="lbl">Pourquoi</span> Une institution qui change d'outil d'archivage doit pouvoir récupérer l'intégralité de ses documents en clair, sans dépendre indéfiniment de MadeArchive.</div>
+      </div>
+    </section>
+
+    <section id="audit">
+      <h2><span class="section-num">21</span>Journal d'audit</h2>
+      <div class="feature">
+        <h3>Traçabilité de toute action sensible <span class="roles">ADMIN, ADMIN_UO (scopé)</span></h3>
+        <p>Chaque action sensible (archivage, suppression, transfert d'UO, génération d'attestation, consultation publique…) est journalisée avec son acteur, sa cible et l'UO concernée.</p>
+      </div>
+    </section>
+
+    <section id="notifications">
+      <h2><span class="section-num">22</span>Notifications</h2>
+      <div class="feature">
+        <h3>Alertes internes <span class="roles">tous rôles</span></h3>
+        <p>File de notifications par utilisateur (lues/non lues) pour les événements qui le concernent directement.</p>
+      </div>
+    </section>
+
+    <section id="recap">
+      <h2><span class="section-num">23</span>Tableau récapitulatif</h2>
+      <p>Chaque fonctionnalité, le problème qu'elle résout, et sa limite connue le cas échéant.</p>
+      <div class="legend">
+        <span><span class="dot ok"></span> Aucune limite majeure identifiée</span>
+        <span><span class="dot warn"></span> Limite connue, à corriger ou acceptée en l'état</span>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th style="width:20%">Fonctionnalité</th><th style="width:42%">Pourquoi — problème résolu</th><th style="width:38%">Limite connue</th></tr>
+          </thead>
+          <tbody id="recap-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <footer>
+      Document généré à partir du code source de MadeArchive (backend Spring Boot / frontend React) — reflète l'état de l'implémentation, pas une spécification aspirationnelle.
+    </footer>
+  </main>
+</div>
+
+<script>
+  const rows = [
+    ["Authentification &amp; sessions", "Empêcher un accès obsolète (rôle, mot de passe, UO ou compte changés) de survivre jusqu'à l'expiration naturelle d'un JWT valable plusieurs heures.", null],
+    ["Hiérarchie d'UO &amp; transfert", "Représenter des départements/filiales avec des périmètres de documents distincts, pas une organisation plate.", null],
+    ["Suppression d'utilisateur à deux temps", "Éviter qu'une erreur humaine ou un admin malveillant supprime un compte de façon instantanée et irréversible.", "Un compte jamais connecté est supprimé immédiatement, sans délai de grâce — cas jugé sans risque (rien à protéger)."],
+    ["Protection du dernier administrateur", "Empêcher qu'une organisation ou une UO se retrouve sans administrateur par erreur de manipulation.", null],
+    ["Upload en deux phases (aperçu / finalisation)", "Éviter d'archiver définitivement un document avec des métadonnées fausses ou incomplètes.", null],
+    ["Conversion universelle vers PDF/A-3b", "Garantir la lisibilité à long terme, indépendamment de tout logiciel propriétaire (Word, Excel…).", null],
+    ["Extraction assistée par IA (Ollama/Qwen)", "Éviter la ressaisie manuelle de chaque champ sur chaque document — le modèle apprend une fois par type.", "Dépend de la qualité du tout premier document du type ; une règle mal apprise affecte tous les suivants jusqu'à correction."],
+    ["Import en lot (jusqu'à 10 000 fichiers)", "Rendre praticable l'archivage rétroactif de milliers de documents déjà numérisés.", null],
+    ["Import depuis un lien web", "Archiver des documents déjà en ligne sans les télécharger manuellement au préalable.", null],
+    ["Détection de doublons (hash original)", "Éviter qu'un même fichier soit archivé deux fois dans la même UO — le fichier original n'étant pas conservé, son hash est la seule trace possible.", "Hash exact seulement — un même contenu réuploadé après conversion de format externe n'est pas détecté (vérifié). Corriger demanderait une comparaison de contenu, mise de côté pour l'instant."],
+    ["Second hash SHA-256 (PDF/A archivé)", "Fournir une empreinte stable du fichier RÉELLEMENT conservé, vérifiable après coup.", null],
+    ["Signature PKI (HSM)", "Prouver nommément QUI a archivé le document, pas seulement QUE l'organisation l'a fait.", null],
+    ["Horodatage &amp; ancrage blockchain", "Prouver la date d'existence du document via une source indépendante de MadeArchive lui-même.", "Ancrage blockchain optionnel, par document (niveau BLOCKCHAIN) — pas systématique."],
+    ["Attestation publique avec QR code", "Permettre à un tiers sans compte de vérifier l'authenticité d'un document.", null],
+    ["Contrôle de fixité périodique", "Détecter une corruption de stockage avant qu'un utilisateur ne tente d'ouvrir le document, potentiellement des années plus tard.", null],
+    ["Miniatures PDF en cache serveur", "Éviter de retélécharger et rasteriser le PDF complet à chaque affichage de grille, par chaque utilisateur.", "Génération à la demande (lazy) — le tout premier affichage d'un document paie le coût de génération."],
+    ["Recherche hybride (Meilisearch → BD)", "Offrir une recherche plein texte rapide sans jamais laisser un moteur externe faire autorité sur les droits d'accès.", "Pagination imprécise sur la branche recherche textuelle (totalPages toujours à 1)."],
+    ["Documents accessibles / Mes documents", "Séparer \"ce que j'ai archivé\" de \"ce à quoi j'ai droit\" — deux besoins différents, souvent confondus.", null],
+    ["Projets", "Représenter un dossier réel (affaire, marché) qui regroupe plusieurs types de documents liés.", null],
+    ["Emplacements physiques", "Conserver la traçabilité de l'original papier quand la numérisation ne dispense pas de le garder.", null],
+    ["Groupes d'accès privés", "Restreindre un document/projet sensible à une liste nominative, pas à un rôle entier.", null],
+    ["Corbeille &amp; rétention (3 jours)", "Éviter qu'une suppression de document soit instantanée et sans recours.", null],
+    ["Export administratif", "Permettre à une institution de récupérer tous ses documents en clair pour changer d'outil.", null],
+    ["Journal d'audit", "Tracer qui a fait quoi, sur quel document, dans quelle UO — indispensable en contexte probant.", null],
+    ["Notifications", "Informer un utilisateur des événements qui le concernent sans qu'il ait à vérifier activement.", null],
+  ];
+
+  document.getElementById('recap-body').innerHTML = rows.map(([f, why, limit]) => `
+    <tr>
+      <td class="feat-name">${f}</td>
+      <td>${why}</td>
+      <td class="limit-cell ${limit ? '' : 'none'}">${limit ? limit : 'Aucune limite majeure identifiée'}</td>
+    </tr>
+  `).join('');
+</script>
