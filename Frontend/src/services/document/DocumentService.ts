@@ -302,10 +302,23 @@ export const getPdfAViewUrl = (id: string): string =>
 /**
  * Télécharge le PDF/A via fetch (compatible JWT en header).
  * Retourne un Blob URL utilisable dans un <iframe src=...> ou <a href=...>.
+ *
+ * `timeoutMs` optionnel — SANS lui, la requête n'a aucune limite de temps
+ * (défaut axios), ce qui convient au lecteur PDF plein écran (ouvert
+ * explicitement par l'utilisateur, qui voit un état "Chargement..."). Les
+ * aperçus en grille (voir PdfThumbnail.ts et les vues DocumentsAccessible,
+ * ProjetsPanel, MesDocumentsEditor, Corbeille), eux, se chargent en
+ * arrière-plan par lots de plusieurs à chaque page — sans limite, une carte
+ * dont la requête reste bloquée (backend/MinIO ralenti, ex. par un import en
+ * lot massif en cours) tourne sur son spinner INDÉFINIMENT, indiscernable
+ * d'un chargement normal (constaté en conditions réelles). Passer un
+ * `timeoutMs` y fait échouer proprement la promesse pour retomber sur le
+ * placeholder "aperçu indisponible" déjà prévu, plutôt qu'un spinner mort.
  */
-export const streamPdfAAsBlob = async (id: string): Promise<string> => {
+export const streamPdfAAsBlob = async (id: string, timeoutMs?: number): Promise<string> => {
     const response = await api.get(`/user/docs/${id}/view`, {
         responseType: 'blob',
+        ...(timeoutMs ? { timeout: timeoutMs } : {}),
     });
     return URL.createObjectURL(response.data);
 };

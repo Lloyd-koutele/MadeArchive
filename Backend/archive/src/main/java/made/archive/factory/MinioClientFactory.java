@@ -90,9 +90,28 @@ public class MinioClientFactory
     private MinioClient buildClient()
     {
         log.info("[MinIO] Initialisation du client MinIO : {}", props.getEndpoint());
-        return MinioClient.builder()
+        MinioClient minioClient = MinioClient.builder()
             .endpoint(props.getEndpoint())
             .credentials(props.getAccessKey(), props.getSecretKey())
             .build();
+        // Sans ceci, le SDK MinIO utilise un timeout de 5 MINUTES par défaut
+        // pour connexion/écriture/lecture (S3Base.DEFAULT_CONNECTION_TIMEOUT)
+        // — beaucoup trop permissif pour un usage interactif (aperçus PDF en
+        // grille, lecteur en ligne) : sous charge (ex. un import en lot de
+        // plusieurs milliers de fichiers en cours d'écriture sur le même
+        // client), une requête de LECTURE peut rester bloquée jusqu'à 5
+        // minutes avant d'échouer — et le frontend n'a lui-même aucun
+        // timeout par défaut (axios), donc une carte d'aperçu peut tourner
+        // indéfiniment sans jamais se résoudre ni tomber en erreur (constaté
+        // en conditions réelles : aperçus PDF bloqués sur le spinner après un
+        // import massif). Ramené à des délais bornés mais restant généreux
+        // pour un fichier seul (upload/téléchargement, max 101 Mo/fichier —
+        // voir application.properties) : la connexion à MinIO, sur le même
+        // réseau Docker, ne devrait jamais dépasser 30s même sous charge.
+        minioClient.setTimeout(
+            java.util.concurrent.TimeUnit.SECONDS.toMillis(30),
+            java.util.concurrent.TimeUnit.SECONDS.toMillis(120),
+            java.util.concurrent.TimeUnit.SECONDS.toMillis(120));
+        return minioClient;
     }
 }
