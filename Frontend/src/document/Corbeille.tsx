@@ -144,7 +144,9 @@ function Corbeille() {
         idsACharger.forEach(async (id) => {
             let blobUrl: string | null = null;
             try {
-                blobUrl = await streamPdfAAsBlob(id);
+                // 45s — au-delà, on abandonne plutôt que de laisser la carte
+                // tourner indéfiniment (voir streamPdfAAsBlob, DocumentService.ts).
+                blobUrl = await streamPdfAAsBlob(id, 45000);
                 const thumbnail = await renderPdfFirstPageThumbnail(blobUrl);
                 if (!annule) setPreviews(prev => ({ ...prev, [id]: thumbnail }));
             } catch {
