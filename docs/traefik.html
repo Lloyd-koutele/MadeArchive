@@ -1,0 +1,310 @@
+<title>Traefik en détail</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --paper:#FDF8F3;
+    --paper-raised:#FFFFFF;
+    --ink:#2C1A0E;
+    --accent:#8B5E3C;
+    --gold:#B5813F;
+    --line:#E8D9C5;
+    --muted:#8A7460;
+    --ok-bg:#E4EFE6; --ok-fg:#3E7A52;
+    --warn-bg:#F8ECD2; --warn-fg:#8A5A1E;
+    --info-bg:#E9E1F6; --info-fg:#5B4A96;
+    --code-bg:#F3E9DA;
+    --code-dark-bg:#2C1A0E;
+    --shadow: 0 8px 24px rgba(44,26,14,0.08);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --paper:#19110A; --paper-raised:#241708; --ink:#F2E7D9;
+      --accent:#CB9A62; --gold:#D9AE6C; --line:#3A2A1C; --muted:#B8A692;
+      --ok-bg:#1D3324; --ok-fg:#8FD1A3;
+      --warn-bg:#3A2C10; --warn-fg:#E8BE72;
+      --info-bg:#2A2140; --info-fg:#C6B8ED;
+      --code-bg:#2A1D10; --code-dark-bg:#0F0A06;
+      --shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#19110A; --paper-raised:#241708; --ink:#F2E7D9;
+    --accent:#CB9A62; --gold:#D9AE6C; --line:#3A2A1C; --muted:#B8A692;
+    --ok-bg:#1D3324; --ok-fg:#8FD1A3;
+    --warn-bg:#3A2C10; --warn-fg:#E8BE72;
+    --info-bg:#2A2140; --info-fg:#C6B8ED;
+    --code-bg:#2A1D10; --code-dark-bg:#0F0A06;
+    --shadow: 0 8px 24px rgba(0,0,0,0.4);
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'DM Sans', sans-serif;
+    font-size:15.5px;
+    line-height:1.6;
+  }
+  h1,h2,h3,h4{
+    font-family:'Cormorant Garamond', serif;
+    text-wrap:balance;
+    margin:0;
+    color:var(--ink);
+  }
+  code{ font-family:'IBM Plex Mono', monospace; background:var(--code-bg); padding:0.08rem 0.35rem; border-radius:4px; font-size:0.88em; }
+  a{ color:var(--accent); }
+
+  .layout{
+    display:grid;
+    grid-template-columns:250px minmax(0,1fr);
+    max-width:1180px;
+    margin:0 auto;
+  }
+  nav.toc{
+    position:sticky; top:0; align-self:start; height:100vh; overflow-y:auto;
+    padding:2.2rem 1.3rem 2rem 0;
+    border-right:1px solid var(--line);
+  }
+  nav.toc .toc-eyebrow{ font-size:0.68rem; letter-spacing:0.1em; text-transform:uppercase; color:var(--muted); margin-bottom:0.9rem; }
+  nav.toc a{ display:block; font-size:0.82rem; color:var(--ink); text-decoration:none; padding:0.32rem 0; }
+  nav.toc a:hover{ color:var(--accent); }
+  nav.toc .toc-group{ font-size:0.68rem; letter-spacing:0.07em; text-transform:uppercase; color:var(--muted); margin:1.1rem 0 0.2rem; }
+  nav.toc .toc-group:first-of-type{ margin-top:0; }
+
+  main{ padding:2.4rem 2.6rem 5rem 2.6rem; min-width:0; }
+
+  .doc-header{ margin-bottom:2.6rem; max-width:680px; }
+  .doc-header .kicker{ font-size:0.7rem; letter-spacing:0.12em; text-transform:uppercase; color:var(--muted); margin-bottom:0.6rem; }
+  .doc-header h1{ font-size:2.6rem; font-weight:600; margin-bottom:0.7rem; }
+  .doc-header p{ color:var(--muted); font-size:0.95rem; max-width:62ch; }
+
+  section{ margin-bottom:3rem; scroll-margin-top:1.5rem; }
+  section > h2{ font-size:1.5rem; font-weight:600; padding-bottom:0.55rem; border-bottom:1px solid var(--line); margin-bottom:1.1rem; }
+  section > h2 .section-num{ color:var(--muted); font-family:'IBM Plex Mono', monospace; font-size:0.85rem; font-weight:400; margin-right:0.6rem; }
+  h3{ font-size:1.12rem; font-weight:600; margin-bottom:0.5rem; }
+  p{ margin:0 0 0.85rem; max-width:72ch; }
+  p:last-child{ margin-bottom:0; }
+  ul{ margin:0 0 0.85rem; padding-left:1.3rem; max-width:70ch; }
+  li{ margin-bottom:0.35rem; }
+
+  .feature{
+    background:var(--paper-raised); border:1px solid var(--line); border-radius:12px;
+    padding:1.3rem 1.5rem; margin-bottom:1.1rem; box-shadow:var(--shadow);
+  }
+  .callout{ display:flex; gap:0.6rem; align-items:flex-start; font-size:0.86rem; border-radius:8px; padding:0.6rem 0.8rem; margin-top:0.8rem; }
+  .callout .lbl{ flex:0 0 auto; font-size:0.65rem; letter-spacing:0.06em; text-transform:uppercase; font-weight:600; padding-top:0.1rem; white-space:nowrap; }
+  .callout.info{ background:var(--info-bg); }
+  .callout.info .lbl{ color:var(--info-fg); }
+  .callout.warn{ background:var(--warn-bg); }
+  .callout.warn .lbl{ color:var(--warn-fg); }
+  .callout.ok{ background:var(--ok-bg); }
+  .callout.ok .lbl{ color:var(--ok-fg); }
+
+  .concept-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(240px,1fr)); gap:0.9rem; margin-bottom:0.8rem; }
+  .concept-card{ background:var(--paper-raised); border:1px solid var(--line); border-radius:12px; padding:1.1rem 1.2rem; box-shadow:var(--shadow); }
+  .concept-card .concept-name{ font-family:'IBM Plex Mono', monospace; font-size:0.8rem; color:var(--accent); font-weight:600; display:block; margin-bottom:0.4rem; }
+  .concept-card p{ font-size:0.84rem; color:var(--ink); margin:0; }
+
+  pre.codeblock{
+    background:var(--code-dark-bg); color:#F3E9DA; border-radius:10px; padding:1rem 1.2rem;
+    overflow-x:auto; font-family:'IBM Plex Mono', monospace; font-size:0.8rem; line-height:1.6; margin:0.8rem 0;
+  }
+  pre.codeblock .k{ color:#D9AE6C; }
+  pre.codeblock .c{ color:#9C8874; font-style:italic; }
+  .table-scroll{ overflow-x:auto; border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow); }
+  table{ width:100%; border-collapse:collapse; font-size:0.85rem; background:var(--paper-raised); }
+  thead th{ text-align:left; font-size:0.68rem; letter-spacing:0.05em; text-transform:uppercase; color:var(--muted); font-weight:600; padding:0.65rem 0.85rem; border-bottom:1px solid var(--line); }
+  tbody td{ padding:0.6rem 0.85rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  tbody tr:last-child td{ border-bottom:none; }
+
+  footer{ max-width:70ch; color:var(--muted); font-size:0.8rem; border-top:1px solid var(--line); padding-top:1.2rem; margin-top:2.5rem; }
+  footer a{ color:var(--accent); }
+
+  @media (max-width: 900px){
+    .layout{ grid-template-columns:1fr; }
+    nav.toc{ position:static; height:auto; border-right:none; border-bottom:1px solid var(--line); padding:1.4rem; }
+    main{ padding:1.6rem 1.3rem 3rem; }
+    .doc-header h1{ font-size:2rem; }
+  }
+</style>
+
+<div class="layout">
+  <nav class="toc">
+    <div class="toc-eyebrow">Référence technique</div>
+    <a href="#quest-ce-que">Qu'est-ce que Traefik ?</a>
+    <a href="#concepts">Les 4 concepts fondamentaux</a>
+    <a href="#config">Configuration statique vs dynamique</a>
+    <a href="#providers">Providers</a>
+    <a href="#tls">TLS &amp; Let's Encrypt</a>
+    <a href="#load-balancing">Répartition de charge</a>
+    <a href="#dashboard">Dashboard &amp; API</a>
+
+    <div class="toc-group">Étude de cas</div>
+    <a href="#madearchive">Comment MadeArchive l'utilise</a>
+    <a href="#madearchive-scaling">Mise à l'échelle : une piste de plus</a>
+  </nav>
+
+  <main>
+    <div class="doc-header">
+      <div class="kicker">Documentation autonome</div>
+      <h1>Traefik</h1>
+      <p>Reverse proxy et load balancer cloud-native — ce document couvre ses concepts fondamentaux de façon générale, indépendamment de tout projet précis, avant une étude de cas concrète sur la façon dont MadeArchive l'utilise.</p>
+    </div>
+
+    <section id="quest-ce-que">
+      <h2><span class="section-num">01</span>Qu'est-ce que Traefik ?</h2>
+      <p>Un <strong>reverse proxy</strong> et <strong>répartiteur de charge</strong> (HTTP/HTTPS, TCP, UDP) pensé pour les environnements conteneurisés : plutôt qu'une configuration statique à réécrire à la main à chaque changement, il peut découvrir automatiquement les services qui tournent (conteneurs Docker, pods Kubernetes…) et adapter son routage en temps réel.</p>
+      <p>Trois choses qu'il fait en une seule brique, là où on empilait traditionnellement plusieurs outils séparés :</p>
+      <ul>
+        <li><strong>Routage</strong> — décider, pour chaque requête entrante, quel service interne doit la traiter (par nom de domaine, chemin, en-tête…).</li>
+        <li><strong>Terminaison TLS</strong> — gérer les certificats HTTPS, y compris leur renouvellement automatique via Let's Encrypt.</li>
+        <li><strong>Répartition de charge</strong> — distribuer les requêtes entre plusieurs instances d'un même service.</li>
+      </ul>
+    </section>
+
+    <section id="concepts">
+      <h2><span class="section-num">02</span>Les 4 concepts fondamentaux</h2>
+      <p>Toute la configuration de Traefik s'articule autour de quatre notions, dans cet ordre de traitement d'une requête :</p>
+      <div class="concept-grid">
+        <div class="concept-card">
+          <span class="concept-name">EntryPoints</span>
+          <p>Les ports sur lesquels Traefik écoute (ex. <code>web</code> = :80, <code>websecure</code> = :443). Le point d'entrée physique du trafic.</p>
+        </div>
+        <div class="concept-card">
+          <span class="concept-name">Routers</span>
+          <p>Une règle de correspondance (<code>Host(...)</code>, <code>PathPrefix(...)</code>…) qui décide SI une requête doit être traitée, et par quel service. Une priorité départage les règles qui se chevauchent.</p>
+        </div>
+        <div class="concept-card">
+          <span class="concept-name">Middlewares</span>
+          <p>Des transformations appliquées entre le router et le service : redirection, authentification, en-têtes, limitation de débit, compression… Chaînables, dans l'ordre déclaré.</p>
+        </div>
+        <div class="concept-card">
+          <span class="concept-name">Services</span>
+          <p>La ou les adresses réelles qui traitent finalement la requête — une liste de serveurs (<code>loadBalancer</code>), avec sa propre stratégie de répartition.</p>
+        </div>
+      </div>
+      <pre class="codeblock"><span class="c"># Exemple minimal — un router qui pointe vers un service</span>
+http:
+  <span class="k">routers</span>:
+    mon-site:
+      rule: <span class="c">"Host(`example.com`)"</span>
+      service: mon-service
+  <span class="k">services</span>:
+    mon-service:
+      loadBalancer:
+        servers:
+          - url: <span class="c">"http://127.0.0.1:8080"</span></pre>
+      <p>Avec un middleware d'authentification enchaîné :</p>
+      <pre class="codeblock">http:
+  <span class="k">routers</span>:
+    admin:
+      rule: <span class="c">"PathPrefix(`/admin`)"</span>
+      middlewares:
+        - auth-basique
+      service: mon-service
+  <span class="k">middlewares</span>:
+    auth-basique:
+      basicAuth:
+        users:
+          - <span class="c">"utilisateur:motdepassehashé"</span></pre>
+    </section>
+
+    <section id="config">
+      <h2><span class="section-num">03</span>Configuration statique vs dynamique</h2>
+      <p>Une distinction qui prête souvent à confusion, mais essentielle :</p>
+      <div class="feature">
+        <h3>Configuration statique</h3>
+        <p>Définie au démarrage de Traefik (fichier <code>traefik.yml</code>, ou arguments en ligne de commande) — <strong>ne peut pas changer sans redémarrer</strong> le conteneur. Ce sont les entryPoints, les providers activés, les résolveurs de certificats.</p>
+      </div>
+      <div class="feature">
+        <h3>Configuration dynamique</h3>
+        <p>Les routers, services et middlewares eux-mêmes — <strong>rechargée à chaud</strong>, sans interruption de service, sans redémarrer Traefik. Fournie par un ou plusieurs <em>providers</em> (voir plus bas) : un fichier surveillé, ou l'API Docker/Kubernetes interrogée en continu.</p>
+      </div>
+    </section>
+
+    <section id="providers">
+      <h2><span class="section-num">04</span>Providers — d'où vient la configuration dynamique</h2>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Provider</th><th>Fonctionnement</th><th>Quand l'utiliser</th></tr></thead>
+          <tbody>
+            <tr><td><code>docker</code></td><td>Lit les labels des conteneurs en cours d'exécution via le socket Docker — découverte automatique.</td><td>Nombre de services variable, déploiements fréquents.</td></tr>
+            <tr><td><code>kubernetesCRD</code></td><td>Définit le routage via des ressources Kubernetes dédiées (IngressRoute).</td><td>Déploiement sur un cluster Kubernetes.</td></tr>
+            <tr><td><code>file</code></td><td>Lit un (ou plusieurs) fichier YAML/TOML statique, surveillé pour rechargement à chaud.</td><td>Nombre de services fixe et connu à l'avance, ou environnement où le socket Docker ne doit pas être exposé à Traefik.</td></tr>
+            <tr><td><code>consul</code>, <code>etcd</code>…</td><td>Lit la configuration depuis un magasin clé-valeur externe.</td><td>Infrastructure déjà organisée autour de ce magasin.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout info"><span class="lbl">À savoir</span> Plusieurs providers peuvent tourner en même temps — Traefik fusionne leurs configurations. Le provider <code>docker</code> exige un accès (lecture seule, idéalement) au socket Docker, ce qui n'est pas anodin en termes de surface de sécurité ; le provider <code>file</code> n'y touche jamais.</div>
+    </section>
+
+    <section id="tls">
+      <h2><span class="section-num">05</span>TLS &amp; Let's Encrypt</h2>
+      <p>Traefik peut obtenir et renouveler automatiquement des certificats via Let's Encrypt (protocole ACME), sans intervention manuelle. Trois façons de prouver qu'on contrôle le domaine :</p>
+      <ul>
+        <li><strong>HTTP-01</strong> — le plus simple : Let's Encrypt vérifie un fichier accessible sur le port 80 du domaine. Ne fonctionne pas derrière certains load balancers en amont, ni pour un certificat wildcard.</li>
+        <li><strong>DNS-01</strong> — Traefik crée un enregistrement DNS temporaire (nécessite les identifiants API du fournisseur DNS). Seule méthode permettant un certificat wildcard, et fonctionne même si le port 80 n'est pas joignable publiquement.</li>
+        <li><strong>TLS-ALPN-01</strong> — validation directement sur le port 443, sans passer par le port 80 ni le DNS.</li>
+      </ul>
+      <p>Pour un usage interne ou de développement (pas de domaine public), un certificat auto-signé ou généré par un outil comme <code>mkcert</code> peut être déclaré statiquement, sans passer par ACME du tout.</p>
+    </section>
+
+    <section id="load-balancing">
+      <h2><span class="section-num">06</span>Répartition de charge, sessions collantes &amp; santé des serveurs</h2>
+      <p>Par défaut, un service avec plusieurs <code>servers</code> répartit les requêtes en tourniquet (round robin, avec pondération possible). Deux réglages courants viennent affiner ce comportement :</p>
+      <pre class="codeblock">http:
+  <span class="k">services</span>:
+    mon-service:
+      loadBalancer:
+        <span class="k">sticky</span>:
+          cookie:
+            name: srv_id
+        servers:
+          - url: <span class="c">"http://10.0.1.10:8080"</span>
+          - url: <span class="c">"http://10.0.1.11:8080"</span>
+        <span class="k">healthCheck</span>:
+          path: /healthz
+          interval: 5s
+          timeout: 2s</pre>
+      <ul>
+        <li><strong><code>sticky</code> (sessions collantes)</strong> — un cookie posé à la première réponse fixe quel serveur traite les requêtes suivantes DU MÊME client. Utile quand un service garde un état en mémoire propre à chaque instance (voir l'étude de cas plus bas).</li>
+        <li><strong><code>healthCheck</code></strong> — Traefik interroge périodiquement chaque serveur ; celui qui ne répond plus est automatiquement retiré de la rotation (et le cookie <code>sticky</code> réattribué si besoin) jusqu'à ce qu'il redevienne sain.</li>
+      </ul>
+    </section>
+
+    <section id="dashboard">
+      <h2><span class="section-num">07</span>Dashboard &amp; API</h2>
+      <p>Traefik expose un tableau de bord web (et l'API JSON qui l'alimente) montrant en direct tous les routers, services et middlewares actifs — pratique pour diagnostiquer un routage qui ne se comporte pas comme prévu.</p>
+      <div class="callout warn"><span class="lbl">Sécurité</span> Ce tableau de bord expose l'intégralité de la configuration, potentiellement des informations sensibles. Ne jamais l'exposer publiquement sans authentification — le sécuriser par un middleware (authentification simple, liste d'IP autorisées) via un router dédié pointant vers le service interne <code>api@internal</code>, jamais en accès direct.</div>
+    </section>
+
+    <section id="madearchive">
+      <h2><span class="section-num">08</span>Étude de cas : comment MadeArchive l'utilise</h2>
+      <p>Application concrète des concepts ci-dessus, dans ce projet précis :</p>
+      <div class="feature">
+        <h3>Image &amp; initialisation</h3>
+        <p>Image maison (pas l'image officielle telle quelle) : un point d'entrée personnalisé régénère le fichier de configuration dynamique depuis un gabarit à chaque démarrage, en y substituant le domaine réel lu depuis <code>.env</code> — une seule source pour cette valeur, là où deux copies manuelles désynchronisables existaient avant.</p>
+      </div>
+      <div class="feature">
+        <h3>Provider choisi : <code>file</code>, pas <code>docker</code></h3>
+        <p>Le provider <code>docker</code> a été essayé et abandonné (incompatibilité constatée avec Docker Desktop en développement) — jamais retesté sur un vrai hôte Linux de production. Le provider <code>file</code> actuel fonctionne, mais sa configuration reste statique : Traefik n'a plus besoin du socket Docker, en échange d'une topologie à éditer à la main.</p>
+      </div>
+      <div class="feature">
+        <h3>Routage &amp; TLS</h3>
+        <p>Un seul domaine public, routage par chemin — <code>/api/*</code> vers le backend, tout le reste vers le frontend. Certificat <code>mkcert</code> en développement (sélectionné par SNI), Let's Encrypt (HTTP-01) dès qu'un vrai domaine public est configuré, sans changer de fichier.</p>
+      </div>
+    </section>
+
+    <section id="madearchive-scaling">
+      <h2><span class="section-num">09</span>Mise à l'échelle : une piste de plus</h2>
+      <p>Dans la documentation de MadeArchive, le blocage identifié pour faire tourner plusieurs instances de l'API était <code>OcrSessionCache</code> — les sessions d'archivage (aperçu → finalisation) vivent en mémoire du process Java, propres à chaque instance. La solution envisagée était de migrer ce cache vers Redis (déjà présent dans la stack).</p>
+      <div class="callout ok"><span class="lbl">Piste alternative, plus simple</span> Les <strong>sessions collantes</strong> (<code>sticky</code>, voir section 6) résoudraient le même problème sans toucher au code Java : si le client qui a fait la Phase 1 est systématiquement renvoyé vers la même instance pour la Phase 2, la session en mémoire reste toujours disponible là où elle a été créée. Moins robuste qu'un cache partagé (si CETTE instance redémarre entre les deux phases, la session est perdue quand même), mais une configuration Traefik suffit à la mettre en place — à comparer selon l'effort acceptable pour chaque option.</div>
+    </section>
+
+    <footer>
+      Sources générales : <a href="https://doc.traefik.io/traefik/v3.3/reference/dynamic-configuration/file/">doc.traefik.io — configuration dynamique</a>, <a href="https://doc.traefik.io/traefik/v3.3/routing/services/">doc.traefik.io — services &amp; répartition de charge</a>, <a href="https://doc.traefik.io/traefik/v3.4/operations/api/">doc.traefik.io — API &amp; dashboard</a>. Section "Étude de cas" vérifiée directement dans le code source de MadeArchive.
+    </footer>
+  </main>
+</div>
