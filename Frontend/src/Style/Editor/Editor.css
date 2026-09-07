@@ -1198,6 +1198,38 @@ label.bulk-file-item { cursor: pointer; }
     max-width: 110px;
 }
 
+/* Croix de retrait — exclut le fichier du lot sans l'archiver (voir
+   ImportDocuments.tsx, removeFile). Discrète par défaut, se détache au survol
+   de l'onglet pour ne pas polluer visuellement la liste au repos. */
+.bulk-nav-tab-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 0.1rem;
+    color: var(--text-light);
+    opacity: 0.5;
+    cursor: pointer;
+    transition: opacity var(--transition), color var(--transition);
+}
+
+.bulk-nav-tab:hover .bulk-nav-tab-remove,
+.bulk-nav-tab-remove:hover,
+.bulk-nav-tab-remove:focus-visible {
+    opacity: 1;
+    color: var(--error);
+}
+
+.bulk-nav-tab.active .bulk-nav-tab-remove {
+    color: var(--white-choc);
+    opacity: 0.7;
+}
+
+.bulk-nav-tab.active .bulk-nav-tab-remove:hover,
+.bulk-nav-tab.active .bulk-nav-tab-remove:focus-visible {
+    opacity: 1;
+    color: var(--error);
+}
+
 /* Flèches précédent / suivant */
 .bulk-nav-arrows {
     display: flex;
