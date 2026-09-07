@@ -354,6 +354,8 @@
 
     <div class="toc-group">Infrastructure</div>
     <a href="#infrastructure">Conteneurs Docker</a>
+    <a href="#initialisation">Initialisation &amp; démarrage</a>
+    <a href="#mise-a-lechelle">Mise à l'échelle</a>
 
     <div class="toc-group">Bilan</div>
     <a href="#recap">Tableau récapitulatif</a>
@@ -670,8 +672,58 @@
       </div>
     </section>
 
+    <section id="initialisation">
+      <h2><span class="section-num">24</span>Initialisation &amp; démarrage</h2>
+      <p><code>docker compose up -d</code> démarre les dix conteneurs dans un ordre de dépendance strict — <span class="pill">app</span> attend que <em>tous</em> les autres répondent sains à leur <em>healthcheck</em> avant de démarrer lui-même (voir <code>depends_on</code> dans <code>docker-compose.yml</code>).</p>
+
+      <div class="lifecycle">
+        <div class="step"><b>Services sans état</b><span>postgres, minio, meilisearch, redis, gotenberg démarrent "vides", prêts dès leur healthcheck</span></div>
+        <div class="step"><b>Ollama</b><span>télécharge le modèle qwen2.5-coder:7b s'il n'est pas déjà dans le volume nommé</span></div>
+        <div class="step"><b>Traefik</b><span>régénère dynamic.yml depuis le gabarit, jamais versionné</span></div>
+        <div class="step"><b>app démarre</b><span>tous les services ci-dessus sont sains</span></div>
+        <div class="step"><b>Migrations Flyway</b><span>schéma appliqué automatiquement</span></div>
+        <div class="step"><b>Rôles + admin</b><span>4 rôles créés, admin initial si configuré</span></div>
+      </div>
+
+      <div class="feature">
+        <h3>Ollama : téléchargement du modèle au premier démarrage</h3>
+        <p>Point d'entrée particulier (pas l'entrypoint standard de l'image) : <code>ollama serve &amp; sleep 10 &amp;&amp; ollama pull qwen2.5-coder:7b &amp;&amp; wait</code> — le serveur démarre, attend 10 secondes, puis télécharge le modèle s'il n'est pas déjà présent.</p>
+        <div class="callout why"><span class="lbl">Pourquoi</span> Le tout premier démarrage peut donc prendre plusieurs minutes (téléchargement de quelques Go) — les démarrages suivants sont quasi instantanés, le modèle restant en cache dans le volume nommé <code>ollama_data</code>, qui survit à un <code>docker compose down</code> (sans <code>-v</code>).</div>
+      </div>
+
+      <div class="feature">
+        <h3>Rôles, administrateur initial &amp; migrations — au démarrage de "app", pas de PostgreSQL</h3>
+        <p>PostgreSQL lui-même ne fait qu'attendre d'être joignable (<code>pg_isready</code>) — c'est le backend Spring Boot, à SON PROPRE démarrage, qui applique le schéma (Flyway, <code>spring.flyway.baseline-on-migrate=true</code>), crée les 4 rôles s'ils manquent, puis crée l'administrateur initial <em>seulement si</em> <code>INITIAL_ADMIN_EMAIL</code>/<code>INITIAL_ADMIN_PASSWORD</code> sont renseignés dans <code>.env</code> et qu'aucun admin n'existe déjà.</p>
+        <div class="callout why"><span class="lbl">Pourquoi</span> Sans ces deux variables, l'application démarre volontairement sans administrateur — un assistant public temporaire (<code>/api/public/setup</code>) prend le relais au premier accès au frontend, et se referme définitivement dès qu'un admin existe, quelle que soit la façon dont il a été créé.</div>
+      </div>
+
+      <div class="feature">
+        <h3>MinIO et Meilisearch : pas d'étape d'initialisation séparée</h3>
+        <p>Le bucket MinIO est vérifié — et créé s'il manque — à chaque appel du client MinIO (pas une fois au démarrage). L'index Meilisearch, lui, se remplit au fil des archivages, ou via une resynchronisation manuelle (ADMIN, maintenance système) s'il doit être reconstruit.</p>
+      </div>
+    </section>
+
+    <section id="mise-a-lechelle">
+      <h2><span class="section-num">25</span>Mise à l'échelle</h2>
+      <p>Aujourd'hui, une seule instance de chaque service. Faire tourner plusieurs instances de "app" (l'API) ou d'Ollama (Qwen) est possible, mais pas en changeant seulement un chiffre — voici précisément ce qui marche déjà, ce qui casse, et ce qu'il faudrait changer.</p>
+
+      <div class="feature">
+        <h3>Plusieurs instances de l'API (app)</h3>
+        <p>Ce qui fonctionne déjà sans rien changer : toutes les données partagées (PostgreSQL, MinIO, Meilisearch, Redis, et même le volume HSM nommé) sont déjà centralisées — une deuxième instance d'"app" y accède exactement comme la première, aucune donnée n'est dupliquée ni désynchronisée. Le cache d'authentification étant déjà dans Redis (pas en mémoire locale), un utilisateur peut être servi par une instance différente à chaque requête sans se reconnecter.</p>
+        <div class="callout limit"><span class="lbl">Ce qui casse</span> <code>OcrSessionCache</code> (sessions d'archivage Phase 1 → Phase 2) vit dans une simple <code>ConcurrentHashMap</code>, en mémoire du process Java — propre à CHAQUE instance. Une session créée sur l'instance A à la Phase 1 n'existe pas sur l'instance B : si un load balancer envoie la Phase 2 (la finalisation, parfois plusieurs minutes plus tard, le temps pour l'éditeur de relire les métadonnées) vers B, l'archivage échoue avec "session introuvable" — même si tout s'est bien passé. Pas hypothétique : c'est le premier verrou à lever, en migrant ce cache vers Redis (déjà dans la stack) avec la même expiration de 30 minutes.</div>
+        <div class="callout why"><span class="lbl">Côté déploiement</span> Le service "app" a un <code>container_name</code> fixe dans <code>docker-compose.yml</code> — Docker Compose refuse de scinder un service en plusieurs conteneurs tant qu'un nom fixe lui est assigné ; il faut d'abord le retirer. Ensuite, Traefik doit connaître les réplicas : soit lister plusieurs adresses dans <code>dynamic.yml.template</code> (<code>services.app.loadBalancer.servers</code>, aujourd'hui une seule entrée), soit repasser Traefik sur son fournisseur Docker natif — déjà essayé une fois et abandonné pour une incompatibilité avec Docker Desktop en développement (jamais retestée sur un vrai hôte Linux de production, où le problème ne se reproduit pas forcément).</div>
+      </div>
+
+      <div class="feature">
+        <h3>Plusieurs instances d'Ollama (Qwen)</h3>
+        <p>L'application ne connaît qu'une seule adresse Ollama (<code>OLLAMA_BASE_URL</code>, une valeur fixe) — pas de répartition entre plusieurs instances intégrée au code.</p>
+        <div class="callout why"><span class="lbl">Avant de dupliquer le conteneur</span> Ce modèle n'est appelé qu'une fois PAR TYPE de document (le tout premier), jamais par document individuel — le débit réellement demandé est probablement déjà faible. Le réglage de concurrence interne d'Ollama (<code>OLLAMA_NUM_PARALLEL</code>) permet à une seule instance de traiter plusieurs requêtes de front, souvent suffisant avant d'envisager plusieurs conteneurs.</div>
+        <div class="callout why"><span class="lbl">Si le besoin apparaît vraiment</span> Même mécanisme que pour "app"/"frontend", déjà en place dans <code>dynamic.yml.template</code> : déclarer un routeur et un service Traefik internes avec plusieurs adresses Ollama en <code>loadBalancer.servers</code>, puis faire pointer <code>OLLAMA_BASE_URL</code> vers ce point d'entrée unique plutôt que directement vers un conteneur — aucun changement de code Java, uniquement de configuration.</div>
+      </div>
+    </section>
+
     <section id="recap">
-      <h2><span class="section-num">24</span>Tableau récapitulatif</h2>
+      <h2><span class="section-num">26</span>Tableau récapitulatif</h2>
       <p>Chaque fonctionnalité, le problème qu'elle résout, et sa limite connue le cas échéant.</p>
       <div class="legend">
         <span><span class="dot ok"></span> Aucune limite majeure identifiée</span>
