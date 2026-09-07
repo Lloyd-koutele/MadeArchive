@@ -305,18 +305,32 @@ export const getPdfAViewUrl = (id: string): string =>
  *
  * `timeoutMs` optionnel — SANS lui, la requête n'a aucune limite de temps
  * (défaut axios), ce qui convient au lecteur PDF plein écran (ouvert
- * explicitement par l'utilisateur, qui voit un état "Chargement..."). Les
- * aperçus en grille (voir PdfThumbnail.ts et les vues DocumentsAccessible,
- * ProjetsPanel, MesDocumentsEditor, Corbeille), eux, se chargent en
- * arrière-plan par lots de plusieurs à chaque page — sans limite, une carte
- * dont la requête reste bloquée (backend/MinIO ralenti, ex. par un import en
- * lot massif en cours) tourne sur son spinner INDÉFINIMENT, indiscernable
- * d'un chargement normal (constaté en conditions réelles). Passer un
- * `timeoutMs` y fait échouer proprement la promesse pour retomber sur le
- * placeholder "aperçu indisponible" déjà prévu, plutôt qu'un spinner mort.
+ * explicitement par l'utilisateur, qui voit un état "Chargement..."). Pour
+ * les vues en grille, voir getThumbnailBlob() ci-dessous à la place — ce
+ * n'est plus le PDF/A entier qui y est chargé.
  */
 export const streamPdfAAsBlob = async (id: string, timeoutMs?: number): Promise<string> => {
     const response = await api.get(`/user/docs/${id}/view`, {
+        responseType: 'blob',
+        ...(timeoutMs ? { timeout: timeoutMs } : {}),
+    });
+    return URL.createObjectURL(response.data);
+};
+
+/**
+ * Récupère la miniature JPEG (1re page) d'un document — générée et mise en
+ * cache CÔTÉ SERVEUR (voir DocumentService.java#getThumbnail), pas le PDF/A
+ * entier. Remplace l'ancien pipeline des vues en grille (télécharger le PDF
+ * complet + le rasteriser côté client avec pdf.js, voir PdfThumbnail.ts) —
+ * bien trop coûteux en réseau/CPU dès que la grille peut afficher un grand
+ * nombre de documents, le but étant de tenir à l'échelle d'un catalogue de
+ * plusieurs milliards de documents, pas seulement de quelques dizaines.
+ *
+ * `timeoutMs` optionnel, voir streamPdfAAsBlob ci-dessus — même raison
+ * (éviter un spinner de carte bloqué indéfiniment).
+ */
+export const getThumbnailBlob = async (id: string, timeoutMs?: number): Promise<string> => {
+    const response = await api.get(`/user/docs/${id}/thumbnail`, {
         responseType: 'blob',
         ...(timeoutMs ? { timeout: timeoutMs } : {}),
     });
