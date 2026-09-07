@@ -8,6 +8,7 @@ record AttestationPdfData(
     String titreDocument,
     String typeDocumentNom,
     LocalDateTime dateArchivage,
+    String pdfaSha256,
     List<MetaEntry> metadonnees,
     String uploadeurNomComplet,
     String uploadeurEmail,

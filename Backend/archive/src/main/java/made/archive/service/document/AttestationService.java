@@ -82,6 +82,7 @@ public class AttestationService
             doc.getTitre(),
             doc.getTypeDocument().getNom(),
             doc.getCreateAt(),
+            doc.getPdfaSha256(),
             doc.getData().stream()
                 .map(dt -> new AttestationPdfData.MetaEntry(
                     dt.getMetaData() != null ? dt.getMetaData().getNom() : "Métadonnée",
