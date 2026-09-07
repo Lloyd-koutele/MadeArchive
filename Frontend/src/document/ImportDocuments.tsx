@@ -320,6 +320,23 @@ function ImportDocuments({ onsuccess, preselectedTypeId, precedentDocument }: Im
         if (idx >= 0 && idx < fileStates.length) setCurrentIdx(idx);
     };
 
+    // ── Retirer un fichier du lot déjà analysé, avant archivage (pas de
+    // suppression serveur — sa session OCR reste en cache, simplement jamais
+    // finalisée, voir handleFinalize qui ne lit que fileStates). Distinct de
+    // removeFile ci-dessus, qui retire un fichier pas encore analysé à
+    // l'étape de sélection. Toujours en garder au moins un : à zéro, tout le
+    // bloc de validation (fileStates.length > 0) — "Recommencer" compris —
+    // disparaîtrait avec, laissant l'utilisateur bloqué sans issue visible.
+    const retirerDuLotValide = (idx: number) => {
+        if (fileStates.length <= 1) return;
+        const remaining = fileStates.length - 1;
+        setFileStates(prev => prev.filter((_, i) => i !== idx));
+        setCurrentIdx(prev => {
+            if (idx < prev) return prev - 1;
+            return Math.min(prev, remaining - 1);
+        });
+    };
+
     // ── PHASE 2 : finaliser tous les fichiers ─────────────────────────────────
     const handleFinalize = async () => {
         if (!selectedType) return;
@@ -730,7 +747,7 @@ function ImportDocuments({ onsuccess, preselectedTypeId, precedentDocument }: Im
                                 <div className="bulk-nav-tabs">
                                     {fileStates.map((fs, idx) => (
                                         <button
-                                            key={idx}
+                                            key={fs.sessionId}
                                             type="button"
                                             className={`bulk-nav-tab ${idx === currentIdx ? 'active' : ''} ${fs.hasError ? 'error' : ''}`}
                                             onClick={() => goTo(idx)}
@@ -744,6 +761,28 @@ function ImportDocuments({ onsuccess, preselectedTypeId, precedentDocument }: Im
                                                 {fs.nomFichier.length > 18
                                                     ? fs.nomFichier.slice(0, 15) + '…'
                                                     : fs.nomFichier}
+                                            </span>
+                                            {/* Retirer du lot sans l'archiver — n'efface rien côté serveur,
+                                                juste exclu de la finalisation (voir handleFinalize). Désactivé
+                                                s'il ne reste que ce fichier — "Recommencer" existe pour tout
+                                                annuler, mais le lot ne doit jamais tomber à zéro fichier ici. */}
+                                            <span
+                                                role="button"
+                                                tabIndex={fileStates.length > 1 ? 0 : -1}
+                                                aria-disabled={fileStates.length <= 1}
+                                                className={`bulk-nav-tab-remove ${fileStates.length <= 1 ? 'disabled' : ''}`}
+                                                aria-label={`Retirer ${fs.nomFichier} du lot`}
+                                                title={fileStates.length <= 1 ? 'Le dernier fichier du lot ne peut pas être retiré — utilisez "Recommencer"' : undefined}
+                                                onClick={(e) => { e.stopPropagation(); retirerDuLotValide(idx); }}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter' || e.key === ' ') {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        retirerDuLotValide(idx);
+                                                    }
+                                                }}
+                                            >
+                                                <i className="fa-solid fa-circle-xmark" />
                                             </span>
                                         </button>
                                     ))}
