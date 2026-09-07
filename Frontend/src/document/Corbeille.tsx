@@ -4,13 +4,13 @@ import {
     getDocumentsCorbeille,
     restaurerDocumentDepuisCorbeille,
     streamPdfAAsBlob,
+    getThumbnailBlob,
     downloadPdfA,
 } from '../services/document/DocumentService';
 import type { DocumentListItemDto } from '../services/document/DocumentService';
 import { hasRole } from '../auth/authService';
 import Modal from '../Page/Modal';
 import VersionBadge from './VersionBadge';
-import { renderPdfFirstPageThumbnail } from '../services/document/PdfThumbnail';
 import { useNotify } from '../notifications/NotificationProvider';
 import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus';
 import '../Style/document/Filtre.css';
@@ -115,9 +115,10 @@ function Corbeille() {
             setTotalPages(result.totalPages);
             setPage(p);
 
-            // Nouvelle page → les aperçus déjà générés ne correspondent plus
+            // Nouvelle page → les aperçus déjà générés (en libérant leurs
+            // blob: URL, voir getThumbnailBlob) ne correspondent plus
             // forcément aux documents affichés.
-            setPreviews({});
+            setPreviews(prev => { Object.values(prev).forEach(url => URL.revokeObjectURL(url)); return {}; });
             setPreviewsEchec(new Set());
         } catch (err: any) {
             notify.error(err.message ?? 'Erreur chargement de la corbeille');
@@ -142,17 +143,16 @@ function Corbeille() {
         setPreviewsEnCours(prev => new Set([...prev, ...idsACharger]));
 
         idsACharger.forEach(async (id) => {
-            let blobUrl: string | null = null;
             try {
-                // 45s — au-delà, on abandonne plutôt que de laisser la carte
-                // tourner indéfiniment (voir streamPdfAAsBlob, DocumentService.ts).
-                blobUrl = await streamPdfAAsBlob(id, 45000);
-                const thumbnail = await renderPdfFirstPageThumbnail(blobUrl);
-                if (!annule) setPreviews(prev => ({ ...prev, [id]: thumbnail }));
+                // Miniature déjà générée/mise en cache côté serveur — voir
+                // getThumbnailBlob (DocumentService.ts). 45s — au-delà, on
+                // abandonne plutôt que de laisser la carte tourner indéfiniment.
+                const blobUrl = await getThumbnailBlob(id, 45000);
+                if (!annule) setPreviews(prev => ({ ...prev, [id]: blobUrl }));
+                else URL.revokeObjectURL(blobUrl);
             } catch {
                 if (!annule) setPreviewsEchec(prev => new Set([...prev, id]));
             } finally {
-                if (blobUrl) URL.revokeObjectURL(blobUrl);
                 if (!annule) {
                     setPreviewsEnCours(prev => {
                         const next = new Set(prev);

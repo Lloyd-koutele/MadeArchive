@@ -323,6 +323,50 @@ public class UserDocumentController
     }
 
     // ═══════════════════════════════════════════════════════════════════
+    // Miniature (vues en grille)
+    // ═══════════════════════════════════════════════════════════════════
+
+    /**
+     * GET /api/user/docs/{id}/thumbnail
+     *
+     * Miniature JPEG de la 1re page — PAS le PDF/A entier. Générée et mise
+     * en cache une seule fois côté serveur (voir DocumentService.getThumbnail)
+     * puis simplement relue ensuite : contrairement à /view (utilisé par le
+     * lecteur PDF plein écran), ce point d'entrée est fait pour être appelé
+     * pour CHAQUE carte d'une grille pouvant en afficher des milliers —
+     * jamais un téléchargement + parsing PDF complet à chaque affichage.
+     */
+    @Secured("ROLE_USER")
+    @GetMapping("/docs/{id}/thumbnail")
+    public ResponseEntity<byte[]> getThumbnail(
+        @PathVariable UUID id,
+        @AuthenticationPrincipal UserDetails userDetails)
+    {
+        try
+        {
+            byte[] bytes = documentService.getThumbnail(id, userDetails);
+
+            return ResponseEntity.ok()
+                .contentType(MediaType.IMAGE_JPEG)
+                // Le contenu d'une miniature ne change jamais une fois générée
+                // (clé fixe par document, jamais réécrite après le premier
+                // appel) — autant laisser le navigateur la garder en cache le
+                // temps de la session au lieu de la re-télécharger à chaque
+                // retour sur la même page.
+                .header(HttpHeaders.CACHE_CONTROL, "private, max-age=3600")
+                .body(bytes);
+        }
+        catch (BusinessException e)
+        {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        catch (Exception e)
+        {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
     // Téléchargement PDF/A
     // ═══════════════════════════════════════════════════════════════════
 

@@ -20,16 +20,16 @@ import {
     getDocumentDetail,
     downloadPdfA,
     streamPdfAAsBlob,
+    getThumbnailBlob,
     envoyerDocumentCorbeille,
     restaurerDocumentDepuisCorbeille
 
  } from '../services/document/DocumentService';
-import type { 
+import type {
     DocumentFolderDto,
     DocumentListItemDto,
     DocumentDetailDto
 } from '../services/document/DocumentService';
-import { renderPdfFirstPageThumbnail } from '../services/document/PdfThumbnail';
 import '../Style/Editor/Editor.css';
 import { useNotify } from '../notifications/NotificationProvider';
 import { useConfirm } from '../notifications/ConfirmProvider';
@@ -201,8 +201,10 @@ function MesDocumentsEditor({
 
     // Aperçus PDF pour la vue grille — chargés à la demande, uniquement pour
     // les documents de la page courante et uniquement en vue grille (voir
-    // DocumentsAccessible.tsx, même logique). Chaque valeur est une image
-    // (data URL PNG de la première page, voir PdfThumbnail.ts).
+    // DocumentsAccessible.tsx, même logique). Chaque valeur est un blob: URL
+    // vers la miniature JPEG générée et mise en cache côté serveur (voir
+    // getThumbnailBlob, DocumentService.ts) — à révoquer explicitement à
+    // chaque remplacement de ce state.
     const [previews, setPreviews] = useState<Record<string, string>>({});
     const [previewsEnCours, setPreviewsEnCours] = useState<Set<string>>(new Set());
     // Distingue "en cours" de "abandonné après échec" — sans ça, une carte
@@ -291,10 +293,10 @@ function MesDocumentsEditor({
             setListPages(result.totalPages);
             setListPage(page);
 
-            // Nouvelle page/recherche → les aperçus déjà générés, et toute
-            // sélection en cours, ne correspondent plus forcément aux
-            // documents affichés.
-            setPreviews({});
+            // Nouvelle page/recherche → les aperçus déjà générés (en libérant
+            // leurs blob: URL, voir getThumbnailBlob), et toute sélection en
+            // cours, ne correspondent plus forcément aux documents affichés.
+            setPreviews(prev => { Object.values(prev).forEach(url => URL.revokeObjectURL(url)); return {}; });
             setPreviewsEchec(new Set());
             setSelectedDocIds(new Set());
             setSelectionModeActive(false);
@@ -321,20 +323,19 @@ function MesDocumentsEditor({
         setPreviewsEnCours(prev => new Set([...prev, ...idsACharger]));
 
         idsACharger.forEach(async (id) => {
-            let blobUrl: string | null = null;
             try {
-                // 45s — au-delà, on abandonne plutôt que de laisser la carte
-                // tourner indéfiniment (voir streamPdfAAsBlob, DocumentService.ts).
-                blobUrl = await streamPdfAAsBlob(id, 45000);
-                const thumbnail = await renderPdfFirstPageThumbnail(blobUrl);
-                if (!annule) setPreviews(prev => ({ ...prev, [id]: thumbnail }));
+                // Miniature déjà générée/mise en cache côté serveur — voir
+                // getThumbnailBlob (DocumentService.ts). 45s — au-delà, on
+                // abandonne plutôt que de laisser la carte tourner indéfiniment.
+                const blobUrl = await getThumbnailBlob(id, 45000);
+                if (!annule) setPreviews(prev => ({ ...prev, [id]: blobUrl }));
+                else URL.revokeObjectURL(blobUrl);
             } catch {
                 // La carte retombe sur un placeholder "aperçu indisponible" —
                 // PAS le spinner, qui donnerait l'impression trompeuse que le
                 // chargement continue indéfiniment.
                 if (!annule) setPreviewsEchec(prev => new Set([...prev, id]));
             } finally {
-                if (blobUrl) URL.revokeObjectURL(blobUrl);
                 if (!annule) {
                     setPreviewsEnCours(prev => {
                         const next = new Set(prev);

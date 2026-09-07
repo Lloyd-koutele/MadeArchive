@@ -330,6 +330,111 @@ public class DocumentService
     }
 
     // ═══════════════════════════════════════════════════════════════════
+    // 5bis. MINIATURE (vues en grille) — générée et mise en cache une fois
+    // ═══════════════════════════════════════════════════════════════════
+
+    private static final String THUMBNAIL_PREFIX = "thumbnails/";
+    private static final int    THUMBNAIL_WIDTH  = 320;
+
+    /**
+     * Miniature JPEG (1re page) d'un document, pour les vues en grille.
+     *
+     * Pense pour un catalogue destiné à grandir vers des milliards de
+     * documents : contrairement à streamPdfAForView (PDF/A ENTIER, rasterisé
+     * côté client par pdf.js — voir l'ancien PdfThumbnail.ts), le coût de
+     * génération n'est payé qu'UNE SEULE FOIS par document, ici, côté
+     * serveur (PDFBox, déjà une dépendance — voir OcrService/Tika) ; le
+     * résultat (quelques Ko) est mis en cache chiffré dans MinIO
+     * (thumbnails/{id}.jpg) et simplement relu ensuite — chaque affichage
+     * suivant, quel que soit le nombre de documents à l'écran, ne coûte
+     * plus qu'une lecture d'objet MinIO minuscule, jamais un téléchargement
+     * + déchiffrement + parsing PDF complet répété à chaque rendu de grille.
+     *
+     * Pas d'audit DOCUMENT_CONSULTE ici, volontairement — contrairement à
+     * streamPdfAForView : une miniature en grille n'est pas une
+     * "consultation" du document au sens métier/légal, juste un aperçu
+     * visuel ; auditer chaque scroll de grille noierait le journal.
+     */
+    @Transactional(readOnly = true)
+    public byte[] getThumbnail(UUID documentId, UserDetails userDetails)
+    {
+        User user    = resolveUser(userDetails);
+        Document doc = resolveDocument(documentId, user);
+
+        String thumbnailKey = THUMBNAIL_PREFIX + documentId + ".jpg";
+
+        if (storageService.exists(thumbnailKey))
+        {
+            try (InputStream stream = storageService.download(thumbnailKey))
+            {
+                return documentEncryptionService.decrypt(stream.readAllBytes());
+            }
+            catch (Exception e)
+            {
+                // Cache illisible (objet corrompu/tronqué...) — on retombe
+                // sur une régénération complète ci-dessous plutôt que
+                // d'échouer, le cache n'est qu'une optimisation.
+                log.warn("[DocumentService] Miniature en cache illisible pour {}, régénération : {}",
+                    documentId, e.getMessage());
+            }
+        }
+
+        byte[] pdfBytes  = downloadFromStorage(doc.getStorageKey(), documentId, "génération miniature");
+        byte[] thumbnail = rasterizePremierePage(pdfBytes, THUMBNAIL_WIDTH);
+
+        try
+        {
+            storageService.uploadBytes(
+                documentEncryptionService.encrypt(thumbnail), thumbnailKey, "image/jpeg");
+        }
+        catch (Exception e)
+        {
+            // Best-effort : un échec d'écriture du cache ne doit jamais faire
+            // échouer l'affichage de la miniature elle-même (ex. bucket
+            // momentanément indisponible) — juste régénérée à nouveau au
+            // prochain appel.
+            log.warn("[DocumentService] Échec mise en cache de la miniature pour {} : {}",
+                documentId, e.getMessage());
+        }
+
+        return thumbnail;
+    }
+
+    /**
+     * Rasterise la première page d'un PDF en JPEG via PDFBox — équivalent
+     * côté serveur de l'ancien renderPdfFirstPageThumbnail (pdf.js, client).
+     * Exception volontairement PAS une BusinessException (réservée aux refus
+     * d'accès dans resolveDocument) : un PDF illisible ici est une erreur
+     * technique (500), pas un refus d'autorisation (403) — le contrôleur
+     * distingue les deux.
+     */
+    private byte[] rasterizePremierePage(byte[] pdfBytes, int targetWidth)
+    {
+        try (org.apache.pdfbox.pdmodel.PDDocument pdf =
+                 org.apache.pdfbox.pdmodel.PDDocument.load(pdfBytes))
+        {
+            org.apache.pdfbox.rendering.PDFRenderer renderer =
+                new org.apache.pdfbox.rendering.PDFRenderer(pdf);
+            org.apache.pdfbox.pdmodel.PDPage page = pdf.getPage(0);
+            float largeurNaturelle = page.getMediaBox().getWidth();
+            float scale = targetWidth / largeurNaturelle;
+
+            java.awt.image.BufferedImage image = renderer.renderImage(0, scale);
+
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            if (!javax.imageio.ImageIO.write(image, "jpg", out))
+            {
+                throw new IllegalStateException("Aucun encodeur JPEG disponible");
+            }
+            return out.toByteArray();
+        }
+        catch (Exception e)
+        {
+            throw new RuntimeException("Impossible de générer la miniature : " + e.getMessage(), e);
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
     // 6. TÉLÉCHARGEMENT PDF/A — Content-Disposition: attachment
     // ═══════════════════════════════════════════════════════════════════
 
