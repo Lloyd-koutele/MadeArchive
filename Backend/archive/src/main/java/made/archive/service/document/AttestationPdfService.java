@@ -76,6 +76,12 @@ public class AttestationPdfService
                 y = champ(cs, "Titre", data.titreDocument(), y);
                 y = champ(cs, "Type de document", data.typeDocumentNom(), y);
                 y = champ(cs, "Date d'archivage", data.dateArchivage().format(DATE_FORMAT), y);
+                // Empreinte du PDF/A archivé — preuve d'intégrité vérifiable :
+                // quiconque recalcule le SHA-256 du fichier téléchargé doit
+                // retrouver exactement cette valeur, sans quoi le fichier a
+                // été altéré depuis l'archivage. C'est tout l'objet d'une
+                // attestation d'archivage, elle ne peut pas s'en passer.
+                y = champ(cs, "Empreinte SHA-256 (PDF/A)", data.pdfaSha256(), y);
                 y -= 15;
 
                 y = sectionTitre(cs, "Métadonnées à l'archivage", y);
@@ -155,8 +161,7 @@ public class AttestationPdfService
         texteCentre(cs, POLICE_ITALIQUE, 8, lien, qrY - 26);
 
         texteCentre(cs, POLICE_ITALIQUE, 7,
-            "Ce document atteste l'existence et l'intégrité du fichier archivé — "
-            + "il ne remplace pas l'original.", 55f);
+            "Ce document atteste l'existence et l'intégrité du fichier archivé ", 55f);
     }
 
     private BufferedImage genererQrCode(String contenu, int taille) throws WriterException
