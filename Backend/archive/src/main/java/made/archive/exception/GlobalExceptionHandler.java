@@ -3,9 +3,12 @@ package made.archive.exception;
 import java.util.Map;
 
 import org.apache.tomcat.util.http.fileupload.impl.FileCountLimitExceededException;
+import org.apache.tomcat.util.http.fileupload.impl.FileSizeLimitExceededException;
+import org.apache.tomcat.util.http.fileupload.impl.SizeLimitExceededException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.unit.DataSize;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -50,66 +53,84 @@ public class GlobalExceptionHandler
      * gestionnaire le plus spécifique, donc celui-ci prend la main en premier.
      *
      * PIÈGE constaté en conditions réelles : un dépassement de
-     * server.tomcat.max-part-count (nombre de fichiers, pas leur taille)
-     * atterrit AUSSI ici, jamais dans handleMultipart ci-dessous. Tomcat lève
-     * FileCountLimitExceededException avec pour SEUL message le mot
-     * "attachment" — inexploitable — mais StandardMultipartHttpServletRequest
-     * (Spring) classe le type d'erreur en cherchant les mots "exceed"/"limit"/
-     * "count" dans le texte de la chaîne de causes, qui INCLUT le nom de la
-     * classe elle-même : "FileCountLimitExceededException" contient déjà tout
-     * ça (Count, Limit, Exceeded) — Spring la reclasse donc à tort en
+     * server.tomcat.max-part-count/max-parameter-count (nombre de fichiers,
+     * pas leur taille) atterrit AUSSI ici, jamais dans handleMultipart
+     * ci-dessous. Tomcat lève FileCountLimitExceededException avec pour SEUL
+     * message le mot "attachment" — inexploitable — mais
+     * StandardMultipartHttpServletRequest (Spring) classe le type d'erreur en
+     * cherchant les mots "exceed"/"limit"/"count" dans le texte de la chaîne
+     * de causes, qui INCLUT le nom de la classe elle-même :
+     * "FileCountLimitExceededException" contient déjà tout ça (Count, Limit,
+     * Exceeded) — Spring la reclasse donc à tort en
      * MaxUploadSizeExceededException avant même d'atteindre ce fichier. D'où
-     * la même détection explicite de la cause ici que dans handleMultipart,
-     * plutôt que de faire confiance au type d'exception que Spring a choisi.
+     * la même détection explicite du type de la cause ici que dans
+     * handleMultipart, plutôt que de faire confiance au type d'exception que
+     * Spring a choisi — et par la même occasion, la distinction fichier isolé
+     * trop lourd / lot entier trop lourd / trop de fichiers, qu'un seul
+     * message générique ne permettait pas.
      */
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<Map<String, String>> handleTailleDepassee(MaxUploadSizeExceededException ex)
     {
-        String messageNombreFichiers = messageSiTropDeFichiers(ex);
-        if (messageNombreFichiers != null)
-        {
-            return ResponseEntity.badRequest().body(Map.of("message", messageNombreFichiers));
-        }
-        return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE)
-            .body(Map.of("message", "Le ou les fichiers envoyés dépassent la taille autorisée."));
+        return reponseSpecifique(ex, "Le ou les fichiers envoyés dépassent la taille autorisée.",
+            HttpStatus.CONTENT_TOO_LARGE);
     }
 
     /**
-     * Cas général — en pratique, un dépassement de server.tomcat.max-part-count
-     * atterrit plutôt dans handleTailleDepassee ci-dessus (voir sa Javadoc) ;
-     * ce gestionnaire reste le filet de sécurité pour toute autre erreur de
-     * parsing multipart (ex. corps malformé, connexion coupée en cours d'envoi).
+     * Cas général — en pratique, un dépassement de
+     * server.tomcat.max-part-count/max-parameter-count atterrit plutôt dans
+     * handleTailleDepassee ci-dessus (voir sa Javadoc) ; ce gestionnaire reste
+     * le filet de sécurité pour toute autre erreur de parsing multipart (ex.
+     * corps malformé, connexion coupée en cours d'envoi).
      */
     @ExceptionHandler(MultipartException.class)
     public ResponseEntity<Map<String, String>> handleMultipart(MultipartException ex)
     {
-        String messageNombreFichiers = messageSiTropDeFichiers(ex);
-        if (messageNombreFichiers != null)
-        {
-            return ResponseEntity.badRequest().body(Map.of("message", messageNombreFichiers));
-        }
-        return ResponseEntity.badRequest().body(Map.of("message",
-            "Erreur lors de l'envoi des fichiers — vérifiez votre connexion et réessayez."));
+        return reponseSpecifique(ex, "Erreur lors de l'envoi des fichiers — vérifiez votre connexion et réessayez.",
+            HttpStatus.BAD_REQUEST);
     }
 
     /**
-     * Cherche un FileCountLimitExceededException dans la chaîne de causes —
-     * seul moyen fiable de reconnaître ce cas précis, son message texte
-     * ("attachment") étant inexploitable. Retourne le message dédié si trouvé,
-     * null sinon (laisse alors l'appelant retomber sur son message générique).
+     * Cherche, dans la chaîne de causes, laquelle des trois limites connues a
+     * été dépassée — nombre de fichiers, taille d'UN fichier, ou taille du lot
+     * entier — pour un message précis à chaque fois plutôt qu'un seul message
+     * générique pour tout dépassement multipart. Retombe sur
+     * {@code messageParDefaut} si la cause ne correspond à aucune des trois
+     * (ex. corps malformé, connexion coupée en cours d'envoi).
      */
-    private String messageSiTropDeFichiers(Throwable ex)
+    private ResponseEntity<Map<String, String>> reponseSpecifique(
+        Throwable ex, String messageParDefaut, HttpStatus statutParDefaut)
     {
         Throwable cause = ex;
         while (cause != null)
         {
             if (cause instanceof FileCountLimitExceededException)
             {
-                return "Trop de fichiers envoyés en une seule fois (maximum " + maxPartCount
-                    + "). Réduisez la taille du lot et réessayez.";
+                return ResponseEntity.badRequest().body(Map.of("message",
+                    "Trop de fichiers envoyés en une seule fois (maximum " + maxPartCount
+                        + "). Réduisez la taille du lot et réessayez."));
+            }
+            if (cause instanceof FileSizeLimitExceededException fsle)
+            {
+                return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE).body(Map.of("message",
+                    "Le fichier \"" + fsle.getFileName() + "\" (" + formatMo(fsle.getActualSize())
+                        + ") dépasse la taille maximale autorisée par fichier (" + formatMo(fsle.getPermittedSize())
+                        + ")."));
+            }
+            if (cause instanceof SizeLimitExceededException sle)
+            {
+                return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE).body(Map.of("message",
+                    "La taille totale des fichiers envoyés (" + formatMo(sle.getActualSize())
+                        + ") dépasse la limite autorisée pour un même lot (" + formatMo(sle.getPermittedSize())
+                        + "). Réduisez le nombre ou la taille des fichiers."));
             }
             cause = cause.getCause();
         }
-        return null;
+        return ResponseEntity.status(statutParDefaut).body(Map.of("message", messageParDefaut));
+    }
+
+    private String formatMo(long octets)
+    {
+        return DataSize.ofBytes(octets).toMegabytes() + " Mo";
     }
 }
