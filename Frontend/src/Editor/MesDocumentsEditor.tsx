@@ -323,7 +323,9 @@ function MesDocumentsEditor({
         idsACharger.forEach(async (id) => {
             let blobUrl: string | null = null;
             try {
-                blobUrl = await streamPdfAAsBlob(id);
+                // 45s — au-delà, on abandonne plutôt que de laisser la carte
+                // tourner indéfiniment (voir streamPdfAAsBlob, DocumentService.ts).
+                blobUrl = await streamPdfAAsBlob(id, 45000);
                 const thumbnail = await renderPdfFirstPageThumbnail(blobUrl);
                 if (!annule) setPreviews(prev => ({ ...prev, [id]: thumbnail }));
             } catch {
@@ -1481,10 +1483,6 @@ function DocumentDetailPanel({
                             {detail.corruptionRaison ? ` (${detail.corruptionRaison})` : ''}
                         </span>
                     </div>
-                    <p className="corruption-banner-note">
-                        Seuls les administrateurs ayant autorité sur son UO et les éditeurs y ayant accès
-                        peuvent encore consulter ou télécharger ce document.
-                    </p>
                     {detail.suppressionPrevueLe && (
                         <p className="corruption-banner-suppression">
                             <i className="fa-solid fa-clock" /> Suppression définitive prévue le{' '}
@@ -1515,10 +1513,6 @@ function DocumentDetailPanel({
                         <i className="fa-solid fa-triangle-exclamation" />
                         <span>Document corrompu{detail.corruptionRaison ? ` — ${detail.corruptionRaison}` : ''}</span>
                     </div>
-                    <p className="corruption-banner-note">
-                        Seuls les administrateurs ayant autorité sur son UO et les éditeurs y ayant accès
-                        peuvent encore consulter ou télécharger ce document.
-                    </p>
 
                     {detail.peutGererCorbeille && (
                         <div className="corruption-banner-actions">
