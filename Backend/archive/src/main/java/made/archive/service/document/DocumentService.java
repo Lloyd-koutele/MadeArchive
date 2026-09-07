@@ -39,14 +39,18 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import jakarta.persistence.criteria.Predicate;
 import java.io.InputStream;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -135,6 +139,11 @@ public class DocumentService
      * Pagination BD, tri par date de création décroissante.
      * Exclut les documents DELETED.
      *
+     * dateDebut/dateFin optionnels — filtre sur la date d'archivage
+     * (createAt), même borne inclusive que DocumentAccessService (début de
+     * journée / fin de journée) pour un comportement cohérent entre "Mes
+     * documents" et "Documents accessibles".
+     *
      * Source : BD uniquement.
      */
     @Transactional(readOnly = true)
@@ -142,6 +151,8 @@ public class DocumentService
         Long typeDocumentId,
         int page,
         int size,
+        LocalDate dateDebut,
+        LocalDate dateFin,
         UserDetails userDetails)
     {
         User user = resolveUser(userDetails);
@@ -152,13 +163,26 @@ public class DocumentService
             Sort.by(Sort.Direction.DESC, "createAt")
         );
 
-        Page<Document> pageResult = documentRepository
-            .findByUploadedByIdAndTypeDocumentIdAndStatusNotIn(
-                user.getId(),
-                typeDocumentId,
-                STATUTS_EXCLUS_LECTURE,
-                pageable
-            );
+        Specification<Document> spec = (root, query, cb) ->
+        {
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(cb.equal(root.get("uploadedBy").get("id"), user.getId()));
+            predicates.add(cb.equal(root.get("typeDocument").get("id"), typeDocumentId));
+            predicates.add(root.get("status").in(STATUTS_EXCLUS_LECTURE).not());
+
+            if (dateDebut != null)
+            {
+                predicates.add(cb.greaterThanOrEqualTo(root.get("createAt"), dateDebut.atStartOfDay()));
+            }
+            if (dateFin != null)
+            {
+                predicates.add(cb.lessThanOrEqualTo(root.get("createAt"), dateFin.atTime(LocalTime.MAX)));
+            }
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+
+        Page<Document> pageResult = documentRepository.findAll(spec, pageable);
 
         List<DocumentListItemDto> items = pageResult.getContent().stream()
             .map(doc -> toListItemDto(doc, user))
@@ -184,7 +208,16 @@ public class DocumentService
      * Filtre optionnel typeDocumentId : restreint la recherche à un type.
      * Le filtre uploadedBy est toujours appliqué côté BD (sécurité).
      *
-     * Si query est vide : délègue à getMesDocumentsByType() ou liste tous.
+     * dateDebut/dateFin optionnels — voir getMesDocumentsByType. Sur la
+     * branche Meilisearch (query non vide), appliqués en mémoire APRÈS le
+     * chargement BD par IDs (comme le filtre uploadedById juste en dessous,
+     * déjà dans ce style) : le total renvoyé peut alors être légèrement
+     * inférieur à la page Meilisearch demandée si des résultats tombent hors
+     * de la période — limite déjà présente sur ce chemin avant ce filtre.
+     *
+     * Si query est vide : délègue à getMesDocumentsByType() ou liste tous
+     * (dateDebut/dateFin ignorés dans ce dernier cas, hors périmètre — pas
+     * de sélecteur de dates sur la vue "tous mes documents").
      */
     @Transactional(readOnly = true)
     public DocumentPageDto rechercher(
@@ -192,6 +225,8 @@ public class DocumentService
         Long typeDocumentId,
         int page,
         int size,
+        LocalDate dateDebut,
+        LocalDate dateFin,
         UserDetails userDetails)
     {
         User user = resolveUser(userDetails);
@@ -201,7 +236,7 @@ public class DocumentService
         {
             if (typeDocumentId != null)
             {
-                return getMesDocumentsByType(typeDocumentId, page, size, userDetails);
+                return getMesDocumentsByType(typeDocumentId, page, size, dateDebut, dateFin, userDetails);
             }
             return getTousMesDocuments(user, page, size);
         }
@@ -219,8 +254,13 @@ public class DocumentService
             .findByIdInAndUploadedByIdAndStatusNotIn(
                 ids, user.getId(), STATUTS_EXCLUS_LECTURE);
 
+        LocalDateTime debut = dateDebut != null ? dateDebut.atStartOfDay()   : null;
+        LocalDateTime fin   = dateFin   != null ? dateFin.atTime(LocalTime.MAX) : null;
+
         // Conserver l'ordre retourné par Meilisearch (pertinence)
         Map<UUID, Document> docMap = documents.stream()
+            .filter(d -> debut == null || !d.getCreateAt().isBefore(debut))
+            .filter(d -> fin   == null || !d.getCreateAt().isAfter(fin))
             .collect(Collectors.toMap(Document::getId, d -> d));
 
         List<DocumentListItemDto> items = ids.stream()

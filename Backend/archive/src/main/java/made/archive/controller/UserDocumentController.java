@@ -166,11 +166,12 @@ public class UserDocumentController
     // ═══════════════════════════════════════════════════════════════════
 
     /**
-     * GET /api/user/docs/par-type/{typeId}?page=1&size=10
+     * GET /api/user/docs/par-type/{typeId}?page=1&size=10&dateDebut=&dateFin=
      *
      * Retourne les documents de l'éditeur pour un type donné.
      * Source : BD uniquement. Tri par date de création décroissante.
-     * Exclut les documents DELETED.
+     * Exclut les documents DELETED. dateDebut/dateFin (ISO yyyy-MM-dd)
+     * optionnels — filtre sur la date d'archivage.
      */
     @Secured("ROLE_EDITOR")
     @GetMapping("/docs/par-type/{typeId}")
@@ -178,12 +179,14 @@ public class UserDocumentController
         @PathVariable Long typeId,
         @RequestParam(defaultValue = "1")  int page,
         @RequestParam(defaultValue = "10") int size,
+        @RequestParam(required = false) java.time.LocalDate dateDebut,
+        @RequestParam(required = false) java.time.LocalDate dateFin,
         @AuthenticationPrincipal UserDetails userDetails)
     {
         try
         {
             DocumentPageDto result = documentService.getMesDocumentsByType(
-                typeId, page, size, userDetails);
+                typeId, page, size, dateDebut, dateFin, userDetails);
             return ResponseEntity.ok(result);
         }
         catch (BusinessException e)
@@ -204,7 +207,7 @@ public class UserDocumentController
     // ═══════════════════════════════════════════════════════════════════
 
     /**
-     * GET /api/user/docs/recherche?q=dupont&typeId=3&page=1&size=10
+     * GET /api/user/docs/recherche?q=dupont&typeId=3&page=1&size=10&dateDebut=&dateFin=
      *
      * Recherche full-text via Meilisearch (retourne des IDs),
      * puis charge les données depuis la BD.
@@ -213,6 +216,8 @@ public class UserDocumentController
      * sinon tous les documents de l'éditeur).
      *
      * typeId est optionnel : si fourni, la recherche est restreinte à ce type.
+     * dateDebut/dateFin (ISO yyyy-MM-dd) optionnels — voir
+     * DocumentService.rechercher pour leur portée exacte selon le chemin.
      */
     @Secured("ROLE_EDITOR")
     @GetMapping("/docs/recherche")
@@ -221,12 +226,14 @@ public class UserDocumentController
         @RequestParam(required = false) Long    typeId,
         @RequestParam(defaultValue = "1")  int page,
         @RequestParam(defaultValue = "10") int size,
+        @RequestParam(required = false) java.time.LocalDate dateDebut,
+        @RequestParam(required = false) java.time.LocalDate dateFin,
         @AuthenticationPrincipal UserDetails userDetails)
     {
         try
         {
             DocumentPageDto result = documentService.rechercher(
-                q, typeId, page, size, userDetails);
+                q, typeId, page, size, dateDebut, dateFin, userDetails);
             return ResponseEntity.ok(result);
         }
         catch (BusinessException e)

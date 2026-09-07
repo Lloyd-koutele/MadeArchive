@@ -216,6 +216,12 @@ function MesDocumentsEditor({
     // ── Recherche ─────────────────────────────────────────────────────────────
     const [searchQuery, setSearchQuery] = useState('');
     const [isSearching, setIsSearching] = useState(false);
+    // Filtre par date d'archivage — propre à la liste des documents D'UN type
+    // (voir loadDocuments) ; se combine avec searchQuery, pas un mode
+    // alternatif. Chaînes ISO yyyy-MM-dd (ou '' = pas de borne), même
+    // convention que DocumentsAccessible.tsx.
+    const [dateDebut, setDateDebut] = useState('');
+    const [dateFin, setDateFin]     = useState('');
 
     // ── Détail document ───────────────────────────────────────────────────────
     const [detail, setDetail]         = useState<DocumentDetailDto | null>(null);
@@ -285,8 +291,8 @@ function MesDocumentsEditor({
         setListLoading(true);
         try {
             const result = q && q.trim()
-                ? await rechercherDocuments(q.trim(), folder.typeDocumentId, page, 10)
-                : await getMesDocumentsByType(folder.typeDocumentId, page, 10);
+                ? await rechercherDocuments(q.trim(), folder.typeDocumentId, page, 15, dateDebut || undefined, dateFin || undefined)
+                : await getMesDocumentsByType(folder.typeDocumentId, page, 15, dateDebut || undefined, dateFin || undefined);
 
             setDocuments(result.content);
             setListTotal(result.totalElements);
@@ -305,7 +311,7 @@ function MesDocumentsEditor({
         } finally {
             setListLoading(false);
         }
-    }, [notify]);
+    }, [notify, dateDebut, dateFin]);
 
     // ─────────────────────────────────────────────────────────────────────────
     // Aperçus PDF pour la vue grille
@@ -358,6 +364,8 @@ function MesDocumentsEditor({
         setActiveFolder(folder);
         setSearchQuery('');
         setIsSearching(false);
+        setDateDebut('');
+        setDateFin('');
         setView('list');
         loadDocuments(folder, 1);
     };
@@ -367,6 +375,8 @@ function MesDocumentsEditor({
         setActiveFolder(null);
         setDocuments([]);
         setSearchQuery('');
+        setDateDebut('');
+        setDateFin('');
     };
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -383,20 +393,18 @@ function MesDocumentsEditor({
     // Recherche au fil de la frappe — Meilisearch répond en quelques ms, pas la
     // peine d'attendre la soumission du formulaire. Debounce léger (250ms) pour
     // ne pas envoyer une requête par caractère ; le bouton/Entrée restent
-    // utilisables pour une recherche immédiate.
+    // utilisables pour une recherche immédiate. Même effet pour dateDebut/
+    // dateFin — un changement de date recharge la page 1 comme un changement
+    // de texte de recherche (loadDocuments lit les deux dans sa fermeture).
     useEffect(() => {
         if (!activeFolder) return;
-        if (!searchQuery.trim()) {
-            if (isSearching) { setIsSearching(false); loadDocuments(activeFolder, 1); }
-            return;
-        }
         const timer = setTimeout(() => {
-            setIsSearching(true);
-            loadDocuments(activeFolder, 1, searchQuery);
+            setIsSearching(!!searchQuery.trim());
+            loadDocuments(activeFolder, 1, searchQuery || undefined);
         }, 250);
         return () => clearTimeout(timer);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [searchQuery, activeFolder]);
+    }, [searchQuery, dateDebut, dateFin, activeFolder]);
 
     const clearSearch = () => {
         setSearchQuery('');
@@ -947,6 +955,39 @@ function MesDocumentsEditor({
                         <i className="fa-solid fa-xmark" />
                     </button>
                 )}
+                {/* Filtre par date d'archivage — même astuce que
+                    DocumentsAccessible.tsx : texte par défaut (placeholder
+                    lisible), bascule en <input type="date"> au focus pour
+                    afficher le sélecteur natif. Se combine avec la recherche
+                    texte ci-dessus (voir loadDocuments), pas un remplacement. */}
+                <input
+                    type={dateDebut ? 'date' : 'text'}
+                    placeholder="Archivé depuis"
+                    aria-label="Archivé depuis"
+                    className="filter-input mes-docs-search-date"
+                    value={dateDebut}
+                    max={dateFin || undefined}
+                    onChange={e => setDateDebut(e.target.value)}
+                    onFocus={e => {
+                        e.target.type = 'date';
+                        try { e.target.showPicker?.(); } catch { /* geste utilisateur requis */ }
+                    }}
+                    onBlur={e => { if (!e.target.value) e.target.type = 'text'; }}
+                />
+                <input
+                    type={dateFin ? 'date' : 'text'}
+                    placeholder="Archivé jusqu'au"
+                    aria-label="Archivé jusqu'au"
+                    className="filter-input mes-docs-search-date"
+                    value={dateFin}
+                    min={dateDebut || undefined}
+                    onChange={e => setDateFin(e.target.value)}
+                    onFocus={e => {
+                        e.target.type = 'date';
+                        try { e.target.showPicker?.(); } catch { /* geste utilisateur requis */ }
+                    }}
+                    onBlur={e => { if (!e.target.value) e.target.type = 'text'; }}
+                />
                 <button
                     type="submit"
                     className="form-submit-btn mes-docs-search-btn"
