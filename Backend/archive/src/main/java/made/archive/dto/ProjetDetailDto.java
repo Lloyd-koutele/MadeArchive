@@ -32,6 +32,12 @@ public class ProjetDetailDto
     /** true si le demandeur courant est le CRÉATEUR du projet — seul habilité à gérer les droits d'accès (GroupeAccess). */
     private boolean peutGererAcces;
 
+    /** true si le demandeur courant peut basculer PUBLIC ↔ PRIVÉ ce projet
+     *  (même autorité que peutGererTypes — voir ProjetService.peutGererProjet ;
+     *  contrairement à peutGererAcces ci-dessus, reste true même si le projet
+     *  est actuellement PUBLIC, pour permettre justement de le rendre privé). */
+    private boolean peutModifierAcces;
+
     @Data
     @Builder
     public static class TypeAttenduDto

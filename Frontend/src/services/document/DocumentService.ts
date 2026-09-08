@@ -153,6 +153,9 @@ export interface DocumentDetailDto {
     projetNom: string | null;
     /** true si l'utilisateur consultant peut rattacher/migrer/détacher ce document d'un projet. */
     peutModifierProjet: boolean;
+    /** true si l'utilisateur consultant peut basculer PUBLIC ↔ PRIVÉ ce document
+     *  (toujours false si le document hérite de la confidentialité d'un projet PRIVÉ). */
+    peutModifierAcces: boolean;
 }
 
 /**
@@ -427,6 +430,28 @@ export const modifierMetaDataDocument = async (
 ): Promise<DocumentDetailDto> => {
     try {
         const response = await api.put(`/user/docs/${id}/metadata`, valeurs);
+        return response.data;
+    } catch (error: any) {
+        throw error.response?.data?.message
+            ? new Error(error.response.data.message)
+            : error;
+    }
+};
+
+/**
+ * PUT /api/user/docs/{id}/acces
+ * Bascule PUBLIC ↔ PRIVÉ après coup — réservé à l'éditeur ayant accès.
+ * Refusé si le document hérite de la confidentialité d'un projet PRIVÉ
+ * (voir DocumentService.modifierAcces côté serveur : il faut alors changer
+ * l'accès du projet, pas celui du document). groupeMembresIds n'a d'effet
+ * que si access passe à 'PRIVE' (membres initiaux du nouveau groupe, en
+ * plus de l'éditeur qui fait la demande).
+ */
+export const modifierAcces = async (
+    id: string, access: 'PUBLIC' | 'PRIVE', groupeMembresIds?: string[]
+): Promise<DocumentDetailDto> => {
+    try {
+        const response = await api.put(`/user/docs/${id}/acces`, { access, groupeMembresIds });
         return response.data;
     } catch (error: any) {
         throw error.response?.data?.message

@@ -71,6 +71,11 @@ public class DocumentDetailDto
      *  d'un projet (même règle que peutModifierEmplacement : éditeur + accès normal au document). */
     private boolean peutModifierProjet;
 
+    /** true si l'utilisateur consultant peut basculer PUBLIC ↔ PRIVÉ sur ce document
+     *  (même règle que peutModifierEmplacement, ET jamais true si le document hérite
+     *  de la confidentialité d'un projet PRIVÉ — voir DocumentService.modifierAcces). */
+    private boolean peutModifierAcces;
+
     @Data
     @Builder
     public static class MetaDataValueDto

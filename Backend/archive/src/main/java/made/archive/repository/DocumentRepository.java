@@ -168,6 +168,14 @@ public interface DocumentRepository extends JpaRepository<Document, UUID>, JpaSp
     boolean existsByProjetId(Long projetId);
 
     /**
+     * Tous les documents (vivants ou non) d'un projet — utilisé par
+     * ProjetService.modifierAcces pour faire suivre PUBLIC↔PRIVÉ aux
+     * documents qui partagent encore le GroupeAccess du projet (jamais ceux
+     * qui ont leur propre confidentialité indépendante, voir sa Javadoc).
+     */
+    List<Document> findByProjetId(Long projetId);
+
+    /**
      * Un emplacement physique est "vide" (donc supprimable, ou son type
      * modifiable — voir PhysicalLocationService) s'il n'a aucun document
      * VIVANT rattaché ; un document déjà tombstoné (DELETED) ne compte pas,

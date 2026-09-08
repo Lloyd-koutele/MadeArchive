@@ -59,6 +59,9 @@ export interface ProjetDetailDto {
     peutGererTypes: boolean;
     /** true si l'utilisateur connecté est le CRÉATEUR du projet — seul habilité à le supprimer et à gérer ses droits d'accès. */
     peutGererAcces: boolean;
+    /** true si l'utilisateur connecté peut basculer PUBLIC ↔ PRIVÉ ce projet
+     *  (reste true même si le projet est actuellement PUBLIC, contrairement à peutGererAcces). */
+    peutModifierAcces: boolean;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -81,7 +84,8 @@ export const creerProjet = async (dto: CreerProjetDto): Promise<ProjetDto> => {
 
 /**
  * PUT /api/editor/projets/{id} — nom/description uniquement, jamais les
- * types attendus (voir ajouterTypesAttendus/retirerTypeAttendu) ni l'accès.
+ * types attendus (voir ajouterTypesAttendus/retirerTypeAttendu) ni l'accès
+ * (voir modifierAccesProjet ci-dessous).
  */
 export const modifierProjet = async (
     id: number,
@@ -93,6 +97,29 @@ export const modifierProjet = async (
     } catch (error: any) {
         throw new Error(
             error.response?.data?.message ?? error.message ?? 'Erreur modification du projet'
+        );
+    }
+};
+
+/**
+ * PUT /api/editor/projets/{id}/acces — bascule PUBLIC ↔ PRIVÉ après coup.
+ * Réservé à un éditeur de la propre UO du projet s'il est actuellement
+ * PUBLIC, ou membre de son groupe d'accès s'il est déjà PRIVÉ (voir
+ * ProjetService.modifierAcces côté serveur). Fait suivre le changement aux
+ * documents du projet qui partagent son groupe — jamais ceux ayant leur
+ * propre confidentialité indépendante. groupeMembresIds n'a d'effet que si
+ * access passe à 'PRIVE' (membres initiaux du nouveau groupe, en plus de
+ * l'éditeur qui fait la demande).
+ */
+export const modifierAccesProjet = async (
+    id: number, access: 'PUBLIC' | 'PRIVE', groupeMembresIds?: string[]
+): Promise<ProjetDto> => {
+    try {
+        const response = await api.put(`/editor/projets/${id}/acces`, { access, groupeMembresIds });
+        return response.data;
+    } catch (error: any) {
+        throw new Error(
+            error.response?.data?.message ?? error.message ?? "Erreur changement d'accès du projet"
         );
     }
 };

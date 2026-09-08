@@ -1111,6 +1111,68 @@ label.bulk-file-item { cursor: pointer; }
     white-space: nowrap;
 }
 
+/* ─── Bascule PUBLIC ↔ PRIVÉ (ChangerAccesPanel.tsx) ───────────────────────
+   Partagée entre documents et projets — voir la Javadoc du composant. */
+.acces-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.85rem;
+    border-radius: var(--radius-sm);
+    border: 1.5px solid var(--border);
+    background: var(--white-choc);
+    color: var(--dark-choc);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background var(--transition), border-color var(--transition);
+}
+
+.acces-toggle-btn:hover:not(:disabled) {
+    background: var(--cream);
+    border-color: var(--dark-choc);
+}
+
+.acces-toggle-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.acces-toggle-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    padding: 0.75rem;
+    background: var(--cream);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+
+.acces-toggle-loading {
+    font-size: 0.82rem;
+    color: var(--text-light);
+    margin: 0;
+}
+
+.acces-toggle-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.acces-toggle-cancel-btn {
+    padding: 0.4rem 0.85rem;
+    border-radius: var(--radius-sm);
+    border: 1.5px solid var(--border);
+    background: var(--white-choc);
+    color: var(--dark-soft);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.acces-toggle-cancel-btn:hover:not(:disabled) { background: var(--cream); }
+.acces-toggle-cancel-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
 /* Responsive nouveaux éléments */
 @media (max-width: 768px) {
     .upload-steps {

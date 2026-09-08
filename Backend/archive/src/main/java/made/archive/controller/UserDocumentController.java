@@ -2,6 +2,7 @@ package made.archive.controller;
 
 import lombok.RequiredArgsConstructor;
 import made.archive.dto.AttestationDto;
+import made.archive.dto.ChangerAccesRequestDto;
 import made.archive.dto.DataTypeDto;
 import made.archive.dto.DocumentAccessFilterDto;
 import made.archive.dto.DocumentDetailDto;
@@ -467,6 +468,33 @@ public class UserDocumentController
         {
             return ResponseEntity.ok(
                 documentService.modifierMetaData(id, nouvellesValeurs, userDetails));
+        }
+        catch (BusinessException e)
+        {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(buildError("BUSINESS_ERROR", e.getMessage()));
+        }
+    }
+
+    /**
+     * PUT /api/user/docs/{id}/acces
+     *
+     * Bascule PUBLIC ↔ PRIVÉ après coup — réservé à l'éditeur ayant accès au
+     * document (voir DocumentService.modifierAcces). Refusé si le document
+     * hérite de la confidentialité d'un projet PRIVÉ (modifiez l'accès du
+     * projet à la place). groupeMembresIds n'a d'effet que si access passe
+     * à PRIVE (nouveaux membres du groupe créé, en plus de l'auteur).
+     */
+    @Secured("ROLE_USER")
+    @PutMapping("/docs/{id}/acces")
+    public ResponseEntity<?> modifierAcces(
+        @PathVariable UUID id,
+        @RequestBody ChangerAccesRequestDto dto,
+        @AuthenticationPrincipal UserDetails userDetails)
+    {
+        try
+        {
+            return ResponseEntity.ok(documentService.modifierAcces(id, dto, userDetails));
         }
         catch (BusinessException e)
         {

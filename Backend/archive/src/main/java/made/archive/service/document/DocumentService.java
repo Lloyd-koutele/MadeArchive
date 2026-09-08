@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import made.archive.config.MeilisearchProperties;
+import made.archive.dto.ChangerAccesRequestDto;
 import made.archive.dto.DocumentDetailDto;
 import made.archive.dto.DocumentFolderDto;
 import made.archive.dto.DocumentListItemDto;
@@ -88,6 +89,7 @@ public class DocumentService
     private final TypeDocumentService typeDocumentService;
     private final ProjetRepository projetRepository;
     private final made.archive.repository.GroupeAccessRepository groupeAccessRepository;
+    private final MeilisearchService meilisearchService;
 
     private static final String INDEX_NAME        = "documents";
 
@@ -341,6 +343,9 @@ public class DocumentService
             .projetNom(doc.getProjet() != null ? doc.getProjet().getNom() : null)
             .peutModifierProjet(estEditeur(user) && getUtilisateursAyantAcces(doc).stream()
                 .anyMatch(u -> u.getId().equals(user.getId())))
+            .peutModifierAcces(estEditeur(user) && getUtilisateursAyantAcces(doc).stream()
+                .anyMatch(u -> u.getId().equals(user.getId()))
+                && !(doc.getProjet() != null && doc.getProjet().getAccess() == TypeAccess.PRIVE))
             .build();
     }
 
@@ -670,6 +675,93 @@ public class DocumentService
             "Emplacement physique du document \"" + doc.getTitre() + "\" changé de "
                 + (ancien != null ? "\"" + ancien.getName() + "\"" : "aucun") + " vers "
                 + (doc.getPhysicalLocation() != null ? "\"" + doc.getPhysicalLocation().getName() + "\"" : "aucun"),
+            true);
+
+        return getDetail(documentId, userDetails);
+    }
+
+    /**
+     * Bascule PUBLIC ↔ PRIVÉ après coup — même règle d'autorisation que
+     * modifierEmplacementPhysique/modifierMetaData (éditeur de la liste
+     * d'accès normale du document).
+     *
+     * Un document rattaché à un projet PRIVÉ hérite de sa confidentialité
+     * (voir DocumentUploadeService) et PARTAGE le GroupeAccess du projet —
+     * son accès n'est donc jamais modifiable indépendamment ici, seulement
+     * via l'accès du projet lui-même (ProjetService.modifierAcces).
+     *
+     * PUBLIC → PRIVÉ : crée un NOUVEAU GroupeAccess (jamais un groupe
+     * partagé, contrairement au cas "hérite d'un projet" ci-dessus), seedé
+     * avec l'auteur de la demande + les membres optionnellement fournis —
+     * même logique qu'à l'upload direct (DocumentUploadeService).
+     *
+     * PRIVÉ → PUBLIC : détache le groupe (document.groupe = null) sans le
+     * supprimer — aucun endroit de cette appli ne supprime jamais une ligne
+     * GroupeAccess (voir DocumentService.modifierProjetDocument, qui clone
+     * plutôt que de toucher au groupe existant) ; il devient simplement
+     * orphelin, conservé pour trace.
+     */
+    @Transactional
+    public DocumentDetailDto modifierAcces(
+        UUID documentId, ChangerAccesRequestDto dto, UserDetails userDetails)
+    {
+        User user    = resolveUser(userDetails);
+        Document doc = resolveDocument(documentId, user);
+
+        boolean autorise = estEditeur(user) && getUtilisateursAyantAcces(doc).stream()
+            .anyMatch(u -> u.getId().equals(user.getId()));
+        if (!autorise)
+        {
+            throw new BusinessException(
+                "Seul un éditeur ayant accès à ce document peut modifier son accès");
+        }
+
+        if (doc.getProjet() != null && doc.getProjet().getAccess() == TypeAccess.PRIVE)
+        {
+            throw new BusinessException(
+                "Ce document hérite de la confidentialité de son projet (\"" + doc.getProjet().getNom()
+                + "\") — modifiez l'accès du projet plutôt que celui de ce document");
+        }
+
+        TypeAccess ancienAcces = doc.getAccess();
+        if (dto.getAccess() == null || dto.getAccess() == ancienAcces)
+        {
+            return getDetail(documentId, userDetails);
+        }
+
+        if (dto.getAccess() == TypeAccess.PRIVE)
+        {
+            GroupeAccess g = new GroupeAccess();
+            g.setCreateAt(LocalDate.now());
+
+            List<User> membres = new ArrayList<>();
+            membres.add(user);
+            if (dto.getGroupeMembresIds() != null && !dto.getGroupeMembresIds().isEmpty())
+            {
+                List<User> autres = userRepository.findAllById(
+                    dto.getGroupeMembresIds().stream()
+                        .filter(id -> !id.equals(user.getId()))
+                        .toList());
+                membres.addAll(autres);
+            }
+            g.setMembres(membres);
+            doc.setGroupe(groupeAccessRepository.save(g));
+        }
+        else
+        {
+            doc.setGroupe(null);
+        }
+
+        doc.setAccess(dto.getAccess());
+        documentRepository.save(doc);
+
+        meilisearchService.updateDocumentAccess(doc);
+
+        auditLogService.log(user, AuditAction.DOCUMENT_ACCES_MODIFIE, AuditCible.DOCUMENT,
+            doc.getId().toString(),
+            doc.getUniteOrganisationnelle() != null ? doc.getUniteOrganisationnelle().getId() : null,
+            "Accès du document \"" + doc.getTitre() + "\" changé de " + ancienAcces
+                + " à " + dto.getAccess(),
             true);
 
         return getDetail(documentId, userDetails);

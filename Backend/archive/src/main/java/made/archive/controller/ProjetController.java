@@ -1,6 +1,7 @@
 package made.archive.controller;
 
 import lombok.RequiredArgsConstructor;
+import made.archive.dto.ChangerAccesRequestDto;
 import made.archive.dto.ProjetDto;
 import made.archive.entite.Projet;
 import made.archive.security.UserDetailsImpl;
@@ -76,6 +77,31 @@ public class ProjetController
         {
             return ResponseEntity.badRequest().body(Map.of("message",
                 "Erreur lors de la modification du projet : " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Bascule PUBLIC ↔ PRIVÉ après coup — voir ProjetService.modifierAcces
+     * pour l'autorité requise et l'effet sur les documents du projet.
+     * groupeMembresIds n'a d'effet que si access passe à PRIVE (membres
+     * initiaux du nouveau groupe, en plus de l'acteur).
+     */
+    @Secured("ROLE_EDITOR")
+    @PutMapping("/{id}/acces")
+    public ResponseEntity<?> modifierAcces(
+        @PathVariable Long id,
+        @RequestBody ChangerAccesRequestDto dto,
+        @AuthenticationPrincipal UserDetailsImpl currentUser)
+    {
+        try
+        {
+            Projet projet = projetService.modifierAcces(id, dto, currentUser.getUser());
+            return ResponseEntity.ok(projet);
+        }
+        catch (Exception e)
+        {
+            return ResponseEntity.badRequest().body(Map.of("message",
+                "Erreur lors du changement d'accès du projet : " + e.getMessage()));
         }
     }
 
