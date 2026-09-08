@@ -405,11 +405,14 @@ public class UserService
     /**
      * Annule une suppression en attente (voir demanderSuppression) — le compte
      * n'a encore rien perdu d'irréversible, la seule chose à défaire est le
-     * blocage. Même modèle d'autorité que demanderSuppression : n'importe quel
-     * ADMIN peut annuler, un ADMIN_UO seulement dans son sous-arbre et jamais sur
-     * un ADMIN/ADMIN_UO — c'est précisément ce qui permet à un AUTRE administrateur
-     * de contrer une suppression demandée par un compte ADMIN malveillant ou
-     * compromis avant qu'elle ne s'exécute.
+     * blocage. Même modèle d'autorité que demanderSuppression (les deux cas) :
+     * un ADMIN_UO ne peut jamais viser un ADMIN global (blocage absolu), mais
+     * PEUT viser un autre ADMIN_UO — comme n'importe quelle autre cible, scopé
+     * par autorité (sa UO ou une UO descendante, voir aAutoriteSurUtilisateur),
+     * pas un blocage inconditionnel. C'est précisément ce qui permet à un AUTRE
+     * administrateur (global, ou ADMIN_UO ayant autorité) de contrer une
+     * suppression demandée par un compte malveillant ou compromis avant
+     * qu'elle ne s'exécute.
      */
     @Transactional
     public void annulerSuppression(UUID id, User currentUser)
@@ -428,12 +431,15 @@ public class UserService
         }
 
         boolean cibleEstAdmin = cible.getRoles().stream().anyMatch(r -> r.getName() == Role_Name.ADMIN);
-        boolean cibleEstAdminUo = cible.getRoles().stream().anyMatch(r -> r.getName() == Role_Name.ADMIN_UO);
         boolean acteurEstAdmin = currentUser.getRoles().stream().anyMatch(r -> r.getName() == Role_Name.ADMIN);
 
         if (!acteurEstAdmin)
         {
-            if (cibleEstAdmin || cibleEstAdminUo)
+            // ADMIN_UO : jamais sur un ADMIN global — blocage absolu, quelle
+            // que soit la UO. Un ADMIN_UO ciblant un AUTRE ADMIN_UO (ou un
+            // simple EDITOR/USER) n'est PAS bloqué ici — juste scopé par
+            // autorité juste en dessous, comme toute autre cible.
+            if (cibleEstAdmin)
             {
                 throw new AccessDeniedException("Vous n'avez pas l'autorité pour annuler cette suppression");
             }
