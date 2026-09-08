@@ -123,15 +123,44 @@ class UserServiceTest
     }
 
     @Test
-    void unAdminUoNePeutPasDemanderLaSuppressionDUnAutreAdminUo()
+    void unAdminUoNePeutPasSupprimerUnAutreAdminUoHorsDeSonAutorite()
     {
+        // Un ADMIN_UO n'est PLUS bloqué inconditionnellement sur un autre
+        // ADMIN_UO — il reste scopé par autorité (sa UO ou une UO descendante),
+        // exactement comme pour n'importe quelle autre cible. Ici l'autorité
+        // est explicitement absente (hors de son sous-arbre).
         User adminUo = utilisateur(Role_Name.ADMIN_UO);
         User cibleAdminUo = utilisateur(Role_Name.ADMIN_UO);
 
         when(userRepository.findById(cibleAdminUo.getId())).thenReturn(Optional.of(cibleAdminUo));
+        when(uniteOrganisationnelleService.aAutoriteSurUtilisateur(cibleAdminUo.getId(), adminUo))
+            .thenReturn(false);
 
         assertThatThrownBy(() -> service.demanderSuppression(cibleAdminUo.getId(), adminUo))
             .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    void unAdminUoPeutSupprimerUnAutreAdminUoDeSaPropreAutorite()
+    {
+        // Nouveau comportement demandé : un ADMIN_UO PEUT désormais demander la
+        // suppression d'un autre ADMIN_UO tant que celui-ci relève de sa UO ou
+        // d'une UO descendante — seul un ADMIN global reste hors de portée
+        // (voir unAdminUoNePeutPasDemanderLaSuppressionDUnAdmin ci-dessus).
+        User adminUo = utilisateur(Role_Name.ADMIN_UO);
+        User cibleAdminUo = utilisateur(Role_Name.ADMIN_UO);
+
+        when(userRepository.findById(cibleAdminUo.getId())).thenReturn(Optional.of(cibleAdminUo));
+        when(uniteOrganisationnelleService.aAutoriteSurUtilisateur(cibleAdminUo.getId(), adminUo))
+            .thenReturn(true);
+        when(journalAuditRepository.existsByActeurIdAndAction(cibleAdminUo.getId(), AuditAction.LOGIN_REUSSI))
+            .thenReturn(true);
+
+        boolean immediat = service.demanderSuppression(cibleAdminUo.getId(), adminUo);
+
+        assertThat(immediat).isFalse();
+        assertThat(cibleAdminUo.isActif()).isFalse();
+        assertThat(cibleAdminUo.getSuppressionPrevueLe()).isEqualTo(LocalDate.now().plusDays(2));
     }
 
     @Test

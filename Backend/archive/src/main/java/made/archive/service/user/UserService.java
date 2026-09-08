@@ -302,11 +302,15 @@ public class UserService
      * annulerSuppression), et programme l'exécution réelle (logique, voir
      * executerSuppressionsEnAttente) après DELAI_GRACE_SUPPRESSION_JOURS.
      *
-     * Autorité (les deux cas) : même modèle que retirerMembre — un ADMIN_UO ne
-     * peut jamais viser un ADMIN ni un autre ADMIN_UO (même dans son propre
-     * sous-arbre), et doit avoir autorité sur l'UO actuelle de la cible. Un ADMIN
-     * peut tout, sauf se supprimer lui-même et sauf supprimer le dernier ADMIN du
-     * système (sans quoi plus personne ne pourrait administrer l'application).
+     * Autorité (les deux cas) : un ADMIN_UO ne peut jamais viser un ADMIN
+     * global (blocage absolu), mais PEUT viser un autre ADMIN_UO — comme
+     * n'importe quelle autre cible, scopé par autorité (sa UO ou une UO
+     * descendante, voir aAutoriteSurUtilisateur), pas un blocage inconditionnel.
+     * Un ADMIN global peut tout, sauf se supprimer lui-même (personne ne peut
+     * se supprimer soi-même, quel que soit son rôle — vérifié plus haut) et
+     * sauf supprimer le dernier ADMIN du système (sans quoi plus personne ne
+     * pourrait administrer l'application) — cette dernière garde ne concerne
+     * QUE le rôle ADMIN global, jamais le nombre d'ADMIN_UO d'une UO.
      *
      * @return true si la suppression a été exécutée immédiatement (jamais
      *         connecté), false si elle a seulement été programmée.
@@ -336,15 +340,15 @@ public class UserService
         }
 
         boolean cibleEstAdmin = cible.getRoles().stream().anyMatch(r -> r.getName() == Role_Name.ADMIN);
-        boolean cibleEstAdminUo = cible.getRoles().stream().anyMatch(r -> r.getName() == Role_Name.ADMIN_UO);
         boolean acteurEstAdmin = currentUser.getRoles().stream().anyMatch(r -> r.getName() == Role_Name.ADMIN);
 
         if (!acteurEstAdmin)
         {
-            // ADMIN_UO : jamais sur un ADMIN ni un autre ADMIN_UO — même garde que
-            // UniteOrganisationnelleService.retirerMembre, pour une action bien plus
-            // grave (irréversible, même différée) que le retrait.
-            if (cibleEstAdmin || cibleEstAdminUo)
+            // ADMIN_UO : jamais sur un ADMIN global — blocage absolu, quelle
+            // que soit l'UO. Un ADMIN_UO ciblant un AUTRE ADMIN_UO (ou un
+            // simple EDITOR/USER) n'est PAS bloqué ici — juste scopé par
+            // autorité juste en dessous, comme toute autre cible.
+            if (cibleEstAdmin)
             {
                 throw new AccessDeniedException("Vous n'avez pas l'autorité pour supprimer ce compte");
             }
