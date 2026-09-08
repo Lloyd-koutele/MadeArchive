@@ -2,6 +2,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS uk_membre_uo_user_actif
 ON membres_uo (user_id)
 WHERE actif = true;
 
+-- fixity_check_results.checked_at : DATE → TIMESTAMPTZ. Hibernate ddl-auto=update
+-- n'altère jamais le type d'une colonne EXISTANTE (seulement les ajouts) — sans
+-- cette migration explicite, l'entité passée en Instant échouerait à l'écriture
+-- ("column checked_at is of type date but expression is of type timestamp").
+-- Idempotent : reconvertir une colonne déjà timestamptz est un no-op, sûr à
+-- rejouer à chaque démarrage comme le reste de ce fichier. Nécessaire pour
+-- distinguer "vérifié il y a 2h" de "vérifié il y a 20h" (dédoublonnage des
+-- déclenchements manuels du contrôle d'intégrité, voir FixityCheckAsyncExecutor)
+-- — une simple date ne le permettait pas.
+ALTER TABLE fixity_check_results
+    ALTER COLUMN checked_at TYPE timestamptz USING checked_at::timestamptz;
+
 ALTER TABLE journal_audit DROP CONSTRAINT IF EXISTS journal_audit_action_check;
 ALTER TABLE journal_audit ADD CONSTRAINT journal_audit_action_check CHECK (action::text = ANY (ARRAY[
     'LOGIN_REUSSI','LOGIN_ECHOUE','LOGOUT','TOKEN_RAFRAICHI','SESSION_INVALIDEE',

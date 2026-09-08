@@ -1,6 +1,9 @@
 package made.archive.service.document;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.scheduling.annotation.Async;
@@ -13,6 +16,7 @@ import made.archive.entite.DocumentStatus;
 import made.archive.entite.NotificationType;
 import made.archive.entite.User;
 import made.archive.repository.DocumentRepository;
+import made.archive.repository.FixityCheckResultRepository;
 import made.archive.service.notification.NotificationService;
 
 /**
@@ -30,8 +34,15 @@ import made.archive.service.notification.NotificationService;
 @RequiredArgsConstructor
 public class FixityCheckAsyncExecutor
 {
+    /** Même fenêtre que le cooldown de périmètre (FixityCheckTriggerService)
+     *  — un document déjà vérifié dans cette fenêtre n'est pas revérifié,
+     *  même redemandé via un périmètre DIFFÉRENT de celui qui l'a couvert la
+     *  première fois (ex. son type, puis son UO qui le contient). */
+    private static final Duration FENETRE_DEDOUBLONNAGE = Duration.ofHours(6);
+
     private final FixityCheckService fixityCheckService;
     private final DocumentRepository documentRepository;
+    private final FixityCheckResultRepository fixityCheckResultRepository;
     private final NotificationService notificationService;
 
     @Async
@@ -40,33 +51,42 @@ public class FixityCheckAsyncExecutor
     {
         try
         {
-            List<Document> resultats = switch (portee)
+            // Résolution UNIFIÉE des trois périmètres en simples listes d'IDs
+            // — permet d'appliquer le même dédoublonnage aux trois, sans
+            // dupliquer la logique. Volontairement PAS fixityCheckService
+            // .verifyAllDocuments() ici pour "TOUT" (elle, réservée à
+            // FixityCheckScheduler, ne doit jamais rien sauter).
+            List<UUID> candidats = switch (portee)
             {
-                case TOUT -> fixityCheckService.verifyAllDocuments();
-                case TYPES ->
-                {
-                    List<UUID> ids = documentRepository.findIdsByTypeDocumentIdIn(typeDocumentIds);
-                    yield fixityCheckService.verifyDocumentsByIds(ids);
-                }
-                case UO ->
-                {
-                    List<UUID> ids = documentRepository.findIdsByUniteOrganisationnelleIdIn(uoIds);
-                    yield fixityCheckService.verifyDocumentsByIds(ids);
-                }
+                case TOUT -> documentRepository.findAllIds();
+                case TYPES -> documentRepository.findIdsByTypeDocumentIdIn(typeDocumentIds);
+                case UO -> documentRepository.findIdsByUniteOrganisationnelleIdIn(uoIds);
             };
+
+            Instant depuis = Instant.now().minus(FENETRE_DEDOUBLONNAGE);
+            Set<UUID> dejaVerifies = candidats.isEmpty()
+                ? Set.of()
+                : fixityCheckResultRepository.findDocumentIdsCheckedSince(candidats, depuis);
+
+            List<UUID> aVerifier = candidats.stream()
+                .filter(id -> !dejaVerifies.contains(id))
+                .toList();
+
+            List<Document> resultats = fixityCheckService.verifyDocumentsByIds(aVerifier);
 
             long corrompus = resultats.stream()
                 .filter(d -> d.getStatus() == DocumentStatus.CORRUPTED)
                 .count();
 
             String message = "Contrôle d'intégrité terminé — périmètre : " + libellePortee + ". "
-                + resultats.size() + " document(s) dans le périmètre, " + corrompus
-                + " actuellement marqué(s) CORROMPU (nouveaux ou déjà connus — les documents déjà "
-                + "corrompus ou supprimés ne sont pas revérifiés).";
+                + candidats.size() + " document(s) dans le périmètre, " + dejaVerifies.size()
+                + " déjà vérifié(s) il y a moins de 6h (ignoré(s)), " + resultats.size()
+                + " réellement vérifié(s) cette fois, " + corrompus + " actuellement marqué(s) CORROMPU.";
 
             notificationService.notifier(List.of(demandeur), NotificationType.FIXITY_CHECK_TERMINE, message);
-            log.info("[FixityTrigger] Terminé — {} — {} document(s), {} corrompu(s)",
-                libellePortee, resultats.size(), corrompus);
+            log.info("[FixityTrigger] Terminé — {} — {} candidat(s), {} ignoré(s) (déjà vérifiés), "
+                + "{} vérifié(s), {} corrompu(s)",
+                libellePortee, candidats.size(), dejaVerifies.size(), resultats.size(), corrompus);
         }
         catch (Exception e)
         {

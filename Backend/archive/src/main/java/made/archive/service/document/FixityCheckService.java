@@ -24,7 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.InputStream;
-import java.time.LocalDate;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -197,7 +197,7 @@ public class FixityCheckService
                 fixityCheckResult.setDocument(document);
             }
 
-            fixityCheckResult.setCheckedAt(LocalDate.now());
+            fixityCheckResult.setCheckedAt(Instant.now());
             fixityCheckResult.setResult(result);
             fixityCheckResult.setRaison(raison);
             fixityCheckResultRepository.save(fixityCheckResult);

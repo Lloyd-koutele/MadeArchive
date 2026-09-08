@@ -6,7 +6,7 @@ import jakarta.persistence.JoinColumn;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import java.time.LocalDate;
+import java.time.Instant;
 import java.util.UUID;
 import jakarta.persistence.Column;
 import jakarta.persistence.GeneratedValue;
@@ -35,8 +35,12 @@ public class FixityCheckResult
     @JsonIgnore
     private Document document;
 
+    // Instant (pas LocalDate) — nécessaire pour comparer "vérifié il y a moins
+    // de 6h" (dédoublonnage des déclenchements manuels, voir
+    // FixityCheckAsyncExecutor) : une simple date ne distingue pas "vérifié il
+    // y a 2h" de "vérifié il y a 20h" si les deux tombent le même jour.
     @Column(nullable = false)
-    private LocalDate checkedAt;
+    private Instant checkedAt;
 
 
     @Column(nullable = false, length = 50)
