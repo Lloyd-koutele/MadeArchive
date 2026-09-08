@@ -9,12 +9,15 @@ import made.archive.entite.TypeAccess;
 /**
  * Projection dédiée à DocumentExportGenerationService — ne charge QUE les
  * colonnes réellement nécessaires à la génération du ZIP, contrairement à
- * `Document` entier (via JOIN FETCH ou findAllById), dont la matérialisation
- * complète touche `horodatageToken` (@Lob). Postgres exige une transaction
- * explicite (pas auto-commit) pour streamer un Large Object, ce que ce
- * traitement @Async n'a jamais — "Large Objects may not be used in
- * auto-commit mode", constaté en conditions réelles. Ne jamais élargir cette
- * projection pour inclure des champs @Lob.
+ * `Document` entier (via JOIN FETCH ou findAllById). Historiquement motivé
+ * par `horodatageToken`, alors mappé en Large Object Postgres (@Lob sur un
+ * byte[] — voir Document.horodatageToken) : le matérialiser exigeait une
+ * transaction explicite, absente de ce traitement @Async ("Large Objects
+ * may not be used in auto-commit mode", constaté en conditions réelles).
+ * horodatageToken est désormais en bytea (voir schema.sql), donc cette
+ * contrainte précise n'existe plus — la projection reste volontairement
+ * étroite malgré tout : aucune raison de charger des colonnes binaires
+ * inutiles à la génération du ZIP.
  */
 public record DocumentExportRow(
     UUID id,
