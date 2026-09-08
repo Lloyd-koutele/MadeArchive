@@ -22,6 +22,19 @@ public interface DocumentRepository extends JpaRepository<Document, UUID>, JpaSp
     List<Document> findByTypeDocument_Id(Long id);
 
     /**
+     * IDs seulement (pas l'entité complète) — utilisé par
+     * FixityCheckTriggerService pour un déclenchement manuel scopé par type(s),
+     * avant de déléguer à FixityCheckService.verifyDocumentsByIds (qui, lui,
+     * recharge chaque Document individuellement au moment de le vérifier).
+     */
+    @Query("SELECT d.id FROM Document d WHERE d.typeDocument.id IN :typeIds")
+    List<UUID> findIdsByTypeDocumentIdIn(@Param("typeIds") Collection<Long> typeIds);
+
+    /** Même usage que ci-dessus, scopé par UO(s) — voir FixityCheckTriggerService. */
+    @Query("SELECT d.id FROM Document d WHERE d.uniteOrganisationnelle.id IN :uoIds")
+    List<UUID> findIdsByUniteOrganisationnelleIdIn(@Param("uoIds") Collection<Long> uoIds);
+
+    /**
      * Tous les IDs de documents "vivants et normalement recherchables" — la
      * seule vérité sur ce qui a le droit de rester indexé dans Meilisearch.
      * Exclut DELETED (tombstoné) ET CORBEILLE (mis de côté volontairement,

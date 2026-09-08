@@ -99,5 +99,11 @@ public enum AuditAction
      *  demandeur saute aux yeux dans le journal plutôt que d'être noyé parmi
      *  les exports ordinaires — voir DocumentExportService. */
     EXPORT_DOCUMENTS_PRIVES_INCLUS,
-    EXPORT_TELECHARGE
+    EXPORT_TELECHARGE,
+
+    // ── Contrôle d'intégrité (fixity check) ───────────────────────────────────
+    /** Vérification déclenchée manuellement (par opposition à la tâche planifiée
+     *  quotidienne, voir FixityCheckScheduler) — journalise le périmètre demandé,
+     *  pas chaque document vérifié individuellement (déjà trop de volume pour ça). */
+    FIXITY_CHECK_DEMANDE
 }

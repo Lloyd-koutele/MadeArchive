@@ -59,6 +59,16 @@ public class RedisCacheConfig
     /** Liaisons UO→parent — voir UOTreeCacheService. */
     public static final String CACHE_UO_ARBRE = "uoArbreCache";
 
+    /** Anti-rafale pour le déclenchement MANUEL du contrôle d'intégrité (fixity
+     *  check) — voir FixityCheckTriggerService. Une entrée par périmètre
+     *  individuel ("type:{id}", "uo:{id}", ou "tout") ; sa seule PRÉSENCE
+     *  signifie "en cooldown", sa valeur (l'instant du dernier déclenchement)
+     *  ne sert qu'à composer un message d'erreur précis ("réessayez après
+     *  HH:mm"). Le TTL Redis EST le mécanisme de cooldown lui-même — pas
+     *  besoin de comparer des dates en code, l'entrée disparaît d'elle-même
+     *  quand la fenêtre est passée. */
+    public static final String CACHE_FIXITY_COOLDOWN = "fixityCheckCooldownCache";
+
     @Bean
     public RedisCacheManager cacheManager(RedisConnectionFactory connectionFactory)
     {
@@ -76,9 +86,15 @@ public class RedisCacheConfig
                 .fromSerializer(new Jackson2JsonRedisSerializer<List<UOParentIdPair>>(mapper, listeLiaisons)))
             .entryTtl(Duration.ofMinutes(30));
 
+        RedisCacheConfiguration fixityCooldownConfig = baseConfig()
+            .serializeValuesWith(RedisSerializationContext.SerializationPair
+                .fromSerializer(new Jackson2JsonRedisSerializer<>(mapper, java.time.Instant.class)))
+            .entryTtl(Duration.ofHours(6));
+
         Map<String, RedisCacheConfiguration> parCache = Map.of(
             CACHE_USER_AUTH, userAuthConfig,
-            CACHE_UO_ARBRE, uoArbreConfig
+            CACHE_UO_ARBRE, uoArbreConfig,
+            CACHE_FIXITY_COOLDOWN, fixityCooldownConfig
         );
 
         return RedisCacheManager.builder(connectionFactory)
