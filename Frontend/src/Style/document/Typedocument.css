@@ -335,6 +335,20 @@
 
 .td-delete-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
+/* Variante icône seule (ligne du tableau) — .td-delete-btn de base garde son
+   padding textuel pour "Supprimer la sélection" (barre de sélection groupée,
+   toujours en texte) ; cette variante ne s'applique qu'au bouton par ligne,
+   devenu une icône corbeille seule (voir TypedocumentList.tsx). Même gabarit
+   que PhysicalLocationsPanel.css (.pl-actions button, 28x28 centré). */
+.td-delete-btn-icon {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
 /* ─── Détail ─── */
 .td-detail { display: flex; flex-direction: column; gap: 0; }
 
@@ -779,9 +793,21 @@
    jamais se dupliquer avec les boutons autonomes au-dessus de 1100px. */
 .td-menu-item-compact { display: none; }
 
+/* Le bouton "..." lui-même (pas seulement ses entrées, ci-dessus) ne doit
+   apparaître QUE comme repli sous 1100px en vue LISTE — sans cette règle, le
+   ".action-menu-wrapper" (partagé avec la vue grille, voir plus haut) reste
+   visible en permanence au-dessus de 1100px : un bouton "..." qui s'ouvre sur
+   un menu vide (ses entrées étant déjà masquées par .td-menu-item-compact),
+   affiché à côté des 3 boutons autonomes qui font déjà le même travail.
+   .td-menu-compact-only n'est posée que sur l'appel compact=true (voir
+   renderMenu) — jamais sur celui de la vue grille (compact=false), qui doit
+   rester visible à toute largeur, seul point d'action de la carte. */
+.td-menu-compact-only { display: none; }
+
 @media (max-width: 1100px) {
     .td-actions-standalone { display: none; }
     .td-menu-item-compact { display: block; }
+    .td-menu-compact-only { display: inline-flex; }
 }
 
 /* Responsive */
