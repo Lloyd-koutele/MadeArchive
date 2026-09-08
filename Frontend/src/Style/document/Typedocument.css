@@ -287,6 +287,11 @@
    cliquable pour cocher/décocher, curseur adapté pour le signaler. */
 .td-table tbody tr.td-row-selectable { cursor: pointer; user-select: none; }
 
+/* Colonne de la case à cocher — n'existe dans le DOM qu'en mode sélection
+   (voir selectionModeActive dans TypedocumentList.tsx), jamais affichée par
+   défaut. */
+.td-select-col { width: 2rem; text-align: center; }
+
 .td-table tbody td {
     padding: 0.6rem 1rem;
     color: var(--dark-choc);
@@ -510,6 +515,22 @@
     margin-bottom: 1rem;
     font-size: 0.85rem;
 }
+
+.td-cancel-selection-btn {
+    padding: 0.35rem 0.85rem;
+    border-radius: var(--radius-sm);
+    border: 1.5px solid var(--border);
+    background: var(--white-choc);
+    color: var(--dark-soft);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.td-cancel-selection-btn:hover:not(:disabled) { background: var(--cream); }
+.td-cancel-selection-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .td-bulk-hint {
     margin-left: auto;

@@ -31,6 +31,14 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
     const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
     const [isLoading, setIsLoading] = useState(true);
 
+    // Cases à cocher masquées par défaut (vue liste) — n'apparaissent qu'en
+    // mode sélection, activé par un clic droit ou un appui prolongé sur une
+    // ligne (même mécanique que document/DocumentsAccessible.tsx et
+    // Editor/MesDocumentsEditor.tsx pour les documents).
+    const [selectionModeActive, setSelectionModeActive] = useState(false);
+    const longPressTimer = useRef<number | null>(null);
+    const LONG_PRESS_MS = 500;
+
     // Vue liste (tableau) / grille (cartes) — même bascule que côté éditeur
     // pour les documents (voir document/DocumentsAccessible.tsx), adaptée ici
     // pour des types de document (pas d'aperçu PDF, juste les métadonnées).
@@ -71,6 +79,7 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
     const fetchAll = async () => {
         setIsLoading(true);
         setSelectedIds(new Set());
+        setSelectionModeActive(false);
         try {
             const data = uoId === null ? await getAllTypeDocuments() : await getTypeDocumentsByUO(uoId);
             setTypeDocuments(data);
@@ -89,8 +98,47 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
         setSelectedIds(prev => {
             const next = new Set(prev);
             if (next.has(id)) next.delete(id); else next.add(id);
+            // Plus rien coché → on quitte le mode sélection tout seul, pas
+            // besoin de rester avec des cases vides à l'écran.
+            if (next.size === 0) setSelectionModeActive(false);
             return next;
         });
+    };
+
+    const toggleSelectAll = () => {
+        const tousLesIds = typeDocumentsFiltres.map(td => td.id!);
+        setSelectedIds(prev => {
+            const toutCoche = tousLesIds.length > 0 && tousLesIds.every(id => prev.has(id));
+            if (toutCoche) setSelectionModeActive(false);
+            return toutCoche ? new Set() : new Set(tousLesIds);
+        });
+    };
+
+    // Active le mode sélection (cases à cocher visibles) — déclenché par un
+    // clic droit ou un appui prolongé sur une ligne, jamais par défaut.
+    const activateSelectionMode = (id: number) => {
+        setSelectionModeActive(true);
+        setSelectedIds(prev => new Set(prev).add(id));
+    };
+
+    const annulerSelection = () => {
+        setSelectedIds(new Set());
+        setSelectionModeActive(false);
+    };
+
+    const handleRowTouchStart = (id: number) => {
+        if (longPressTimer.current) window.clearTimeout(longPressTimer.current);
+        longPressTimer.current = window.setTimeout(() => {
+            activateSelectionMode(id);
+            longPressTimer.current = null;
+        }, LONG_PRESS_MS);
+    };
+
+    const handleRowTouchEnd = () => {
+        if (longPressTimer.current) {
+            window.clearTimeout(longPressTimer.current);
+            longPressTimer.current = null;
+        }
     };
 
     const executerSuppression = async (cible: TypeDocumentDto | 'selection') => {
@@ -316,6 +364,9 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
                     <button className="td-delete-btn" onClick={handleBulkDeleteRequest} disabled={deleteInProgress}>
                         Supprimer la sélection
                     </button>
+                    <button className="td-cancel-selection-btn" onClick={annulerSelection} disabled={deleteInProgress}>
+                        Annuler la sélection
+                    </button>
                     <span className="td-bulk-hint">Glissez la sélection vers une UO pour la dupliquer là-bas</span>
                 </div>
             )}
@@ -395,7 +446,21 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
                     <table className="td-table">
                         <thead>
                             <tr>
-                                <th></th>
+                                {selectionModeActive && (
+                                    <th className="td-select-col">
+                                        <input
+                                            type="checkbox"
+                                            checked={
+                                                typeDocumentsFiltres.length > 0
+                                                && typeDocumentsFiltres.every(td => selectedIds.has(td.id!))
+                                            }
+                                            onChange={toggleSelectAll}
+                                            onClick={e => e.stopPropagation()}
+                                            aria-label="Tout sélectionner"
+                                            title="Tout sélectionner"
+                                        />
+                                    </th>
+                                )}
                                 <th>Nom</th>
                                 <th>Rétention (ans)</th>
                                 <th className="td-col-grace">Période de grâce (j)</th>
@@ -410,15 +475,26 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
                                     draggable
                                     onDragStart={(e) => handleDragStart(e, td)}
                                     onDoubleClick={() => { setViewingTd(td); setIsViewModalOpen(true); }}
-                                    className={selectedIds.has(td.id!) ? 'td-row-selected' : ''}
+                                    onClick={() => { if (selectionModeActive) toggleSelect(td.id!); }}
+                                    onContextMenu={e => { e.preventDefault(); activateSelectionMode(td.id!); }}
+                                    onTouchStart={() => handleRowTouchStart(td.id!)}
+                                    onTouchEnd={handleRowTouchEnd}
+                                    onTouchMove={handleRowTouchEnd}
+                                    className={[
+                                        selectedIds.has(td.id!) ? 'td-row-selected' : '',
+                                        selectionModeActive ? 'td-row-selectable' : '',
+                                    ].filter(Boolean).join(' ')}
                                 >
-                                    <td onDoubleClick={(e) => e.stopPropagation()}>
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedIds.has(td.id!)}
-                                            onChange={() => toggleSelect(td.id!)}
-                                        />
-                                    </td>
+                                    {selectionModeActive && (
+                                        <td className="td-select-col" onClick={e => e.stopPropagation()}>
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedIds.has(td.id!)}
+                                                onChange={() => toggleSelect(td.id!)}
+                                                aria-label={`Sélectionner ${td.nom}`}
+                                            />
+                                        </td>
+                                    )}
                                     <td className="td-nom">{td.nom}</td>
                                     <td>{td.retentionYears ?? 'Indéfinie'}</td>
                                     <td className="td-col-grace">{td.periodGrace ?? '—'}</td>
