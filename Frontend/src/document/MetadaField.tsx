@@ -21,13 +21,8 @@ function MetaDataField({
 }: MetaDataFieldProps) {
     const id = `meta-${nom.replace(/\s+/g, '-').toLowerCase()}`;
 
-    // Le libellé vit dans le placeholder ; seule la note OCR reste affichée,
-    // car elle n'apparaît que lorsque le champ est rempli.
+    // Le libellé vit dans le placeholder.
     const placeholderText = obligatoire ? `${nom} *` : nom;
-
-    const labelContent = prefilled && value
-        ? <span className="meta-prefilled">pré-rempli par OCR</span>
-        : null;
 
     // ── BOOLEAN ───────────────────────────────────────────────────────────
     if (type === 'BOOLEAN') {
@@ -46,7 +41,6 @@ function MetaDataField({
                     <option value="true">Oui</option>
                     <option value="false">Non</option>
                 </select>
-                {labelContent}
             </div>
         );
     }
@@ -66,7 +60,6 @@ function MetaDataField({
                     rows={3}
                     aria-label={nom}
                 />
-                {labelContent}
             </div>
         );
     }
@@ -112,7 +105,6 @@ function MetaDataField({
                     disabled={disabled}
                     aria-label={nom}
                 />
-                {labelContent}
             </div>
         );
     }
@@ -133,7 +125,6 @@ function MetaDataField({
                     disabled={disabled}
                     aria-label={nom}
                 />
-                {labelContent}
             </div>
         );
     }
@@ -154,7 +145,6 @@ function MetaDataField({
                     disabled={disabled}
                     aria-label={nom}
                 />
-                {labelContent}
             </div>
         );
     }
@@ -173,7 +163,6 @@ function MetaDataField({
                 disabled={disabled}
                 aria-label={nom}
             />
-            {labelContent}
         </div>
     );
 }
