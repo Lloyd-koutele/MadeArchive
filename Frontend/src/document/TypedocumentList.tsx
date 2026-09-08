@@ -201,7 +201,10 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
     // toujours visible quelle que soit la largeur d'écran. "compact" contrôle
     // laquelle des deux classes CSS s'applique aux entrées.
     const renderMenu = (td: TypeDocumentDto, compact: boolean) => (
-        <div className="action-menu-wrapper" onDoubleClick={(e) => e.stopPropagation()}>
+        <div
+            className={`action-menu-wrapper ${compact ? 'td-menu-compact-only' : ''}`}
+            onDoubleClick={(e) => e.stopPropagation()}
+        >
             <button
                 ref={(el) => { buttonRefs.current[td.id!] = el; }}
                 onClick={() => toggleMenu(td.id!)}
@@ -442,11 +445,13 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
                                                 Modifier
                                             </button>
                                             <button
-                                                className="td-delete-btn td-actions-standalone"
+                                                className="td-delete-btn td-delete-btn-icon td-actions-standalone"
                                                 onClick={() => handleDeleteRequest(td)}
                                                 disabled={deleteInProgress}
+                                                title="Supprimer"
+                                                aria-label="Supprimer"
                                             >
-                                                Supprimer
+                                                <i className="fa-solid fa-trash" />
                                             </button>
                                             {renderMenu(td, true)}
                                         </div>
