@@ -73,6 +73,15 @@ services:
   ollama:
     image: ollama/ollama:latest
     container_name: ollama
+    # qwen2.5-coder:7b (voir entrypoint) : ~4-5 Go rien que pour les poids en
+    # Q4_K_M, ~6,5 Go recommandés avec le cache de contexte — 8 Go laisse une
+    # marge confortable. Toujours en CPU pur (aucun passthrough GPU possible
+    # vers Docker Desktop sur Apple Silicon, limite de Hypervisor.framework,
+    # pas de ce projet) : plafonné ici pour éviter qu'un pic mémoire sur ce
+    # conteneur seul n'affame les autres (postgres, app...), même logique que
+    # madearchive-chromium ci-dessous. Nécessite un Docker Desktop alloué à
+    # plus de 8 Go (Settings > Resources > Memory) pour ne pas tourner à sec.
+    mem_limit: 8g
     ports:
       - "127.0.0.1:11434:11434"
     volumes:
