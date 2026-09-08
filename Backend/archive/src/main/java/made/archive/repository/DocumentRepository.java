@@ -212,12 +212,16 @@ public interface DocumentRepository extends JpaRepository<Document, UUID>, JpaSp
     /**
      * Projection dédiée à l'export administratif (DocumentExportGenerationService)
      * — PAS "SELECT d FROM Document d" : charger l'entité complète matérialise
-     * aussi horodatageToken (@Lob), dont la lecture exige une transaction
-     * Postgres explicite (pas auto-commit) — ce traitement est @Async, sans
-     * transaction ouverte, "Large Objects may not be used in auto-commit
-     * mode" constaté en conditions réelles. Cette projection ne sélectionne
-     * que les colonnes réellement utiles au ZIP/manifeste, en une seule
-     * requête (pas de lazy loading a posteriori nécessaire).
+     * aussi horodatageToken, inutile ici. Historiquement motivé par le mapping
+     * Postgres de ce champ en Large Object (@Lob sur byte[]), dont la lecture
+     * exigeait une transaction explicite — absente de ce traitement @Async
+     * ("Large Objects may not be used in auto-commit mode", constaté en
+     * conditions réelles). horodatageToken est désormais en bytea (voir
+     * Document.horodatageToken et schema.sql), donc cette contrainte précise
+     * n'existe plus, mais la projection reste volontairement étroite : cette
+     * requête ne sélectionne que les colonnes réellement utiles au
+     * ZIP/manifeste, en une seule requête (pas de lazy loading a posteriori
+     * nécessaire).
      */
     @Query("SELECT new made.archive.dto.DocumentExportRow(" +
            "d.id, d.titre, d.storageKey, d.access, d.status, d.createAt, " +

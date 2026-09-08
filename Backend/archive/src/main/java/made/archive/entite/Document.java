@@ -7,6 +7,9 @@ import java.util.UUID;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -17,7 +20,6 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.Lob;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OneToOne;
@@ -136,8 +138,19 @@ public class Document
      * si l'horodatage a échoué à l'upload — best-effort, voir
      * HorodatageRetryScheduler pour la reprise différée, jamais bloquant
      * pour l'archivage lui-même.
+     *
+     * @JdbcTypeCode(VARBINARY), PAS @Lob : sur PostgreSQL, un byte[] annoté
+     * @Lob est mappé en "oid" (référence vers un Large Object externe dans
+     * pg_largeobject), pas en "bytea" inline — constaté en conditions
+     * réelles (colonne illisible telle quelle en SQL, exige une transaction
+     * explicite pour être lue, voir DocumentExportRow, et surtout jamais
+     * libéré automatiquement par Postgres à la suppression d'un document,
+     * donc fuite silencieuse dans pg_largeobject). Un jeton RFC 3161 fait
+     * quelques Ko : bytea (inline, sans les contraintes des Large Objects)
+     * est le bon choix. Voir schema.sql pour la migration des jetons déjà
+     * stockés en Large Object et le nettoyage des OID devenus orphelins.
      */
-    @Lob
+    @JdbcTypeCode(SqlTypes.VARBINARY)
     private byte[] horodatageToken;
 
     /** Heure certifiée par le TSA, extraite du jeton — évite de le reparser pour un simple affichage. */

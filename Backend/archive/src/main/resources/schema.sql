@@ -14,6 +14,14 @@ WHERE actif = true;
 ALTER TABLE fixity_check_results
     ALTER COLUMN checked_at TYPE timestamptz USING checked_at::timestamptz;
 
+-- documents.horodatage_token : oid → bytea. La migration elle-même est un
+-- bloc PL/pgSQL (DO $$ ... $$), PAS ici : Spring découpe schema.sql en
+-- statements sur chaque ";" sans comprendre le dollar-quoting Postgres, donc
+-- un bloc DO contenant des ";" internes (DECLARE, boucles) y est tronqué au
+-- premier ";" rencontré ("Unterminated dollar quote", constaté en conditions
+-- réelles) — voir HorodatageTokenMigrationRunner (exécuté après ce fichier,
+-- via JdbcTemplate.execute en un seul appel JDBC, jamais reparsé par Spring).
+
 ALTER TABLE journal_audit DROP CONSTRAINT IF EXISTS journal_audit_action_check;
 ALTER TABLE journal_audit ADD CONSTRAINT journal_audit_action_check CHECK (action::text = ANY (ARRAY[
     'LOGIN_REUSSI','LOGIN_ECHOUE','LOGOUT','TOKEN_RAFRAICHI','SESSION_INVALIDEE',
