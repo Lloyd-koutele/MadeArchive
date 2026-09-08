@@ -78,12 +78,15 @@ public class DocumentExportGenerationService
      *
      * Un problème séparé, plus profond, s'est posé en résolvant le premier :
      * charger l'entité Document complète (JOIN FETCH y compris) matérialise
-     * AUSSI horodatageToken (@Lob) — Postgres exige alors une transaction
-     * explicite pour streamer ce Large Object ("Large Objects may not be
-     * used in auto-commit mode"), qu'un traitement @Async sans transaction
-     * n'a pas. Résolu à la racine : findAllByIdPourExport ne charge plus
-     * l'entité du tout, juste une projection (DocumentExportRow) des
-     * colonnes réellement nécessaires — jamais le champ @Lob.
+     * AUSSI horodatageToken, inutile ici. Historiquement motivé par le
+     * mapping Postgres de ce champ en Large Object (@Lob sur byte[], voir
+     * Document.horodatageToken) : Postgres exigeait alors une transaction
+     * explicite pour le streamer ("Large Objects may not be used in
+     * auto-commit mode"), qu'un traitement @Async sans transaction n'a pas.
+     * horodatageToken est désormais en bytea, donc cette contrainte précise
+     * n'existe plus, mais la projection reste volontairement étroite :
+     * findAllByIdPourExport ne charge que les colonnes réellement
+     * nécessaires (voir DocumentExportRow).
      */
     @Async
     public void genererExportAsync(UUID jobId)

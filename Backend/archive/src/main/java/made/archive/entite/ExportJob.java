@@ -17,7 +17,6 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.Lob;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.Data;
@@ -41,6 +40,14 @@ import lombok.NoArgsConstructor;
  * documentIdsJson est la liste RÉSOLUE (déjà filtrée par visibilité) au
  * moment de lancerExport() — le traitement asynchrone n'a plus besoin de
  * ré-appliquer les règles d'accès, qui pourraient avoir changé entre-temps.
+ *
+ * @Column(columnDefinition = "TEXT"), PAS @Lob : sur PostgreSQL, une String
+ * annotée @Lob est mappée en "oid" (référence vers un Large Object externe
+ * dans pg_largeobject), pas en "text" inline — même défaut que
+ * Document.horodatageToken (voir sa Javadoc), constaté ici aussi en
+ * conditions réelles (colonnes uo_ids_json/document_ids_json en oid). Le
+ * mapping correct, celui déjà utilisé par TypeDocument.extractionRegexJson,
+ * est un simple @Column(columnDefinition = "TEXT") sans @Lob.
  */
 @Data
 @NoArgsConstructor
@@ -58,12 +65,10 @@ public class ExportJob
     @JoinColumn(name = "demande_par", nullable = false)
     private User demandePar;
 
-    @Lob
-    @Column(name = "uo_ids_json", nullable = false)
+    @Column(name = "uo_ids_json", columnDefinition = "TEXT", nullable = false)
     private String uoIdsJson;
 
-    @Lob
-    @Column(name = "document_ids_json")
+    @Column(name = "document_ids_json", columnDefinition = "TEXT")
     private String documentIdsJson;
 
     /**

@@ -3,6 +3,7 @@ package made.archive.config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.core.annotation.Order;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -42,7 +43,15 @@ import org.springframework.stereotype.Component;
  * production (pg_dump -b / pg_restore) avant exécution ici : jetons
  * préservés bit à bit, Large Objects (dont l'orphelin) libérés, ré-exécution
  * sans effet.
+ *
+ * @Order(1) — s'exécute AVANT ExportJobJsonMigrationRunner et
+ * LargeObjectOrphanCleanupRunner : le nettoyage final des Large Objects
+ * orphelins (dans ce dernier) suppose que toutes les colonnes qui en
+ * créaient encore ont déjà été converties par les migrations précédentes ;
+ * ne libère ici QUE les Large Objects de documents.horodatage_token lui-même,
+ * jamais un balayage global (voir LargeObjectOrphanCleanupRunner pour ça).
  */
+@Order(1)
 @Component
 public class HorodatageTokenMigrationRunner implements CommandLineRunner
 {
@@ -69,24 +78,6 @@ public class HorodatageTokenMigrationRunner implements CommandLineRunner
                 ALTER TABLE documents DROP COLUMN horodatage_token;
                 ALTER TABLE documents RENAME COLUMN horodatage_token_bytea TO horodatage_token;
             END IF;
-
-            -- Nettoyage des Large Objects ORPHELINS — sûr à rejouer à chaque
-            -- démarrage. Depuis le bloc ci-dessus, plus aucune colonne de
-            -- `documents` ne crée de Large Object ; les seules colonnes qui en
-            -- créent encore dans cette application sont export_jobs.uo_ids_json
-            -- et .document_ids_json (@Lob sur un String — même mécanisme, non
-            -- traité ici volontairement, hors du périmètre de ce correctif).
-            -- Tout Large Object non référencé par ces deux colonnes est donc
-            -- sans propriétaire.
-            FOR v_oid IN
-                SELECT lom.oid FROM pg_largeobject_metadata lom
-                WHERE NOT EXISTS (
-                    SELECT 1 FROM export_jobs e
-                    WHERE e.uo_ids_json = lom.oid OR e.document_ids_json = lom.oid
-                )
-            LOOP
-                PERFORM lo_unlink(v_oid);
-            END LOOP;
         END $$;
         """;
 
