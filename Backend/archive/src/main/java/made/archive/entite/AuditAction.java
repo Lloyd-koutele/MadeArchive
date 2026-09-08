@@ -72,6 +72,8 @@ public enum AuditAction
     PROJET_TYPES_AJOUTES,
     PROJET_TYPE_RETIRE,
     PROJET_SUPPRIME,
+    /** Bascule PUBLIC ↔ PRIVÉ après coup — voir ProjetService.modifierAcces. */
+    PROJET_ACCES_MODIFIE,
 
     // ── Attestations d'archivage ─────────────────────────────────────────────
     ATTESTATION_GENEREE,
@@ -88,6 +90,8 @@ public enum AuditAction
     DOCUMENT_EMPLACEMENT_MODIFIE,
     DOCUMENT_METADATA_MODIFIEE,
     DOCUMENT_PROJET_MODIFIE,
+    /** Bascule PUBLIC ↔ PRIVÉ après coup — voir DocumentService.modifierAcces. */
+    DOCUMENT_ACCES_MODIFIE,
 
     // ── Export administratif de documents (migration/changement de système) ───
     /** Export demandé — le champ succes distingue une élévation vers des

@@ -159,6 +159,53 @@ public class MeilisearchService
         }
     }
 
+    /**
+     * Met à jour SEULEMENT access/groupeId dans l'index — pas indexDocument
+     * (qui exigerait de retélécharger/déchiffrer le texte OCR depuis le
+     * stockage pour reconstruire un document complet, coûteux pour un simple
+     * changement de confidentialité). PUT (pas POST comme indexDocument) :
+     * Meilisearch fusionne les champs fournis dans le document existant au
+     * lieu de le remplacer entièrement — mêmes convention et endpoint que
+     * updateDocumentStatus ci-dessus. groupeId explicitement à null (jamais
+     * omis) quand le document redevient PUBLIC : un champ omis reste
+     * inchangé côté Meilisearch, il faut l'envoyer explicitement pour
+     * effacer l'ancienne valeur.
+     *
+     * Sécurité : access/groupeId sont les attributs filtrables qui bornent
+     * qui voit ce document dans les résultats de recherche (voir
+     * indexDocument et la config filterable-attributes) — laisser l'index
+     * périmé après un changement de confidentialité exposerait (ou
+     * masquerait à tort) ce document en recherche jusqu'au prochain
+     * réindexage complet, contrairement à un simple champ métier en retard.
+     */
+    public void updateDocumentAccess(Document document)
+    {
+        try
+        {
+            java.util.Map<String, Object> update = new java.util.HashMap<>();
+            update.put("id", document.getId().toString());
+            update.put("access", document.getAccess().name());
+            update.put("groupeId", document.getGroupe() != null
+                ? document.getGroupe().getId().toString() : null);
+
+            buildAdminClient().put()
+                .uri("/indexes/" + INDEX_NAME + "/documents")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(objectMapper.writeValueAsString(List.of(update)))
+                .retrieve()
+                .bodyToMono(String.class)
+                .block();
+
+            log.info("[Meilisearch] Accès mis à jour : {} → {}",
+                     document.getId(), document.getAccess());
+        }
+        catch (Exception e)
+        {
+            log.error("[Meilisearch] Échec mise à jour accès {} : {}",
+                      document.getId(), e.getMessage());
+        }
+    }
+
     public void deleteDocument(String documentId)
     {
         try

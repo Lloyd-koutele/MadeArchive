@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react';
 import {
     creerProjet,
     modifierProjet,
+    modifierAccesProjet,
     getProjetsDeUO,
     getProjetDetail,
     ajouterTypesAttendus,
     retirerTypeAttendu,
     supprimerProjet,
 } from '../services/organisation/ProjetService';
+import ChangerAccesPanel from '../components/ChangerAccesPanel';
 import type { ProjetDto, ProjetDetailDto, TypeAttenduDto } from '../services/organisation/ProjetService';
 import { getTypeDocumentsByUO } from '../services/document/TypedocumentService';
 import type { TypeDocumentDto } from '../services/document/TypedocumentService';
@@ -339,6 +341,45 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
         getProjetDetail(projetActif.id).then(setProjetActif).catch(() => {});
     };
 
+    // ─────────────────────────────────────────────────────────────────────
+    // Bascule PUBLIC ↔ PRIVÉ après coup (voir ChangerAccesPanel)
+    // ─────────────────────────────────────────────────────────────────────
+    const [savingAcces, setSavingAcces] = useState(false);
+
+    const handleRendreProjetPrive = async (groupeMembresIds: string[]) => {
+        if (!projetActif) return;
+        setSavingAcces(true);
+        try {
+            await modifierAccesProjet(projetActif.id, 'PRIVE', groupeMembresIds);
+            rafraichirProjetActif();
+            chargerProjets();
+            notify.success('Projet rendu privé');
+        } catch (err: any) {
+            notify.error(err.message ?? "Erreur lors du changement d'accès");
+        } finally {
+            setSavingAcces(false);
+        }
+    };
+
+    const handleRendreProjetPublic = async () => {
+        if (!projetActif) return;
+        if (!(await confirm(
+            'Rendre ce projet public ? Il deviendra visible par tous les membres de son UO, ainsi que les documents '
+            + 'qu\'il contient et qui partagent encore son groupe d\'accès.'
+        ))) return;
+        setSavingAcces(true);
+        try {
+            await modifierAccesProjet(projetActif.id, 'PUBLIC');
+            rafraichirProjetActif();
+            chargerProjets();
+            notify.success('Projet rendu public');
+        } catch (err: any) {
+            notify.error(err.message ?? "Erreur lors du changement d'accès");
+        } finally {
+            setSavingAcces(false);
+        }
+    };
+
     /**
      * Retrait rapide d'un type depuis sa carte-dossier (la croix au survol) —
      * sans passer par le modal de modification, contrairement à
@@ -531,7 +572,7 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
                                 checked={accessCreation === 'PUBLIC'}
                                 onChange={() => setAccessCreation('PUBLIC')}
                             />
-                            <span>Public — visible par tous les membres de l'UO</span>
+                            <span>Public</span>
                         </label>
                         <label className="projets-access-radio">
                             <input
@@ -540,7 +581,7 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
                                 checked={accessCreation === 'PRIVE'}
                                 onChange={() => setAccessCreation('PRIVE')}
                             />
-                            <span>Privé — visible uniquement par les membres choisis</span>
+                            <span>Privé </span>
                         </label>
                     </div>
                 )}
@@ -919,6 +960,15 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
                         <button className="breadcrumb-add-btn" onClick={() => setIsGroupeOpen(true)}>
                             <i className="fa-solid fa-user-group" /> Accès
                         </button>
+                    )}
+                    {projetActif?.peutModifierAcces && (
+                        <ChangerAccesPanel
+                            accesActuel={projetActif.access as 'PUBLIC' | 'PRIVE'}
+                            uoId={projetActif.uoId}
+                            saving={savingAcces}
+                            onRendrePrive={handleRendreProjetPrive}
+                            onRendrePublic={handleRendreProjetPublic}
+                        />
                     )}
                     {projetActif?.peutGererTypes && (
                         <button className="breadcrumb-add-btn" onClick={ouvrirEdition}>

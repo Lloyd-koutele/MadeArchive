@@ -2,11 +2,14 @@ package made.archive.service.organisation;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import made.archive.dto.ChangerAccesRequestDto;
 import made.archive.dto.GroupeMembresDto;
 import made.archive.dto.ProjetDetailDto;
 import made.archive.dto.ProjetDto;
 import made.archive.entite.AuditAction;
 import made.archive.entite.AuditCible;
+import made.archive.entite.Document;
+import made.archive.entite.DocumentStatus;
 import made.archive.entite.GroupeAccess;
 import made.archive.entite.Projet;
 import made.archive.entite.Role_Name;
@@ -23,6 +26,7 @@ import made.archive.repository.TypeDocumentRepository;
 import made.archive.repository.UniteOrganisationnelleRepository;
 import made.archive.repository.UserRepository;
 import made.archive.service.audit.AuditLogService;
+import made.archive.service.document.MeilisearchService;
 import made.archive.service.notification.NotificationService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -73,6 +77,7 @@ public class ProjetService
     private final UniteOrganisationnelleService    uniteOrganisationnelleService;
     private final NotificationService              notificationService;
     private final AuditLogService                  auditLogService;
+    private final MeilisearchService               meilisearchService;
 
     // ═══════════════════════════════════════════════════════════════════
     // Création
@@ -153,8 +158,10 @@ public class ProjetService
 
     // ═══════════════════════════════════════════════════════════════════
     // Modification — nom/description uniquement (les types attendus se
-    // gèrent via ajouterTypesAttendus/retirerTypeAttendu ci-dessous, l'accès
-    // via ProjetGroupeAccessController — jamais mélangés dans le même appel).
+    // gèrent via ajouterTypesAttendus/retirerTypeAttendu ci-dessous, la
+    // bascule PUBLIC↔PRIVÉ via modifierAcces plus bas, la gestion des
+    // MEMBRES d'un groupe déjà PRIVÉ via ProjetGroupeAccessController —
+    // jamais mélangés dans le même appel).
     // ═══════════════════════════════════════════════════════════════════
 
     @Transactional
@@ -182,6 +189,107 @@ public class ProjetService
 
         auditLogService.log(acteur, AuditAction.PROJET_MODIFIE, AuditCible.PROJET,
             projetId.toString(), uoId, "Modification du projet " + saved.getNom(), true);
+
+        return saved;
+    }
+
+    /**
+     * Bascule PUBLIC ↔ PRIVÉ après coup — même autorité que modifierProjet/
+     * ajouterTypesAttendus/supprimerProjet (voir verifierPeutGererProjet :
+     * éditeur de la propre UO si actuellement PUBLIC, éditeur membre du
+     * groupe si déjà PRIVÉ).
+     *
+     * Fait suivre le changement aux documents du projet qui partagent (ou
+     * vont partager) son GroupeAccess — jamais ceux ayant leur propre
+     * confidentialité indépendante (rendue privée séparément via son propre
+     * bouton d'accès, voir DocumentService.modifierAcces) :
+     *   - PUBLIC → PRIVÉ : crée un nouveau GroupeAccess (acteur + membres
+     *     optionnels, même logique qu'à la création — voir creerProjet),
+     *     puis tout document du projet actuellement PUBLIC (donc sans
+     *     groupe propre, invariant Document.groupe) bascule PRIVÉ avec CE
+     *     MÊME groupe — cohérent avec DocumentUploadeService, qui fait
+     *     exactement ça pour un document uploadé directement dans un
+     *     projet privé.
+     *   - PRIVÉ → PUBLIC : détache le groupe du projet (jamais supprimé,
+     *     même principe que DocumentService.modifierAcces), puis tout
+     *     document qui partageait ENCORE ce même groupe (identité de
+     *     référence, pas juste "était PRIVÉ") redevient PUBLIC lui aussi.
+     */
+    @Transactional
+    public Projet modifierAcces(Long projetId, ChangerAccesRequestDto dto, User acteur)
+    {
+        Projet projet = projetRepository.findById(projetId)
+            .orElseThrow(() -> new BusinessException("Projet introuvable : " + projetId));
+
+        verifierPeutGererProjet(projet, acteur);
+
+        TypeAccess ancienAcces = projet.getAccess();
+        if (dto.getAccess() == null || dto.getAccess() == ancienAcces)
+        {
+            return projet;
+        }
+
+        List<Document> documentsDuProjet = documentRepository.findByProjetId(projetId).stream()
+            .filter(d -> d.getStatus() != DocumentStatus.DELETED)
+            .toList();
+
+        if (dto.getAccess() == TypeAccess.PRIVE)
+        {
+            GroupeAccess g = new GroupeAccess();
+            g.setCreateAt(LocalDate.now());
+
+            List<User> membres = new ArrayList<>();
+            membres.add(acteur);
+            if (dto.getGroupeMembresIds() != null && !dto.getGroupeMembresIds().isEmpty())
+            {
+                List<User> autres = userRepository.findAllById(
+                    dto.getGroupeMembresIds().stream()
+                        .filter(id -> !id.equals(acteur.getId()))
+                        .toList());
+                membres.addAll(autres);
+            }
+            g.setMembres(membres);
+            GroupeAccess nouveauGroupe = groupeAccessRepository.save(g);
+            projet.setGroupe(nouveauGroupe);
+
+            for (Document doc : documentsDuProjet)
+            {
+                if (doc.getAccess() == TypeAccess.PUBLIC)
+                {
+                    doc.setAccess(TypeAccess.PRIVE);
+                    doc.setGroupe(nouveauGroupe);
+                    documentRepository.save(doc);
+                    meilisearchService.updateDocumentAccess(doc);
+                }
+            }
+        }
+        else
+        {
+            Long ancienGroupeId = projet.getGroupe() != null ? projet.getGroupe().getId() : null;
+            projet.setGroupe(null);
+
+            if (ancienGroupeId != null)
+            {
+                for (Document doc : documentsDuProjet)
+                {
+                    if (doc.getGroupe() != null && ancienGroupeId.equals(doc.getGroupe().getId()))
+                    {
+                        doc.setAccess(TypeAccess.PUBLIC);
+                        doc.setGroupe(null);
+                        documentRepository.save(doc);
+                        meilisearchService.updateDocumentAccess(doc);
+                    }
+                }
+            }
+        }
+
+        projet.setAccess(dto.getAccess());
+        Projet saved = projetRepository.save(projet);
+
+        auditLogService.log(acteur, AuditAction.PROJET_ACCES_MODIFIE, AuditCible.PROJET,
+            projetId.toString(), projet.getUniteOrganisationnelle().getId(),
+            "Accès du projet " + saved.getNom() + " changé de " + ancienAcces + " à " + dto.getAccess(),
+            true);
 
         return saved;
     }
@@ -290,6 +398,7 @@ public class ProjetService
             .access(projet.getAccess().name())
             .peutGererTypes(peutGererProjet(projet, currentUser))
             .peutGererAcces(projet.getAccess() == TypeAccess.PRIVE && peutGererGroupeProjet(projet.getGroupe(), currentUser.getId()))
+            .peutModifierAcces(peutGererProjet(projet, currentUser))
             .build();
     }
 

@@ -6,7 +6,8 @@ import ImportDocuments from '../document/ImportDocuments';
 import type { BulkUploadReportDto } from '../services/document/DocumentService';
 import VersionBadge from '../document/VersionBadge';
 import { genererAttestation } from '../services/document/AttestationService';
-import { modifierEmplacementPhysique, modifierMetaDataDocument, modifierProjetDocument, verifierFusionGroupeProjet, getTypeDocumentById } from '../services/document/DocumentService';
+import { modifierAcces, modifierEmplacementPhysique, modifierMetaDataDocument, modifierProjetDocument, verifierFusionGroupeProjet, getTypeDocumentById } from '../services/document/DocumentService';
+import ChangerAccesPanel from '../components/ChangerAccesPanel';
 import type { TypeDocumentDto } from '../services/document/DocumentService';
 import { getEmplacementsDisponibles } from '../services/organisation/PhysicalLocationService';
 import type { PhysicalLocationDto } from '../services/organisation/PhysicalLocationService';
@@ -1604,6 +1605,7 @@ function DocumentDetailPanel({
                     {detail.access === 'PUBLIC' ? 'Public' : 'Privé'}
                 </span>
             </div>
+            <AccesToggleSection detail={detail} onUpdated={onEmplacementChange} />
             <div className="details-row">
                 <strong>Archivé le :</strong> {detail.createAt ? new Date(detail.createAt).toLocaleDateString('fr-FR') : '—'}
             </div>
@@ -1682,6 +1684,65 @@ function DocumentDetailPanel({
                     )}
                 </div>
             )}
+        </div>
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sous-composant : bascule PUBLIC ↔ PRIVÉ après coup
+// ─────────────────────────────────────────────────────────────────────────────
+
+function AccesToggleSection({
+    detail,
+    onUpdated,
+}: {
+    detail: DocumentDetailDto;
+    onUpdated?: (updated: DocumentDetailDto) => void;
+}) {
+    const notify = useNotify();
+    const confirm = useConfirm();
+    const [saving, setSaving] = useState(false);
+
+    if (!detail.peutModifierAcces) {
+        return null;
+    }
+
+    const rendrePrive = async (groupeMembresIds: string[]) => {
+        setSaving(true);
+        try {
+            const updated = await modifierAcces(detail.documentId, 'PRIVE', groupeMembresIds);
+            onUpdated?.(updated);
+            notify.success('Document rendu privé');
+        } catch (err: any) {
+            notify.error(err.message ?? 'Erreur lors du changement d\'accès');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const rendrePublic = async () => {
+        if (!(await confirm('Rendre ce document public ? Il deviendra visible par tous les membres de son UO.'))) return;
+        setSaving(true);
+        try {
+            const updated = await modifierAcces(detail.documentId, 'PUBLIC');
+            onUpdated?.(updated);
+            notify.success('Document rendu public');
+        } catch (err: any) {
+            notify.error(err.message ?? 'Erreur lors du changement d\'accès');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div className="details-row">
+            <ChangerAccesPanel
+                accesActuel={detail.access as 'PUBLIC' | 'PRIVE'}
+                uoId={detail.uniteOrganisationnelleId}
+                saving={saving}
+                onRendrePrive={rendrePrive}
+                onRendrePublic={rendrePublic}
+            />
         </div>
     );
 }
