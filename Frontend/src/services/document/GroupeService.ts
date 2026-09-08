@@ -5,6 +5,11 @@ export interface MembreDto {
     nom: string;
     prenom: string;
     email: string;
+    // Optionnel : présent dans la réponse de /groupe/disponibles (le backend
+    // y sérialise l'entité User complète), absent de /groupe/membres (voir
+    // GroupeAccessService.getMembres, qui ne renvoie que id/nom/prenom/email)
+    // — utilisé pour le filtre de recherche des candidats (voir GestionGroupe.tsx).
+    telephone?: string;
 }
 
 export interface GroupeMembresResponse {

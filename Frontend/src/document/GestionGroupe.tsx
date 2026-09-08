@@ -24,6 +24,18 @@ function GestionGroupe({ documentId, documentTitre, onClose }: GestionGroupeProp
     const [selectedToAdd, setSelectedToAdd] = useState('');
     const [isLoading, setIsLoading] = useState(true);
 
+    // Recherche locale (nom/prénom/email/téléphone) — la liste "disponibles"
+    // est déjà chargée en entier (voir loadAll), filtrer côté client suffit,
+    // sans requête réseau supplémentaire.
+    const [filtreAjout, setFiltreAjout] = useState('');
+    const disponiblesFiltres = disponibles.filter(d => {
+        const q = filtreAjout.trim().toLowerCase();
+        if (!q) return true;
+        return `${d.prenom} ${d.nom}`.toLowerCase().includes(q)
+            || d.email.toLowerCase().includes(q)
+            || (d.telephone ?? '').toLowerCase().includes(q);
+    });
+
     useEffect(() => {
         loadAll();
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -133,6 +145,14 @@ function GestionGroupe({ documentId, documentTitre, onClose }: GestionGroupeProp
             {peutGerer && disponibles.length > 0 && (
                 <div className="groupe-section">
                     <h4 className="groupe-section-title">Ajouter un membre</h4>
+                    <input
+                        type="text"
+                        className="membres-filtre-input"
+                        placeholder="Rechercher (nom, email, téléphone)"
+                        aria-label="Rechercher un utilisateur à ajouter"
+                        value={filtreAjout}
+                        onChange={e => setFiltreAjout(e.target.value)}
+                    />
                     <div className="groupe-add-row">
                         <select
                             className="form-field-input up-select"
@@ -141,7 +161,7 @@ function GestionGroupe({ documentId, documentTitre, onClose }: GestionGroupeProp
                             aria-label="Choisir un utilisateur à ajouter"
                         >
                             <option value="">-- Choisir un utilisateur --</option>
-                            {disponibles.map(d => (
+                            {disponiblesFiltres.map(d => (
                                 <option key={d.id} value={d.id}>
                                     {d.prenom} {d.nom} — {d.email}
                                 </option>

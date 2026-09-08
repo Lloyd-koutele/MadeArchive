@@ -6,7 +6,7 @@ import {
     previewImportWeb,
     getOcrPreviewPdfUrl,
     getAllTypeDocuments,
-    getAllUsers,
+    getCandidatsGroupe,
 } from '../services/document/DocumentService';
 import type {
     BulkUploadReportDto,
@@ -86,6 +86,7 @@ function ImportDocuments({ onsuccess, preselectedTypeId, precedentDocument }: Im
     const [access, setAccess]                   = useState<'PUBLIC' | 'PRIVE'>('PUBLIC');
     const [users, setUsers]                      = useState<UserDto[]>([]);
     const [selectedMembres, setSelectedMembres]  = useState<string[]>([]);
+    const [filtreMembre, setFiltreMembre]        = useState('');
     const [emplacements, setEmplacements]        = useState<PhysicalLocationDto[]>([]);
     const [physicalLocationId, setPhysicalLocationId] = useState('');
 
@@ -139,7 +140,7 @@ function ImportDocuments({ onsuccess, preselectedTypeId, precedentDocument }: Im
             .catch(() => notify.error('Impossible de charger les types de documents'));
         getMyUO()
             .then(uo => {
-                getAllUsers(uo.id).then(setUsers).catch(() => {});
+                getCandidatsGroupe(uo.id).then(setUsers).catch(() => {});
                 getEmplacementsDisponibles(uo.id).then(setEmplacements).catch(() => {});
             })
             .catch(() => {});
@@ -608,18 +609,34 @@ function ImportDocuments({ onsuccess, preselectedTypeId, precedentDocument }: Im
                             {users.length > 0 && (
                                 <div className="membres-section">
                                     <p className="membres-label">Membres du groupe (optionnel) :</p>
+                                    <input
+                                        type="text"
+                                        className="membres-filtre-input"
+                                        placeholder="Rechercher (nom, email, téléphone)"
+                                        aria-label="Rechercher un utilisateur"
+                                        value={filtreMembre}
+                                        onChange={e => setFiltreMembre(e.target.value)}
+                                    />
                                     <div className="membres-list">
-                                        {users.map(u => (
-                                            <label key={u.id} className="membre-item">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={selectedMembres.includes(u.id)}
-                                                    onChange={() => toggleMembre(u.id)}
-                                                />
-                                                <span>{u.prenom} {u.nom}</span>
-                                                <span className="membre-email">{u.email}</span>
-                                            </label>
-                                        ))}
+                                        {users
+                                            .filter(u => {
+                                                const q = filtreMembre.trim().toLowerCase();
+                                                if (!q) return true;
+                                                return `${u.prenom} ${u.nom}`.toLowerCase().includes(q)
+                                                    || u.email.toLowerCase().includes(q)
+                                                    || (u.telephone ?? '').toLowerCase().includes(q);
+                                            })
+                                            .map(u => (
+                                                <label key={u.id} className="membre-item">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedMembres.includes(u.id)}
+                                                        onChange={() => toggleMembre(u.id)}
+                                                    />
+                                                    <span>{u.prenom} {u.nom}</span>
+                                                    <span className="membre-email">{u.email}</span>
+                                                </label>
+                                            ))}
                                     </div>
                                 </div>
                             )}

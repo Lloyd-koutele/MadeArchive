@@ -12,7 +12,7 @@ import type { ProjetDto, ProjetDetailDto, TypeAttenduDto } from '../services/org
 import { getTypeDocumentsByUO } from '../services/document/TypedocumentService';
 import type { TypeDocumentDto } from '../services/document/TypedocumentService';
 import {
-    getAllUsers,
+    getCandidatsGroupe,
     getDocumentsAccessibles,
     getDocumentDetail,
     streamPdfAAsBlob,
@@ -97,6 +97,8 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
     const [accessCreation, setAccessCreation] = useState<'PUBLIC' | 'PRIVE'>('PUBLIC');
     const [usersUO, setUsersUO]               = useState<UserDto[]>([]);
     const [selectedMembreIds, setSelectedMembreIds] = useState<string[]>([]);
+    // Filtre local — recherche dans la liste des membres proposés dans le modal.
+    const [filtreMembreModal, setFiltreMembreModal] = useState('');
     const [formSaving, setFormSaving]         = useState(false);
 
     // ── Filtres de la liste des projets (purement client — le volume de
@@ -190,7 +192,7 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
         chargerProjets();
         if (uoId) {
             getTypeDocumentsByUO(uoId).then(setTypesUO).catch(() => setTypesUO([]));
-            getAllUsers(uoId).then(setUsersUO).catch(() => setUsersUO([]));
+            getCandidatsGroupe(uoId).then(setUsersUO).catch(() => setUsersUO([]));
         } else {
             setTypesUO([]);
             setUsersUO([]);
@@ -546,17 +548,33 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
                 {modalMode === 'create' && accessCreation === 'PRIVE' && usersUO.length > 0 && (
                     <div className="projets-types-picker">
                         <p>Membres du groupe d'accès (vous serez ajouté automatiquement) :</p>
+                        <input
+                            type="text"
+                            className="projets-type-search"
+                            placeholder="Rechercher (nom, email, téléphone)"
+                            aria-label="Rechercher un utilisateur"
+                            value={filtreMembreModal}
+                            onChange={e => setFiltreMembreModal(e.target.value)}
+                        />
                         <div className="projets-types-list">
-                            {usersUO.map(u => (
-                                <label key={u.id} className="projets-type-checkbox">
-                                    <input
-                                        type="checkbox"
-                                        checked={selectedMembreIds.includes(u.id)}
-                                        onChange={() => toggleMembre(u.id)}
-                                    />
-                                    <span>{u.prenom} {u.nom} — {u.email}</span>
-                                </label>
-                            ))}
+                            {usersUO
+                                .filter(u => {
+                                    const q = filtreMembreModal.trim().toLowerCase();
+                                    if (!q) return true;
+                                    return `${u.prenom} ${u.nom}`.toLowerCase().includes(q)
+                                        || u.email.toLowerCase().includes(q)
+                                        || (u.telephone ?? '').toLowerCase().includes(q);
+                                })
+                                .map(u => (
+                                    <label key={u.id} className="projets-type-checkbox">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedMembreIds.includes(u.id)}
+                                            onChange={() => toggleMembre(u.id)}
+                                        />
+                                        <span>{u.prenom} {u.nom} — {u.email}</span>
+                                    </label>
+                                ))}
                         </div>
                     </div>
                 )}

@@ -408,7 +408,13 @@ public class DocumentController
 
     /**
      * GET /api/editor/uo/{id}/users
-     * Liste les utilisateurs de l'UO donnée (pour le choix des membres de groupe).
+     * Liste les utilisateurs de l'UO donnée. Volontairement PAS utilisé pour
+     * le choix des membres d'un groupe d'accès (voir getCandidatsGroupe
+     * ci-dessous) : ne renvoie que les collègues de l'UO, jamais les ADMIN
+     * globaux — c'était historiquement l'endpoint utilisé pour ça, ce qui
+     * excluait à tort tout ADMIN global n'étant pas lui-même membre de cette
+     * UO. Conservé pour un usage plus générique (afficher les utilisateurs
+     * d'une UO, sans intention de leur donner accès à un document privé).
      */
     @Secured("ROLE_EDITOR")
     @GetMapping("/uo/{id}/users")
@@ -422,6 +428,30 @@ public class DocumentController
         {
             return ResponseEntity.badRequest()
                 .body("Erreur récupération utilisateurs : " + e.getMessage());
+        }
+    }
+
+    /**
+     * GET /api/editor/uo/{id}/candidats-groupe
+     * Utilisateurs proposables comme membres d'un groupe d'accès (document ou
+     * projet privé) À LA CRÉATION — collègues de l'UO donnée, PLUS tous les
+     * ADMIN globaux (voir UserService.getCandidatsGroupeAccesPourUO et
+     * UniteOrganisationnelleService.getCandidatsGroupeAcces pour la règle
+     * partagée avec GestionGroupe/GestionGroupeProjet, utilisés eux APRÈS la
+     * création).
+     */
+    @Secured("ROLE_EDITOR")
+    @GetMapping("/uo/{id}/candidats-groupe")
+    public ResponseEntity<?> getCandidatsGroupe(@PathVariable Long id, @AuthenticationPrincipal UserDetailsImpl principal)
+    {
+        try
+        {
+            return ResponseEntity.ok(userService.getCandidatsGroupeAccesPourUO(id, principal.getUser()));
+        }
+        catch (Exception e)
+        {
+            return ResponseEntity.badRequest()
+                .body("Erreur récupération des candidats au groupe : " + e.getMessage());
         }
     }
 

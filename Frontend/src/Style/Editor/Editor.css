@@ -1043,6 +1043,25 @@ label.bulk-file-item { cursor: pointer; }
     margin: 0;
 }
 
+/* Recherche (nom/email/téléphone) au-dessus d'une liste de membres — utilisé
+   à la fois à la création (ImportDocuments.tsx, UploadSimple.tsx : liste de
+   cases à cocher) et en gestion post-création (GestionGroupe.tsx,
+   GestionGroupeProjet.tsx : rétrécit les <option> d'un <select>). */
+.membres-filtre-input {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--white-choc);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.85rem;
+    color: var(--dark-choc);
+}
+
+.membres-filtre-input:focus {
+    outline: none;
+    border-color: var(--dark-choc);
+}
+
 .membres-list {
     display: flex;
     flex-direction: column;
