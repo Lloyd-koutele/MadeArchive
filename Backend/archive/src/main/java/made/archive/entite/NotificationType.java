@@ -28,5 +28,11 @@ public enum NotificationType
      *  inclus dans un export par un ADMIN qui n'en est pas membre. Voir
      *  DocumentExportService — transparence délibérée, pas un simple journal
      *  d'audit que personne ne consulte. */
-    DOCUMENT_INCLUS_DANS_EXPORT
+    DOCUMENT_INCLUS_DANS_EXPORT,
+
+    /** Vérification d'intégrité déclenchée manuellement (ADMIN/ADMIN_UO) —
+     *  envoyée au DEMANDEUR une fois le contrôle terminé (succès ou échec),
+     *  distincte de DOCUMENT_CORROMPU qui va, elle, aux ayants-droit de
+     *  chaque document trouvé corrompu. Voir FixityCheckTriggerService. */
+    FIXITY_CHECK_TERMINE
 }

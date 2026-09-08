@@ -1,0 +1,80 @@
+/* ── Contrôle d'intégrité (fixity check) — déclenchement manuel ── */
+
+.fixity-panel {
+    max-width: 680px;
+}
+
+.fixity-panel-header {
+    margin-bottom: 1.4rem;
+}
+
+.fixity-panel-header h2 {
+    margin: 0 0 0.5rem;
+    font-size: 1.35rem;
+}
+
+.fixity-panel-sub {
+    color: var(--text-muted, #7c6a5a);
+    font-size: 0.88rem;
+    line-height: 1.55;
+    margin: 0;
+}
+
+.fixity-scope-toggle {
+    display: inline-flex;
+    border: 1px solid var(--border-color, #e0d5c4);
+    border-radius: 999px;
+    padding: 0.2rem;
+    margin-bottom: 1.2rem;
+    gap: 0.2rem;
+}
+
+.fixity-scope-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    border: none;
+    background: transparent;
+    padding: 0.5rem 1rem;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    color: var(--text-muted, #7c6a5a);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    white-space: nowrap;
+}
+
+.fixity-scope-btn:hover {
+    background: var(--hover-bg, rgba(139, 94, 60, 0.08));
+}
+
+.fixity-scope-btn.active {
+    background: var(--accent, #8b5e3c);
+    color: #fff;
+}
+
+.fixity-checklist {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-height: 340px;
+    overflow-y: auto;
+    border: 1px solid var(--border-color, #e0d5c4);
+    border-radius: 10px;
+    padding: 0.8rem 1rem;
+    margin-bottom: 1.2rem;
+}
+
+.fixity-checklist-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 0.88rem;
+    cursor: pointer;
+}
+
+.fixity-empty {
+    color: var(--text-muted, #7c6a5a);
+    font-size: 0.88rem;
+    margin: 0 0 1.2rem;
+}

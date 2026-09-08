@@ -16,6 +16,7 @@ import ProjetsPanel from '../organisation/ProjetsPanel';
 import PhysicalLocationsPanel from '../organisation/PhysicalLocationsPanel';
 import ExportPanel from '../organisation/ExportPanel';
 import AuditLogPanel from './AuditLogPanel';
+import FixityCheckPanel from './FixityCheckPanel';
 import DocumentsArchivesPanel from './DocumentsArchivesPanel';
 import type { TypeDocumentDto } from '../services/document/TypedocumentService';
 import { getUsersByUO, updateUserStatus as updateStatus, supprimerUtilisateur, annulerSuppressionUtilisateur } from "../services/admin/AdminService";
@@ -71,7 +72,7 @@ interface UONode {
 }
 
 type MainView = 'profile' | 'contenu';
-type Tab = 'utilisateurs' | 'documents' | 'archives' | 'corbeille' | 'projets' | 'emplacements' | 'journal';
+type Tab = 'utilisateurs' | 'documents' | 'archives' | 'corbeille' | 'projets' | 'emplacements' | 'journal' | 'integrite';
 
 const isUserActive = (user: User): boolean => user.actif === true || user.actif === 'true';
 
@@ -536,6 +537,12 @@ function AdminUoDashboard() {
                                 >
                                     Journal d'audit
                                 </button>
+                                <button
+                                    className={`uo-tab ${tab === 'integrite' ? 'active' : ''}`}
+                                    onClick={() => setTab('integrite')}
+                                >
+                                    <i className="fa-solid fa-shield-halved" /> Contrôle d'intégrité
+                                </button>
                             </div>
 
                             {tab === 'utilisateurs' && (
@@ -607,6 +614,7 @@ function AdminUoDashboard() {
                             )}
 
                             {tab === 'journal' && <AuditLogPanel />}
+                            {tab === 'integrite' && <FixityCheckPanel />}
                         </>
                     )}
                 </div>

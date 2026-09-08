@@ -15,6 +15,7 @@ import ProjetsPanel from '../organisation/ProjetsPanel';
 import PhysicalLocationsPanel from '../organisation/PhysicalLocationsPanel';
 import ExportPanel from '../organisation/ExportPanel';
 import AuditLogPanel from './AuditLogPanel';
+import FixityCheckPanel from './FixityCheckPanel';
 import DocumentsArchivesPanel from './DocumentsArchivesPanel';
 import Corbeille from '../document/Corbeille';
 import type { TypeDocumentDto } from '../services/document/TypedocumentService';
@@ -71,7 +72,7 @@ interface UONode {
 }
 
 type MainView = 'profile' | 'contenu';
-type Tab = 'utilisateurs' | 'documents' | 'archives' | 'corbeille' | 'projets' | 'emplacements' | 'journal';
+type Tab = 'utilisateurs' | 'documents' | 'archives' | 'corbeille' | 'projets' | 'emplacements' | 'journal' | 'integrite';
 
 const GLOBAL_VIEW_ID = -1;
 const GLOBAL_VIEW_NODE: UONode = {
@@ -549,6 +550,12 @@ function AdminDashboard() {
                                 >
                                     Journal d'audit
                                 </button>
+                                <button
+                                    className={`uo-tab ${tab === 'integrite' ? 'active' : ''}`}
+                                    onClick={() => setTab('integrite')}
+                                >
+                                    <i className="fa-solid fa-shield-halved" /> Contrôle d'intégrité
+                                </button>
                             </div>
 
 
@@ -624,6 +631,7 @@ function AdminDashboard() {
                             )}
 
                             {tab === 'journal' && <AuditLogPanel />}
+                            {tab === 'integrite' && <FixityCheckPanel />}
                         </>
                     )}
                 </div>
