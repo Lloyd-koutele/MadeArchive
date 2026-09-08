@@ -35,6 +35,15 @@ public interface DocumentRepository extends JpaRepository<Document, UUID>, JpaSp
     List<UUID> findIdsByUniteOrganisationnelleIdIn(@Param("uoIds") Collection<Long> uoIds);
 
     /**
+     * Même usage, périmètre "TOUT" — délibérément SANS filtre de statut ici
+     * (contrairement à findAllIdsNonSupprimes ci-dessous, pensé pour
+     * Meilisearch) : verifyAndSave (FixityCheckService) sait déjà écarter
+     * CORRUPTED/DELETED lui-même, pas la peine de dupliquer cette règle ici.
+     */
+    @Query("SELECT d.id FROM Document d")
+    List<UUID> findAllIds();
+
+    /**
      * Tous les IDs de documents "vivants et normalement recherchables" — la
      * seule vérité sur ce qui a le droit de rester indexé dans Meilisearch.
      * Exclut DELETED (tombstoné) ET CORBEILLE (mis de côté volontairement,
