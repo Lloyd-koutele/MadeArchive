@@ -264,7 +264,7 @@
 }
 
 .td-table thead th {
-    padding: 0.85rem 1rem;
+    padding: 0.65rem 1rem;
     text-align: left;
     font-family: 'DM Sans', sans-serif;
     font-weight: 500;
@@ -288,13 +288,19 @@
 .td-table tbody tr.td-row-selectable { cursor: pointer; user-select: none; }
 
 .td-table tbody td {
-    padding: 0.8rem 1rem;
+    padding: 0.6rem 1rem;
     color: var(--dark-choc);
     font-size: 0.875rem;
     vertical-align: middle;
 }
 
-.td-nom { font-weight: 500; }
+/* Une seule ligne, même pour un nom long ("Attestation de réussite
+   Université du Sahel") — un retour à la ligne ici allonge la rangée
+   entière et pousse les boutons d'action à passer eux aussi sur 2 lignes
+   (voir .td-actions plus bas). Pas d'ellipsis : l'intitulé complet reste
+   affiché, le conteneur du tableau (.td-table-container, overflow-x:auto)
+   scrolle horizontalement dans le cas rare où ça ne suffit pas. */
+.td-nom { font-weight: 500; white-space: nowrap; }
 
 .td-meta-count {
     display: inline-block;
@@ -310,7 +316,7 @@
 .td-actions {
     display: flex;
     gap: 0.4rem;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: center;
 }
 
