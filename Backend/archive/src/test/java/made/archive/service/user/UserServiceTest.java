@@ -281,6 +281,54 @@ class UserServiceTest
         assertThat(cible.isActif()).isTrue();
     }
 
+    @Test
+    void unAdminUoNePeutPasAnnulerUneSuppressionDUnAdmin()
+    {
+        User adminUo = utilisateur(Role_Name.ADMIN_UO);
+        User cibleAdmin = utilisateur(Role_Name.ADMIN);
+        cibleAdmin.setSuppressionPrevueLe(LocalDate.now().plusDays(1));
+
+        when(userRepository.findById(cibleAdmin.getId())).thenReturn(Optional.of(cibleAdmin));
+
+        assertThatThrownBy(() -> service.annulerSuppression(cibleAdmin.getId(), adminUo))
+            .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    void unAdminUoNePeutPasAnnulerUneSuppressionDUnAutreAdminUoHorsDeSonAutorite()
+    {
+        // Même modèle que demanderSuppression : un ADMIN_UO n'est plus bloqué
+        // par principe sur un autre ADMIN_UO, mais reste scopé par autorité.
+        User adminUo = utilisateur(Role_Name.ADMIN_UO);
+        User cibleAdminUo = utilisateur(Role_Name.ADMIN_UO);
+        cibleAdminUo.setSuppressionPrevueLe(LocalDate.now().plusDays(1));
+
+        when(userRepository.findById(cibleAdminUo.getId())).thenReturn(Optional.of(cibleAdminUo));
+        when(uniteOrganisationnelleService.aAutoriteSurUtilisateur(cibleAdminUo.getId(), adminUo))
+            .thenReturn(false);
+
+        assertThatThrownBy(() -> service.annulerSuppression(cibleAdminUo.getId(), adminUo))
+            .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    void unAdminUoPeutAnnulerUneSuppressionDUnAutreAdminUoDeSaPropreAutorite()
+    {
+        User adminUo = utilisateur(Role_Name.ADMIN_UO);
+        User cibleAdminUo = utilisateur(Role_Name.ADMIN_UO);
+        cibleAdminUo.setSuppressionPrevueLe(LocalDate.now().plusDays(1));
+        cibleAdminUo.setActif(false);
+
+        when(userRepository.findById(cibleAdminUo.getId())).thenReturn(Optional.of(cibleAdminUo));
+        when(uniteOrganisationnelleService.aAutoriteSurUtilisateur(cibleAdminUo.getId(), adminUo))
+            .thenReturn(true);
+
+        service.annulerSuppression(cibleAdminUo.getId(), adminUo);
+
+        assertThat(cibleAdminUo.getSuppressionPrevueLe()).isNull();
+        assertThat(cibleAdminUo.isActif()).isTrue();
+    }
+
     // ─────────────────────── executerSuppressionsEnAttente ───────────────────────
 
     @Test
