@@ -12,10 +12,7 @@ import made.archive.service.organisation.UniteOrganisationnelleService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -148,8 +145,12 @@ public class GroupeAccessService
      * document privé : les collègues de la PROPRE UO du demandeur (jamais de
      * toute la plateforme — cohérent avec le périmètre par UO appliqué partout
      * ailleurs), plus tous les ADMIN globaux (rattachés à aucune UO, mais
-     * légitimes sur tout document par leur rôle). Ne renvoie jamais ceux déjà
-     * membres.
+     * légitimes sur tout document par leur rôle) — règle déléguée à
+     * UniteOrganisationnelleService.getCandidatsGroupeAcces, PARTAGÉE avec
+     * ProjetService.getUtilisateursDisponiblesProjet (même règle, un projet
+     * plutôt qu'un document) et UserService.getCandidatsGroupeAccesPourUO
+     * (même règle, À LA CRÉATION plutôt qu'après coup). Ne renvoie jamais
+     * ceux déjà membres.
      *
      * Avant ce correctif : userRepository.findAll() exposait l'annuaire complet
      * de la plateforme (toutes UO confondues) à n'importe quel éditeur.
@@ -167,28 +168,16 @@ public class GroupeAccessService
         User demandeur = userRepository.findById(demandeurId)
             .orElseThrow(() -> new BusinessException("Utilisateur introuvable : " + demandeurId));
 
-        // Map plutôt que Set/List : dédoublonne par id si un même utilisateur
-        // (ex. un ADMIN_UO admin ET membre de sa propre UO) apparaîtrait des
-        // deux côtés, tout en préservant un ordre stable.
-        Map<UUID, User> candidats = new LinkedHashMap<>();
-
-        // 1. Collègues de la propre UO du demandeur — un ADMIN global n'a
-        //    aucune UO active (voir UniteOrganisationnelleService.changerUOUtilisateur),
-        //    cette étape est alors simplement sans effet pour lui.
+        // Propre UO du demandeur — un ADMIN global n'a aucune UO active (voir
+        // UniteOrganisationnelleService.changerUOUtilisateur), auquel cas
+        // getCandidatsGroupeAcces(null, ...) ne lui propose que les ADMIN.
         Optional<UniteOrganisationnelleDto> uoActuelle =
             uniteOrganisationnelleService.getUOActuelleUser(demandeurId);
-        if (uoActuelle.isPresent())
-        {
-            List<User> collegues = uniteOrganisationnelleService
-                .getUtilisateursDeUO(uoActuelle.get().getId(), demandeur);
-            collegues.forEach(u -> candidats.put(u.getId(), u));
-        }
+        Long uoId = uoActuelle.map(UniteOrganisationnelleDto::getId).orElse(null);
 
-        // 2. Tous les ADMIN globaux.
-        userRepository.findByRoleName(Role_Name.ADMIN)
-            .forEach(u -> candidats.put(u.getId(), u));
+        List<User> candidats = uniteOrganisationnelleService.getCandidatsGroupeAcces(uoId, demandeur);
 
-        return candidats.values().stream()
+        return candidats.stream()
             .filter(u -> !membresIds.contains(u.getId()))
             .toList();
     }

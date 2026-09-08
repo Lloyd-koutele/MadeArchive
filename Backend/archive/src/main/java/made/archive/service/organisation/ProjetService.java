@@ -31,7 +31,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -472,7 +471,11 @@ public class ProjetService
     /**
      * Utilisateurs proposables comme membres : les collègues de la propre UO
      * du projet, plus tous les ADMIN globaux — jamais l'annuaire complet de
-     * la plateforme (même règle que GroupeAccessService.getUtilisateursDisponibles).
+     * la plateforme. Règle déléguée à
+     * UniteOrganisationnelleService.getCandidatsGroupeAcces, PARTAGÉE avec
+     * GroupeAccessService.getUtilisateursDisponibles (même règle, un document
+     * plutôt qu'un projet) et UserService.getCandidatsGroupeAccesPourUO
+     * (même règle, À LA CRÉATION plutôt qu'après coup).
      */
     @Transactional(readOnly = true)
     public List<User> getUtilisateursDisponiblesProjet(Long projetId, UUID demandeurId)
@@ -487,16 +490,10 @@ public class ProjetService
             .map(User::getId)
             .toList();
 
-        Map<UUID, User> candidats = new LinkedHashMap<>();
-
-        List<User> collegues = uniteOrganisationnelleService.getUtilisateursDeUO(
+        List<User> candidats = uniteOrganisationnelleService.getCandidatsGroupeAcces(
             projet.getUniteOrganisationnelle().getId(), demandeur);
-        collegues.forEach(u -> candidats.put(u.getId(), u));
 
-        userRepository.findByRoleName(Role_Name.ADMIN)
-            .forEach(u -> candidats.put(u.getId(), u));
-
-        return candidats.values().stream()
+        return candidats.stream()
             .filter(u -> !membresIds.contains(u.getId()))
             .toList();
     }

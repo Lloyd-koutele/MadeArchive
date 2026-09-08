@@ -176,6 +176,27 @@ public class UserService
         return convertUsersToDto(users);
     }
 
+    /**
+     * Utilisateurs proposables comme membres d'un groupe d'accès (document ou
+     * projet privé) À LA CRÉATION — avant qu'aucun document/projet/groupe
+     * n'existe encore, donc sans "déjà membre" à exclure (contrairement à
+     * GroupeAccessService/ProjetService.getUtilisateursDisponibles*, qui
+     * appliquent la même règle APRÈS coup, une fois le groupe créé). Voir
+     * UniteOrganisationnelleService.getCandidatsGroupeAcces pour la règle
+     * elle-même (collègues de l'UO + tous les ADMIN globaux), partagée entre
+     * les trois appelants.
+     */
+    @Transactional(readOnly = true)
+    public List<UserResponseDto> getCandidatsGroupeAccesPourUO(Long uoId, User currentUser)
+    {
+        if (uoId == null)
+        {
+            throw new BusinessException("L'UO est obligatoire");
+        }
+        List<User> candidats = uniteOrganisationnelleService.getCandidatsGroupeAcces(uoId, currentUser);
+        return convertUsersToDto(candidats);
+    }
+
     @Transactional(readOnly = true)
     public List<UserResponseDto> getUsersByRole(Role_Name roleName)
     {

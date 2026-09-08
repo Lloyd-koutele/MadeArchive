@@ -3,7 +3,7 @@ import {
     uploadDocumentOcrPreview,
     finalizeUploadDocument,
     getAllTypeDocuments,
-    getAllUsers,
+    getCandidatsGroupe,
 } from '../services/document/DocumentService';
 import type {
     DocumentUploadDto,
@@ -62,6 +62,7 @@ function UploadSimple({ onsuccess, preselectedTypeId, precedentDocument }: Uploa
     const [access, setAccess]                 = useState<'PUBLIC' | 'PRIVE'>('PUBLIC');
     const [integrityLevel, setIntegrityLevel] = useState<'STANDARD' | 'BLOCKCHAIN'>('STANDARD');
     const [selectedMembres, setSelectedMembres] = useState<string[]>([]);
+    const [filtreMembre, setFiltreMembre]     = useState('');
     const [emplacements, setEmplacements]     = useState<PhysicalLocationDto[]>([]);
     const [physicalLocationId, setPhysicalLocationId] = useState('');
     const [isDragging, setIsDragging]         = useState(false);
@@ -83,11 +84,12 @@ function UploadSimple({ onsuccess, preselectedTypeId, precedentDocument }: Uploa
         getAllTypeDocuments()
             .then(setTypeDocuments)
             .catch(() => notify.error('Impossible de charger les types de documents'));
-        // getAllUsers a besoin de l'UO de l'éditeur (l'endpoint liste les utilisateurs
-        // d'une UO donnée, pas "tout le monde") — on la récupère d'abord.
+        // getCandidatsGroupe a besoin de l'UO de l'éditeur (l'endpoint liste les
+        // collègues d'une UO donnée + tous les ADMIN globaux, pas "tout le monde")
+        // — on la récupère d'abord.
         getMyUO()
             .then(uo => {
-                getAllUsers(uo.id).then(setUsers).catch(() => {});
+                getCandidatsGroupe(uo.id).then(setUsers).catch(() => {});
                 getEmplacementsDisponibles(uo.id).then(setEmplacements).catch(() => {});
             })
             .catch(() => {});
@@ -410,19 +412,35 @@ function UploadSimple({ onsuccess, preselectedTypeId, precedentDocument }: Uploa
                                 <p className="membres-label">
                                     Membres du groupe (optionnel) :
                                 </p>
+                                <input
+                                    type="text"
+                                    className="membres-filtre-input"
+                                    placeholder="Rechercher (nom, email, téléphone)"
+                                    aria-label="Rechercher un utilisateur"
+                                    value={filtreMembre}
+                                    onChange={e => setFiltreMembre(e.target.value)}
+                                />
                                 <div className="membres-list">
-                                    {users.map(u => (
-                                        <label key={u.id} className="membre-item">
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedMembres.includes(u.id)}
-                                                onChange={() => toggleMembre(u.id)}
-                                                disabled={isProcessing}
-                                            />
-                                            <span>{u.prenom} {u.nom}</span>
-                                            <span className="membre-email">{u.email}</span>
-                                        </label>
-                                    ))}
+                                    {users
+                                        .filter(u => {
+                                            const q = filtreMembre.trim().toLowerCase();
+                                            if (!q) return true;
+                                            return `${u.prenom} ${u.nom}`.toLowerCase().includes(q)
+                                                || u.email.toLowerCase().includes(q)
+                                                || (u.telephone ?? '').toLowerCase().includes(q);
+                                        })
+                                        .map(u => (
+                                            <label key={u.id} className="membre-item">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedMembres.includes(u.id)}
+                                                    onChange={() => toggleMembre(u.id)}
+                                                    disabled={isProcessing}
+                                                />
+                                                <span>{u.prenom} {u.nom}</span>
+                                                <span className="membre-email">{u.email}</span>
+                                            </label>
+                                        ))}
                                 </div>
                             </div>
                         )}

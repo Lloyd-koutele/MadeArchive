@@ -36,10 +36,15 @@ export interface TypeDocumentDto {
 }
 
 export interface UserDto {
-    id:     string;
-    nom:    string;
-    prenom: string;
-    email:  string;
+    id:        string;
+    nom:       string;
+    prenom:    string;
+    email:     string;
+    // Optionnel : présent sur les réponses UserResponseDto (getAllUsers,
+    // getCandidatsGroupe...), absent de certaines autres (ex. MembreDto de
+    // GroupeService, qui ne porte que id/nom/prenom/email) — utilisé pour le
+    // filtre de recherche des listes de membres (voir GestionGroupe.tsx).
+    telephone?: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -828,9 +833,11 @@ export const getTypeDocumentById = async (id: number): Promise<TypeDocumentDto> 
 
 /**
  * GET /api/editor/uo/{uoId}/users
- * Récupère les utilisateurs de l'UO donnée (pour le choix des membres de groupe,
- * ou le champ "uploadé par" à l'upload). Anciennement /api/editor/users (sans
- * scope d'UO) : cette route n'a jamais existé côté backend.
+ * Récupère les utilisateurs de l'UO donnée. Anciennement /api/editor/users
+ * (sans scope d'UO) : cette route n'a jamais existé côté backend.
+ * Volontairement PAS utilisé pour le choix des membres d'un groupe d'accès
+ * (voir getCandidatsGroupe ci-dessous) : ne renvoie que les collègues de
+ * l'UO, jamais les ADMIN globaux.
  */
 export const getAllUsers = async (uoId: number): Promise<UserDto[]> => {
     try {
@@ -839,6 +846,25 @@ export const getAllUsers = async (uoId: number): Promise<UserDto[]> => {
     } catch (error: any) {
         throw new Error(
             error.response?.data ?? error.message ?? 'Erreur récupération utilisateurs',
+        );
+    }
+};
+
+/**
+ * GET /api/editor/uo/{uoId}/candidats-groupe
+ * Utilisateurs proposables comme membres d'un groupe d'accès (document ou
+ * projet privé) À LA CRÉATION — collègues de l'UO donnée, PLUS tous les
+ * ADMIN globaux (même règle que GroupeService.getDisponibles /
+ * ProjetGroupeService.getDisponiblesProjet, utilisés eux APRÈS la création
+ * une fois le document/projet et son groupe déjà créés).
+ */
+export const getCandidatsGroupe = async (uoId: number): Promise<UserDto[]> => {
+    try {
+        const response = await api.get(`/editor/uo/${uoId}/candidats-groupe`);
+        return response.data;
+    } catch (error: any) {
+        throw new Error(
+            error.response?.data ?? error.message ?? 'Erreur récupération des candidats au groupe',
         );
     }
 };

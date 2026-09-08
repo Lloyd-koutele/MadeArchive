@@ -7,6 +7,7 @@ import java.util.Collection;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -812,6 +813,41 @@ public class UniteOrganisationnelleService
         List<User> resultat = new ArrayList<>(actifs);
         resultat.addAll(enAttente);
         return resultat;
+    }
+
+    /**
+     * Utilisateurs "légitimes" comme membres d'un groupe d'accès (document ou
+     * projet privé) pour une UO donnée : ses membres actifs (voir
+     * getUtilisateursDeUO ci-dessus), plus tous les ADMIN globaux — rattachés
+     * à aucune UO, mais légitimes sur tout document/projet par leur rôle.
+     * uoId nullable : un demandeur sans UO active (cas d'un ADMIN global, voir
+     * changerUOUtilisateur) n'a alors que les ADMIN comme candidats.
+     *
+     * Règle PARTAGÉE entre trois appelants : GroupeAccessService et
+     * ProjetService.getUtilisateursDisponibles* (APRÈS la création d'un
+     * document/projet, qui filtrent ensuite les déjà-membres) et
+     * UserService.getCandidatsGroupeAccesPourUO (À LA création, avant
+     * qu'aucun groupe n'existe encore, donc sans ce filtre) — un seul endroit
+     * décide qui est "légitime", plutôt que trois copies de la même logique
+     * pouvant diverger avec le temps.
+     */
+    @Transactional
+    public List<User> getCandidatsGroupeAcces(Long uoId, User currentUser)
+    {
+        // Map plutôt que Set/List : dédoublonne par id si un même utilisateur
+        // (ex. un ADMIN_UO admin ET membre de sa propre UO) apparaîtrait des
+        // deux côtés, tout en préservant un ordre stable.
+        Map<UUID, User> candidats = new LinkedHashMap<>();
+
+        if (uoId != null)
+        {
+            getUtilisateursDeUO(uoId, currentUser).forEach(u -> candidats.put(u.getId(), u));
+        }
+
+        userRepository.findByRoleName(Role_Name.ADMIN)
+            .forEach(u -> candidats.put(u.getId(), u));
+
+        return new ArrayList<>(candidats.values());
     }
 
     public boolean aAutoriteSurUtilisateur(UUID cibleUserId, User acteur)
