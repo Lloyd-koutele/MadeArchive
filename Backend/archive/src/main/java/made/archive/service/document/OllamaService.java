@@ -36,8 +36,15 @@ import java.util.stream.Collectors;
  *   1. UN SEUL appel à Qwen pour TOUS les champs du type (format JSON forcé),
  *      au lieu d'un appel par champ — moins de round-trips, moins de texte
  *      OCR répété inutilement.
- *   2. Chaque regex reçue est validée avant d'être acceptée :
- *      a. syntaxiquement (Pattern.compile) ;
+ *   2. Chaque regex reçue est d'abord réparée mécaniquement (voir
+ *      repairCandidate) pour corriger les défauts récurrents qu'aucun réglage
+ *      de prompt/température ni changement de modèle local n'élimine de façon
+ *      fiable (investigation de septembre 2026 — qwen2.5-coder:7b, gemma4:e4b,
+ *      gemma4:12b testés), puis validée avant d'être acceptée :
+ *      a. syntaxiquement (Pattern.compile, avec Pattern.MULTILINE — un ^/$ que
+ *         le modèle emploie en pensant qu'il ancre chaque LIGNE, comme il le
+ *         ferait dans la plupart des autres langages, échouerait silencieusement
+ *         sinon : par défaut Java n'ancre que le DÉBUT/FIN du texte entier) ;
  *      b. anti-ReDoS (exécution bornée dans le temps contre le texte OCR
  *         réel — cette regex tournera sur CHAQUE futur document du type) ;
  *      c. fonctionnellement (si une valeur connue existe pour ce champ, la
@@ -61,16 +68,21 @@ public class OllamaService
     private final ObjectMapper objectMapper;
     private WebClient webClient;
 
-    private static final String MODEL             = "qwen2.5-coder:7b";
+    // qwen2.5-coder:14b (voir docker-compose.yml, remplace le 7B en 09/2026 — score
+    // mesuré 23-24/39 sur le harnais de test contre 17-18/39 pour le 7B, seul gain net
+    // observé parmi tous les modèles locaux testés cette investigation) est plus lent
+    // ET plus gourmand en RAM que le 7B qu'il remplace (~10 Go de RAM au chargement
+    // contre ~5 Go — voir mem_limit du service ollama dans docker-compose.yml, relevé
+    // en conséquence).
+    private static final String MODEL             = "qwen2.5-coder:14b";
     private static final int    MAX_TEXT_CHARS     = 3000;
     // 30s était trop juste pour un appel groupé (5 champs, ~3000 caractères de contexte)
     // sur un modèle tournant en CPU/Metal — la génération est best-effort (voir
     // generateRegexIfFirstDocument), un timeout raté ne bloque jamais l'upload, mais
-    // échouait systématiquement avant même d'avoir une chance d'aboutir. Le 7B (voir
-    // docker-compose.yml, remplace le 3B initial — plus fiable sur des consignes
-    // structurées complexes, voir OllamaService de classe) est plus lent : marge
-    // portée à 150s plutôt que 90s.
-    private static final int    TIMEOUT_SECONDS    = 150;
+    // échouait systématiquement avant même d'avoir une chance d'aboutir. Porté à 150s
+    // pour le 7B (remplaçait alors un 3B), puis à 300s pour le 14B (mesuré jusqu'à 278s
+    // de réponse sur un appel groupé réel en CPU — 150s aurait coupé l'appel en cours).
+    private static final int    TIMEOUT_SECONDS    = 300;
     private static final long   REDOS_TIMEOUT_MS   = 500;
     private static final String FALLBACK_REGEX     = ".+";
 
@@ -105,7 +117,7 @@ public class OllamaService
         if (regex == null || regex.isEmpty()) return false;
         try
         {
-            Pattern.compile(regex);
+            Pattern.compile(regex, Pattern.MULTILINE);
             return true;
         }
         catch (java.util.regex.PatternSyntaxException e)
@@ -120,7 +132,7 @@ public class OllamaService
         if (!validateRegex(regex)) return "Regex invalide";
         try
         {
-            Matcher matcher = Pattern.compile(regex).matcher(text);
+            Matcher matcher = Pattern.compile(regex, Pattern.MULTILINE).matcher(text);
             return matcher.find() ? matcher.group() : "Aucune correspondance trouvée";
         }
         catch (Exception e)
@@ -239,14 +251,93 @@ public class OllamaService
     // Validation d'un candidat (syntaxe + anti-ReDoS + correspondance)
     // ─────────────────────────────────────────────────────────────────────────
 
+    /**
+     * Classe de caractères contenant \s (donc capable, contrairement à un espace
+     * littéral, de traverser un retour à ligne) suivie d'un quantificateur GOURMAND
+     * (+ ou *) pas déjà rendu paresseux. Repérée le 09/2026 : sur une valeur multi-
+     * lignes suivie du libellé du champ SUIVANT, une telle classe continue au-delà
+     * de la valeur et avale ce libellé suivant tout entier (ex : "Prénom et nom"
+     * capturant "Lloyd Marvin KOUTELE\nDate de naissance " sur le document
+     * "attestation" — confirmé en ré-exécutant la regex). Demander au modèle
+     * d'utiliser +?/*? dans le prompt (voir buildBatchPrompt) ne suffit pas à le
+     * garantir de façon fiable (ignoré par le modèle dans une partie des essais,
+     * testé sur qwen2.5-coder:7b ET gemma4:e4b/12b) — corrigé ici mécaniquement.
+     */
+    private static final Pattern GREEDY_MULTILINE_CLASS =
+        Pattern.compile("(\\[[^\\]]*\\\\s[^\\]]*\\])([+*])(?!\\?)");
+
+    /**
+     * Anticipation ajoutée quand un groupe capturant réparé n'a RIEN après lui dans
+     * le motif d'origine. Rendre un quantificateur paresseux SANS cette borne le fait
+     * dégénérer vers une capture d'un seul caractère (rien ne le force à s'étendre
+     * plus loin) — constaté en testant : pire que le comportement gourmand d'origine,
+     * pas juste "plus prudent". La borne s'arrête à la première ligne qui ressemble à
+     * un NOUVEAU libellé ("Xxx...:"), une ligne vide, ou la fin du texte.
+     */
+    private static final String BOUNDARY_LOOKAHEAD = "(?=\\n\\s*\\S.{0,60}?:|\\n\\s*\\n|$)";
+
+    /**
+     * Répare mécaniquement, AVANT validation, les défauts récurrents observés dans
+     * les candidats générés par le LLM (voir investigation de septembre 2026 :
+     * aucun réglage de température/format ni changement de modèle local —
+     * qwen2.5-coder:7b, gemma4:e4b, gemma4:12b — ne les élimine de façon fiable,
+     * alors qu'ils sont mécaniquement détectables et corrigeables sans dépendre
+     * du LLM). Chaque règle est volontairement conservatrice : elle ne peut que
+     * RESTREINDRE ce que capture une regex, jamais l'étendre — une regex qui
+     * matchait déjà correctement avant réparation continue de matcher correctement
+     * après.
+     */
+    String repairCandidate(String regex)
+    {
+        if (regex == null)
+        {
+            return null;
+        }
+
+        Matcher matcher = GREEDY_MULTILINE_CLASS.matcher(regex);
+        StringBuilder repare = new StringBuilder();
+        int position = 0;
+
+        while (matcher.find())
+        {
+            repare.append(regex, position, matcher.start());
+
+            String classe          = matcher.group(1); // ex : "[A-Za-zÀ-ÿ\s]"
+            String quantificateur   = matcher.group(2); // + ou *
+            String resteDuMotif     = regex.substring(matcher.end());
+
+            repare.append(classe).append(quantificateur).append('?');
+
+            // Rien de significatif après ce groupe dans tout le reste du motif
+            // (seulement d'éventuelles parenthèses fermantes de groupes englobants) :
+            // c'est le cas sans borne, potentiellement dangereux — voir Javadoc. La
+            // borne est ajoutée APRÈS ces parenthèses (donc hors du groupe capturant
+            // lui-même), sans effet sur ce qui est réellement capturé.
+            if (resteDuMotif.matches("\\)*"))
+            {
+                repare.append(resteDuMotif).append(BOUNDARY_LOOKAHEAD);
+                position = regex.length();
+            }
+            else
+            {
+                position = matcher.end();
+            }
+        }
+        repare.append(regex, position, regex.length());
+
+        return repare.toString();
+    }
+
     /** Retourne la regex nettoyée si elle passe toutes les validations, sinon null. */
-    private String validateCandidate(String rawCandidate, String ocrText, String knownValue)
+    String validateCandidate(String rawCandidate, String ocrText, String knownValue)
     {
         String regex = cleanRegex(rawCandidate);
         if (regex == null)
         {
             return null;
         }
+
+        regex = repairCandidate(regex);
 
         if (!validateRegex(regex))
         {
@@ -311,7 +402,7 @@ public class OllamaService
     {
         String text = ocrText != null ? ocrText : "";
         Callable<Boolean> task = () -> {
-            Pattern.compile(regex).matcher(text).find();
+            Pattern.compile(regex, Pattern.MULTILINE).matcher(text).find();
             return true;
         };
 
@@ -356,7 +447,7 @@ public class OllamaService
         }
         try
         {
-            Matcher matcher = Pattern.compile(regex).matcher(ocrText);
+            Matcher matcher = Pattern.compile(regex, Pattern.MULTILINE).matcher(ocrText);
             if (!matcher.find())
             {
                 return false;
@@ -511,9 +602,16 @@ public class OllamaService
             l'espace comme [A-Za-z0-9]+ — elle ne matchera qu'un seul mot. Préférez une classe \
             qui autorise l'espace explicitement (ex : [A-Za-zÀ-ÿ ]+) ou, pour une valeur délimitée \
             par une virgule, "tout sauf ce séparateur" (ex : [^,]+).
-            - N'utilisez JAMAIS \\n (retour à la ligne) à l'intérieur d'une classe de \
-            caractères [...] — préférez toujours \\s, qui couvre déjà les retours à la ligne \
-            sans cette combinaison d'échappement.
+            - IMPORTANT, valeur répartie sur PLUSIEURS LIGNES (ex : une adresse coupée après \
+            une virgule, un intitulé qui continue à la ligne suivante) : un espace littéral ' ' \
+            dans une classe [...] NE traverse JAMAIS un retour à la ligne, seule une valeur \
+            tenant sur une seule ligne serait alors capturée en entier. Dès qu'une valeur risque \
+            de s'étendre sur plusieurs lignes, utilisez \\s au lieu de l'espace littéral dans vos \
+            classes (ex : [A-Za-zÀ-ÿ0-9,\\s]+? plutôt que [A-Za-zÀ-ÿ0-9, ]+) — \\s couvre à la \
+            fois l'espace ET le retour à la ligne, jamais \\n seul entre crochets [...] (inutile, \
+            \\s le couvre déjà). TOUJOURS avec un quantificateur NON GOURMAND (+? au lieu de +) \
+            dans ce cas précis : \\s englobant aussi le retour à la ligne, une classe gourmande \
+            continuerait au-delà de la valeur et avalerait le champ suivant tout entier.
             - Un champ annoté [regex actuelle "..." — NE FONCTIONNE PAS...] a déjà été tenté sans \
             succès sur un AUTRE document du même type — ne proposez pas exactement la même regex, \
             trouvez pourquoi elle échoue probablement (trop spécifique ? mauvaise ancre ?) et \

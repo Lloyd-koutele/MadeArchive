@@ -244,7 +244,14 @@ public class DocumentOcrService
 
             try
             {
-                Pattern pattern = Pattern.compile(regex);
+                // Pattern.MULTILINE : sans ce flag, un ^/$ que le modèle emploie en
+                // pensant ancrer chaque LIGNE (comme dans la plupart des langages)
+                // n'ancre en réalité que le DÉBUT/FIN du texte entier en Java — la
+                // regex ne matche alors jamais. Doit rester IDENTIQUE au flag utilisé
+                // à la génération/validation (voir OllamaService.matchesKnownValue) :
+                // une regex validée avec un flag doit se comporter pareil ici avec
+                // le même flag, sinon la validation ne garantit plus rien en prod.
+                Pattern pattern = Pattern.compile(regex, Pattern.MULTILINE);
                 Matcher matcher = pattern.matcher(extractedText);
 
                 if (matcher.find())
