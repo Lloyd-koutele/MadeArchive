@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { getAllTypeDocuments } from '../services/document/TypedocumentService';
+import { getAllTypeDocuments, getTypeDocumentsByUO } from '../services/document/TypedocumentService';
 import type { TypeDocumentDto } from '../services/document/TypedocumentService';
-import { getAllUOs } from '../services/organisation/UOService';
+import { getAllUOs, getMyUO, getSousArbre } from '../services/organisation/UOService';
 import { declencherFixityCheck } from '../services/document/FixityCheckService';
 import type { FixityCheckScope } from '../services/document/FixityCheckService';
 import { hasRole } from '../auth/authService';
@@ -40,11 +40,32 @@ function FixityCheckPanel() {
     const [submitting, setSubmitting] = useState(false);
 
     useEffect(() => {
-        Promise.all([getAllTypeDocuments(), getAllUOs()])
-            .then(([typesRes, uosRes]) => {
+        // getAllTypeDocuments()/getAllUOs() sont réservés à ROLE_ADMIN côté backend
+        // (@Secured("ROLE_ADMIN") — voir TypeDocumentController/UOController) : un
+        // ADMIN_UO qui arrive ici prenait systématiquement un 403 "Access denied"
+        // sur les DEUX appels avant même de voir le panneau, laissant "types"/"uos"
+        // vides. Scopé à sa propre UO (+ sous-arbre) via les mêmes endpoints déjà
+        // utilisés ailleurs dans l'admin UO pour ce rôle.
+        const charger = async () => {
+            if (estAdmin)
+            {
+                const [typesRes, uosRes] = await Promise.all([getAllTypeDocuments(), getAllUOs()]);
                 setTypes(typesRes);
                 setUos(uosRes);
-            })
+            }
+            else
+            {
+                const monUO = await getMyUO();
+                const [typesRes, uosRes] = await Promise.all([
+                    getTypeDocumentsByUO(monUO.id),
+                    getSousArbre(monUO.id),
+                ]);
+                setTypes(typesRes);
+                setUos(uosRes);
+            }
+        };
+
+        charger()
             .catch(err => notify.error(err.message ?? 'Erreur chargement des types/UO'))
             .finally(() => setLoading(false));
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -93,13 +114,6 @@ function FixityCheckPanel() {
         <div className="fixity-panel">
             <div className="fixity-panel-header">
                 <h2>Contrôle d'intégrité</h2>
-                <p className="fixity-panel-sub">
-                    Recalcule l'empreinte SHA-256 de chaque document archivé et la compare à celle enregistrée à
-                    l'archivage — la même vérification tourne déjà automatiquement chaque nuit à 3h. Un
-                    déclenchement manuel est utile en cas de doute ponctuel, pas pour un usage courant : chaque
-                    périmètre (un type, une UO, ou tout le système) ne peut être relancé qu'une fois toutes les
-                    6 heures, pour ne pas surcharger le stockage.
-                </p>
             </div>
 
             <div className="fixity-scope-toggle" role="group" aria-label="Périmètre de la vérification">

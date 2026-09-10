@@ -8,7 +8,7 @@ chaque variable de configuration.
 
 - **Un VPS Linux** avec Docker et Docker Compose installés.
   - **RAM : viser au moins 16 Go.** Ollama seul consomme couramment
-    4,5-5,5 Go (modèle chargé) ; avec le reste de la pile (Postgres, MinIO,
+    10 Go (modèle chargé) ; avec le reste de la pile (Postgres, MinIO,
     Meilisearch, Redis, Gotenberg, Chromium headless, l'application elle-même),
     un serveur à 4-8 Go sera insuffisant.
 - **Un nom de domaine réel**, avec un enregistrement DNS de type A pointant
@@ -24,7 +24,7 @@ chaque variable de configuration.
 ## 2. Récupérer le projet
 
 ```bash
-git clone <url-du-dépôt>
+git clone https://github.com/Lloyd-koutele/MadeArchive.git
 cd MadeArchive/Backend/archive
 ```
 
@@ -42,14 +42,10 @@ openssl rand -base64 32   # pour la plupart des clés
 openssl rand -hex 24      # pour CHROMIUM_TOKEN
 ```
 
-Deux catégories de variables dans `.env` :
+Variables dans `.env` :
 - **À changer par vous** (mots de passe, clés, domaine, email) — voir les
   commentaires "À CHANGER" dans `.env.example`.
-- **À ne pas toucher pour un usage Docker** (`DB_URL`, `MINIO_URL`,
-  `MEILISEARCH_HOST`, `OLLAMA_BASE_URL`, `TESSERACT_DATA_PATH`,
-  `HSM_KEYSTORE_PATH`) — `docker-compose.yml` les surcharge déjà vers les
-  noms de service internes (`postgres`, `minio`, etc.) ; les valeurs du
-  `.env` ne servent qu'à un usage natif hors Docker (`./gradlew bootRun`).
+
 
 ## 4. Le domaine se configure une seule fois, dans `.env`
 
