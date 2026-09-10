@@ -1,5 +1,12 @@
 package made.archive.service.document;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import made.archive.dto.BulkFinalizeRequestDto;
@@ -16,12 +23,6 @@ import made.archive.exception.BusinessException;
 import made.archive.exception.PdfAConversionException;
 import made.archive.repository.TypeDocumentRepository;
 import made.archive.repository.UserRepository;
-import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
 
 
 @Slf4j
@@ -277,7 +278,7 @@ public class BulkUploadSameTypeService
     {
         if (sessionData.suggestions != null && !sessionData.suggestions.isEmpty())
         {
-            return "✅ " + nomFichier + " — "
+            return nomFichier + " — "
                 + sessionData.suggestions.size() + " métadonnée(s) pré-remplie(s) via OCR.";
         }
         else if (!sessionData.regexAlreadyGenerated)
@@ -296,7 +297,7 @@ public class BulkUploadSameTypeService
         }
         else
         {
-            return "ℹ️ " + nomFichier + " — Aucun texte extractible. Remplissez manuellement.";
+            return nomFichier + " — Aucun texte extractible. Remplissez manuellement.";
         }
     }
 
@@ -306,7 +307,7 @@ public class BulkUploadSameTypeService
             .sessionId(null)
             .nomFichier(nomFichier)
             .metaDataSuggestions(null)
-            .message("❌ " + nomFichier + " — " + erreur)
+            .message(nomFichier + " — " + erreur)
             .build();
     }
 }

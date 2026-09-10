@@ -16,6 +16,7 @@ import net.sourceforge.tess4j.TesseractException;
 import net.sourceforge.tess4j.Word;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.pdfbox.text.TextPosition;
@@ -54,6 +55,16 @@ public class OcrService
     private static final String LANGUAGES = "fra+eng+ara";
     private static final int TIKA_MAX_CHARS = -1;
     private static final float PDF_RENDER_DPI = 300f;
+
+    /**
+     * L'extraction POSITIONNELLE (x/y, voir PositionedWord) se limite aux 2 premières
+     * pages d'un document multi-pages : les métadonnées (facture, identité,
+     * certificat...) s'y trouvent presque toujours, et au-delà le coût OCR
+     * supplémentaire (Tess4J) ne se justifie plus pour ce seul usage — le texte
+     * COMPLET, lui, continue de couvrir toutes les pages sans exception (voir
+     * extractPdfWithTesseract/extractPdfWithTesseractPositions : fullText).
+     */
+    private static final int MAX_PAGES_POSITIONNEL = 2;
 
     /**
      * PHASE 2 (optimisé) : enregistre un texte OCR DÉJÀ CALCULÉ en Phase 1
@@ -255,18 +266,22 @@ public class OcrService
 
     /**
      * Rendu + OCR page par page, comme {@link #extractPdfWithTesseract} — mais
-     * ne récupère les positions que de la PREMIÈRE page : les métadonnées d'un
-     * document (facture, identité, certificat...) s'y trouvent presque
-     * toujours, et ça évite de mélanger les coordonnées de pages différentes
-     * (chaque page repart de (0,0), un même Y désignerait sinon deux endroits
-     * différents selon la page).
+     * ne récupère les positions que des {@value #MAX_PAGES_POSITIONNEL} PREMIÈRES
+     * pages (voir MAX_PAGES_POSITIONNEL). Chaque page de rendu repart de (0,0) en
+     * coordonnées image : un même Y désignerait deux endroits différents selon la
+     * page si on se contentait de les concaténer telles quelles — la 2e page est
+     * donc décalée verticalement de la hauteur (en pixels, même DPI) de la 1ère,
+     * pour que les deux s'empilent dans un même repère cohérent avant d'être
+     * passées à OcrPositionalExtractionService (qui regroupe ensuite par lignes
+     * sans se soucier de savoir de quelle page vient quel mot).
      */
     private OcrExtractionResult extractPdfWithTesseractPositions(byte[] fileBytes, TypeDocument typeDocument)
             throws IOException, TesseractException
     {
         Tesseract tesseract = buildTesseract(typeDocument);
         StringBuilder fullText = new StringBuilder();
-        List<PositionedWord> motsPremierePage = List.of();
+        List<PositionedWord> motsPositionnels = new ArrayList<>();
+        int decalageY = 0;
 
         try (PDDocument pdDocument = PDDocument.load(new ByteArrayInputStream(fileBytes).readAllBytes()))
         {
@@ -281,14 +296,19 @@ public class OcrService
                 {
                     fullText.append(pageText).append("\n");
                 }
-                if (page == 0)
+                if (page < MAX_PAGES_POSITIONNEL)
                 {
-                    motsPremierePage = motsDepuisTesseract(tesseract, image);
+                    for (PositionedWord mot : motsDepuisTesseract(tesseract, image))
+                    {
+                        motsPositionnels.add(new PositionedWord(
+                            mot.texte(), mot.x(), mot.y() + decalageY, mot.largeur(), mot.hauteur()));
+                    }
+                    decalageY += image.getHeight();
                 }
             }
         }
 
-        return new OcrExtractionResult(fullText.toString().trim(), motsPremierePage);
+        return new OcrExtractionResult(fullText.toString().trim(), motsPositionnels);
     }
 
     /** Mots + positions reconnus par Tess4J sur une image déjà OCRisée par `tesseract.doOCR`. */
@@ -316,14 +336,17 @@ public class OcrService
         }
     }
 
-    /** Mots + positions extraits par PDFBox sur la première page d'un PDF à couche texte. */
+    /**
+     * Mots + positions extraits par PDFBox sur les {@value #MAX_PAGES_POSITIONNEL}
+     * premières pages d'un PDF à couche texte (voir MAX_PAGES_POSITIONNEL).
+     */
     private List<PositionedWord> extrairePositionsPdfBox(byte[] fileBytes)
     {
         try (PDDocument document = PDDocument.load(new ByteArrayInputStream(fileBytes)))
         {
             PositionalTextStripper stripper = new PositionalTextStripper();
             stripper.setStartPage(1);
-            stripper.setEndPage(1);
+            stripper.setEndPage(Math.min(MAX_PAGES_POSITIONNEL, document.getNumberOfPages()));
             stripper.getText(document); // déclenche writeString(...) ; la chaîne renvoyée n'est pas utilisée ici
             return stripper.getMots();
         }
@@ -334,12 +357,34 @@ public class OcrService
         }
     }
 
-    /** Capture la position (x, y, largeur, hauteur) de chaque fragment de texte pendant l'extraction PDFBox. */
+    /**
+     * Capture la position (x, y, largeur, hauteur) de chaque fragment de texte
+     * pendant l'extraction PDFBox. Sur un document multi-pages, chaque page a son
+     * propre repère (0,0) — sans décalage, la 2e page se superposerait exactement
+     * à la 1ère aux yeux d'OcrPositionalExtractionService. `startPage` accumule
+     * donc la hauteur de CHAQUE page déjà traitée (MediaBox, en points PDF —
+     * même unité que TextPosition) pour empiler les pages dans un repère commun,
+     * cohérent avec le décalage équivalent fait côté Tess4J (voir
+     * extractPdfWithTesseractPositions).
+     */
     private static class PositionalTextStripper extends PDFTextStripper
     {
         private final List<PositionedWord> mots = new ArrayList<>();
+        private float decalageYPageCourante = 0f;
+        private float hauteurPagePrecedente = 0f;
 
         PositionalTextStripper() throws IOException { super(); }
+
+        @Override
+        protected void startPage(PDPage page) throws IOException
+        {
+            if (getCurrentPageNo() > 1)
+            {
+                decalageYPageCourante += hauteurPagePrecedente;
+            }
+            hauteurPagePrecedente = page.getMediaBox().getHeight();
+            super.startPage(page);
+        }
 
         @Override
         protected void writeString(String text, List<TextPosition> textPositions) throws IOException
@@ -357,7 +402,7 @@ public class OcrService
                 maxY = Math.max(maxY, tp.getYDirAdj());
             }
             mots.add(new PositionedWord(text.trim(),
-                Math.round(minX), Math.round(minY),
+                Math.round(minX), Math.round(minY + decalageYPageCourante),
                 Math.round(maxX - minX), Math.round(maxY - minY)));
         }
 

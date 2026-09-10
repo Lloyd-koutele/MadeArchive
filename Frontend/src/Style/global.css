@@ -60,13 +60,27 @@ body {
     min-height: 100vh;
     overflow-x: hidden;
     background-color: var(--white-choc);
+    font-family: 'DM Sans', sans-serif;
+    color: var(--dark-choc);
+}
+
+/* Image de fond détachée sur un pseudo-élément position:fixed plutôt que
+   via "background-attachment: fixed" directement sur body : le cover se
+   calcule alors par rapport à la fenêtre visible (comme voulu), pas par
+   rapport à la hauteur totale de la page — sinon l'image est mise à
+   l'échelle sur toute la hauteur du document et apparaît hyper zoomée dès
+   qu'une page dépasse un écran. Reste aussi stable sur mobile (Safari iOS
+   gère mal "background-attachment: fixed" : recalculs au défilement liés à
+   la barre d'adresse qui apparaît/disparaît). */
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
     background-image: url('../../public/image2.jpg');
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
-    background-attachment: fixed;
-    font-family: 'DM Sans', sans-serif;
-    color: var(--dark-choc);
 }
 
 li { list-style: none; }
@@ -181,7 +195,12 @@ main {
 }
 
 main section {
-    height: 100vh;
+    /* min-height (pas height) : le contenu peut dépasser sans être coupé.
+       100dvh tient compte de la barre d'adresse mobile qui apparaît/
+       disparaît au scroll ; 100vh reste en repli pour les navigateurs qui
+       ne connaissent pas encore dvh. */
+    min-height: 100vh;
+    min-height: 100dvh;
     padding: 100px 2rem;
 }
 
@@ -264,4 +283,6 @@ main section p {
     .navbar .buttons { display: none; }
     .navbar .burger-menu-button { display: block; }
     .burger-menu { display: block; }
+
+    main section { padding: 80px 1.25rem; }
 }
