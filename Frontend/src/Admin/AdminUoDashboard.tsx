@@ -72,7 +72,7 @@ interface UONode {
 }
 
 type MainView = 'profile' | 'contenu';
-type Tab = 'utilisateurs' | 'documents' | 'archives' | 'corbeille' | 'projets' | 'emplacements' | 'journal' | 'integrite';
+type Tab = 'utilisateurs' | 'documents' | 'archives' | 'corbeille' | 'projets' | 'emplacements' | 'journal';
 
 const isUserActive = (user: User): boolean => user.actif === true || user.actif === 'true';
 
@@ -103,6 +103,7 @@ function AdminUoDashboard() {
     const [users, setUsers] = useState<User[]>([]);
     const [isCreateUserModalOpen, setIsCreateUserModalOpen] = useState(false);
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+    const [isFixityCheckModalOpen, setIsFixityCheckModalOpen] = useState(false);
     const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
     const [isViewModalOpen, setIsViewModalOpen] = useState(false);
     const [isCreateTdModalOpen, setIsCreateTdModalOpen] = useState(false);
@@ -448,6 +449,15 @@ function AdminUoDashboard() {
                                 </button>
                             </div>
 
+                            <div className="main-header">
+                                <button
+                                    onClick={() => setIsFixityCheckModalOpen(true)}
+                                    className="sidebar-btn"
+                                >
+                                    <i className="fa-solid fa-shield-halved"/> Contrôle d'intégrité
+                                </button>
+                            </div>
+
                             <div className="sidebar-section-label">Organisation</div>
                             {rootUO && currentUOId && (
                                 <UOTree
@@ -537,12 +547,6 @@ function AdminUoDashboard() {
                                 >
                                     Journal d'audit
                                 </button>
-                                <button
-                                    className={`uo-tab ${tab === 'integrite' ? 'active' : ''}`}
-                                    onClick={() => setTab('integrite')}
-                                >
-                                    <i className="fa-solid fa-shield-halved" /> Contrôle d'intégrité
-                                </button>
                             </div>
 
                             {tab === 'utilisateurs' && (
@@ -614,10 +618,18 @@ function AdminUoDashboard() {
                             )}
 
                             {tab === 'journal' && <AuditLogPanel />}
-                            {tab === 'integrite' && <FixityCheckPanel />}
                         </>
                     )}
                 </div>
+
+                <Modal
+                    isOpen={isFixityCheckModalOpen}
+                    onClose={() => setIsFixityCheckModalOpen(false)}
+                    title="Contrôle d'intégrité"
+                    size="large"
+                >
+                    <FixityCheckPanel uos={treeNodes} />
+                </Modal>
 
                 <ExportPanel
                     isOpen={isExportModalOpen}

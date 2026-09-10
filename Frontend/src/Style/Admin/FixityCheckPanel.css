@@ -53,6 +53,26 @@
     color: #fff;
 }
 
+/* "Tout le système" — bascule à part, mutuellement exclusive avec le flux
+   UO → types en deux étapes ci-dessous, pas une option de plus dans un
+   même groupe de choix. */
+.fixity-tout-toggle {
+    display: inline-flex;
+    border: 1px solid var(--border-color, #e0d5c4);
+    border-radius: 999px;
+    margin-bottom: 1.2rem;
+}
+
+.fixity-tout-toggle:has(input:checked) {
+    background: var(--accent, #8b5e3c);
+    color: #fff;
+}
+
+.fixity-step-title {
+    font-size: 0.95rem;
+    margin: 0 0 0.6rem;
+}
+
 .fixity-checklist {
     display: flex;
     flex-direction: column;
