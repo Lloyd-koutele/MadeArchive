@@ -1,0 +1,807 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Chronographes Jumeaux</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    color-scheme: light;
+    --bg:#ECE8DF;
+    --bg-grain: rgba(30,36,34,0.025);
+    --panel:#FBFAF6;
+    --panel-edge:#DAD5C6;
+    --ink:#1E2422;
+    --muted:#6E756F;
+    --track:#DEDAcd;
+    --track2:#E4E0D3;
+    --accent-a:#B85F1B;
+    --accent-a-soft:rgba(184,95,27,0.13);
+    --accent-b:#12695C;
+    --accent-b-soft:rgba(18,105,92,0.13);
+    --shadow: 0 1px 2px rgba(30,36,34,0.06), 0 12px 28px -18px rgba(30,36,34,0.35);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      color-scheme: dark;
+      --bg:#14181A;
+      --panel:#1B2022;
+      --panel-edge:#2A3234;
+      --ink:#ECEFEA;
+      --muted:#909B96;
+      --track:#2A3234;
+      --track2:#242B2C;
+      --accent-a:#E29450;
+      --accent-a-soft:rgba(226,148,80,0.16);
+      --accent-b:#3FB49F;
+      --accent-b-soft:rgba(63,180,159,0.16);
+      --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 16px 32px -18px rgba(0,0,0,0.6);
+    }
+  }
+  :root[data-theme="dark"]{
+    color-scheme: dark;
+    --bg:#14181A;
+    --panel:#1B2022;
+    --panel-edge:#2A3234;
+    --ink:#ECEFEA;
+    --muted:#909B96;
+    --track:#2A3234;
+    --track2:#242B2C;
+    --accent-a:#E29450;
+    --accent-a-soft:rgba(226,148,80,0.16);
+    --accent-b:#3FB49F;
+    --accent-b-soft:rgba(63,180,159,0.16);
+    --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 16px 32px -18px rgba(0,0,0,0.6);
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Work Sans', system-ui, sans-serif;
+    min-height:100vh;
+    padding:clamp(20px,4vw,56px);
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{animation-duration:0.001ms !important; transition-duration:0.001ms !important;}
+  }
+
+  .page{
+    max-width:520px;
+    margin:0 auto;
+  }
+
+  header.masthead{
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+    margin-bottom:clamp(28px,4vw,44px);
+  }
+  .eyebrow{
+    font-family:'Work Sans',sans-serif;
+    font-size:0.72rem;
+    font-weight:600;
+    letter-spacing:0.16em;
+    text-transform:uppercase;
+    color:var(--muted);
+  }
+  h1{
+    font-family:'Oswald',sans-serif;
+    font-weight:600;
+    font-size:clamp(1.8rem,3.4vw,2.6rem);
+    letter-spacing:0.01em;
+    text-transform:uppercase;
+    margin:0;
+    text-wrap:balance;
+  }
+  .sub{
+    color:var(--muted);
+    font-size:0.98rem;
+    max-width:56ch;
+    line-height:1.5;
+  }
+
+  .grid{
+    display:flex;
+    flex-direction:column;
+    align-items:stretch;
+    gap:0;
+    max-width:460px;
+    margin:0 auto;
+  }
+
+  .seam{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:14px 0;
+  }
+  .seam::before, .seam::after{
+    content:"";
+    flex:1;
+    height:1px;
+    background:var(--panel-edge);
+  }
+  .seam-mark{
+    width:7px;
+    height:7px;
+    border-radius:50%;
+    background:var(--panel-edge);
+    flex-shrink:0;
+  }
+
+  .timer.mirror{
+    transform:rotate(180deg);
+  }
+
+  .timer{
+    background:var(--panel);
+    border:1px solid var(--panel-edge);
+    border-radius:18px;
+    box-shadow:var(--shadow);
+    padding:clamp(20px,2.6vw,30px);
+    display:flex;
+    flex-direction:column;
+    gap:20px;
+    position:relative;
+    overflow:hidden;
+  }
+  .timer[data-accent="a"]{ --accent:var(--accent-a); --accent-soft:var(--accent-a-soft); }
+  .timer[data-accent="b"]{ --accent:var(--accent-b); --accent-soft:var(--accent-b-soft); }
+
+  .timer::before{
+    content:"";
+    position:absolute;
+    inset:0 0 auto 0;
+    height:3px;
+    background:var(--accent);
+    opacity:0.9;
+  }
+
+  .timer-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+  }
+  .timer-id{
+    font-family:'Oswald',sans-serif;
+    font-size:0.72rem;
+    font-weight:600;
+    letter-spacing:0.14em;
+    color:var(--accent);
+    text-transform:uppercase;
+    white-space:nowrap;
+  }
+  .name-input{
+    flex:1;
+    min-width:0;
+    background:transparent;
+    border:none;
+    border-bottom:1px solid transparent;
+    font-family:'Oswald',sans-serif;
+    font-size:1.05rem;
+    font-weight:500;
+    letter-spacing:0.02em;
+    text-transform:uppercase;
+    color:var(--ink);
+    padding:2px 0;
+    text-align:right;
+  }
+  .name-input:hover, .name-input:focus{
+    border-bottom-color:var(--panel-edge);
+    outline:none;
+  }
+
+  .dial-wrap{
+    position:relative;
+    width:min(240px,72vw);
+    aspect-ratio:1/1;
+    margin:0 auto;
+  }
+  .dial-wrap svg{
+    width:100%;
+    height:100%;
+    display:block;
+  }
+  .tick{ stroke:var(--muted); opacity:0.35; stroke-width:2; }
+  .tick.major{ opacity:0.55; stroke-width:3; }
+  .ring-track{ fill:none; stroke:var(--track); stroke-width:9; }
+  .ring-progress{
+    fill:none;
+    stroke:var(--accent);
+    stroke-width:9;
+    stroke-linecap:round;
+    transform:rotate(-90deg);
+    transform-origin:100px 100px;
+    transition:stroke-dashoffset 0.25s linear;
+  }
+  .hand{
+    stroke:var(--accent);
+    stroke-width:2;
+    opacity:0.55;
+    transform-origin:100px 100px;
+  }
+  .hand-nub{ fill:var(--accent); opacity:0.55; }
+
+  .readout-overlay{
+    position:absolute;
+    inset:0;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:6px;
+    text-align:center;
+  }
+  .digits{
+    font-family:'JetBrains Mono',monospace;
+    font-variant-numeric:tabular-nums;
+    font-weight:500;
+    font-size:clamp(1.5rem,4.6vw,1.9rem);
+    letter-spacing:0.01em;
+    color:var(--ink);
+  }
+  .digits .days{
+    font-size:0.65em;
+    color:var(--muted);
+    margin-right:4px;
+  }
+  .state-pill{
+    font-family:'Work Sans',sans-serif;
+    font-size:0.66rem;
+    font-weight:600;
+    letter-spacing:0.12em;
+    text-transform:uppercase;
+    padding:3px 10px;
+    border-radius:999px;
+    background:var(--accent-soft);
+    color:var(--accent);
+  }
+  .timer.finished .dial-wrap{ animation:pulse 1s ease-in-out infinite; }
+  @keyframes pulse{
+    0%,100%{ filter:none; }
+    50%{ filter:drop-shadow(0 0 10px var(--accent-soft)); }
+  }
+
+  .fields{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:8px;
+  }
+  .field{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:5px;
+  }
+  .field input{
+    width:100%;
+    text-align:center;
+    font-family:'JetBrains Mono',monospace;
+    font-variant-numeric:tabular-nums;
+    font-size:0.95rem;
+    color:var(--ink);
+    background:var(--track2);
+    border:1px solid var(--panel-edge);
+    border-radius:8px;
+    padding:7px 4px;
+  }
+  .field input:focus{
+    outline:2px solid var(--accent);
+    outline-offset:1px;
+  }
+  .field input:disabled{
+    opacity:0.55;
+  }
+  .field label{
+    font-size:0.62rem;
+    font-weight:600;
+    letter-spacing:0.12em;
+    text-transform:uppercase;
+    color:var(--muted);
+  }
+
+  .chips{
+    display:flex;
+    gap:6px;
+    flex-wrap:wrap;
+    justify-content:center;
+  }
+  .chip{
+    font-family:'Work Sans',sans-serif;
+    font-size:0.72rem;
+    font-weight:600;
+    letter-spacing:0.02em;
+    color:var(--muted);
+    background:transparent;
+    border:1px solid var(--panel-edge);
+    border-radius:999px;
+    padding:5px 11px;
+    cursor:pointer;
+    transition:border-color 0.15s, color 0.15s;
+  }
+  .chip:hover{ border-color:var(--accent); color:var(--accent); }
+  .chip:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+
+  .actions{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+  }
+  .actions-row{
+    display:flex;
+    gap:10px;
+  }
+  .btn{
+    flex:1;
+    font-family:'Work Sans',sans-serif;
+    font-size:0.82rem;
+    font-weight:600;
+    letter-spacing:0.03em;
+    text-transform:uppercase;
+    border-radius:10px;
+    padding:11px 12px;
+    cursor:pointer;
+    border:1px solid transparent;
+    transition:transform 0.1s, opacity 0.15s, background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  .btn:active{ transform:scale(0.97); }
+  .btn:focus-visible{ outline:2px solid var(--ink); outline-offset:2px; }
+  .btn:disabled{
+    opacity:0.35;
+    cursor:not-allowed;
+    transform:none;
+  }
+  .btn-primary{
+    background:var(--accent);
+    color:var(--panel);
+  }
+  .btn-primary:hover{ opacity:0.9; }
+  .btn-primary:disabled:hover{ opacity:0.35; }
+  .btn-ghost{
+    background:transparent;
+    border-color:var(--panel-edge);
+    color:var(--muted);
+  }
+  .btn-ghost:hover{ border-color:var(--accent); color:var(--accent); }
+  .btn-stop{
+    background:transparent;
+    border-color:var(--accent);
+    color:var(--accent);
+  }
+  .btn-stop:hover{ background:var(--accent-soft); }
+  .btn-stop:disabled:hover{ background:transparent; }
+
+  footer{
+    margin-top:clamp(28px,4vw,40px);
+    text-align:center;
+    color:var(--muted);
+    font-size:0.76rem;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="masthead">
+    <span class="eyebrow">Instruments de mesure du temps</span>
+    <h1>Chronographes jumeaux</h1>
+    <p class="sub">Un temps de départ partagé, réparti sur deux joueurs. Réglez la durée sur l'un, l'autre s'aligne aussitôt — puis lancez : comme aux échecs, démarrer un chronographe met l'autre en pause.</p>
+  </header>
+
+  <div class="grid">
+
+    <section class="timer mirror" data-accent="a" id="timer-1" aria-label="Minuteur 1, orienté face au joueur 1">
+      <div class="timer-head">
+        <span class="timer-id">N°1</span>
+        <input class="name-input" type="text" value="Joueur 1" maxlength="24" aria-label="Nom du minuteur 1" />
+      </div>
+
+      <div class="dial-wrap">
+        <svg viewBox="0 0 200 200">
+          <g class="ticks"></g>
+          <circle class="ring-track" cx="100" cy="100" r="80"></circle>
+          <circle class="ring-progress" cx="100" cy="100" r="80" data-ring></circle>
+          <line class="hand" x1="100" y1="100" x2="100" y2="34" data-hand></line>
+          <circle class="hand-nub" cx="100" cy="100" r="4"></circle>
+        </svg>
+        <div class="readout-overlay">
+          <div class="digits" data-digits>00:10:00</div>
+          <span class="state-pill" data-state>Prêt</span>
+        </div>
+      </div>
+
+      <div class="fields">
+        <div class="field">
+          <input type="number" min="0" max="99" value="0" data-unit="d" aria-label="Jours" />
+          <label>Jours</label>
+        </div>
+        <div class="field">
+          <input type="number" min="0" max="23" value="0" data-unit="h" aria-label="Heures" />
+          <label>Heures</label>
+        </div>
+        <div class="field">
+          <input type="number" min="0" max="59" value="10" data-unit="m" aria-label="Minutes" />
+          <label>Min.</label>
+        </div>
+        <div class="field">
+          <input type="number" min="0" max="59" value="0" data-unit="s" aria-label="Secondes" />
+          <label>Sec.</label>
+        </div>
+      </div>
+
+      <div class="chips">
+        <button class="chip" data-add="10">+10 s</button>
+        <button class="chip" data-add="60">+1 min</button>
+        <button class="chip" data-add="300">+5 min</button>
+        <button class="chip" data-add="600">+10 min</button>
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-primary" data-start>Démarrer</button>
+        <div class="actions-row">
+          <button class="btn btn-stop" data-stop disabled>Pause</button>
+          <button class="btn btn-ghost" data-reset>Réinitialiser</button>
+        </div>
+      </div>
+    </section>
+
+    <div class="seam" aria-hidden="true"><span class="seam-mark"></span></div>
+
+    <section class="timer" data-accent="b" id="timer-2" aria-label="Minuteur 2, orienté face au joueur 2">
+      <div class="timer-head">
+        <span class="timer-id">N°2</span>
+        <input class="name-input" type="text" value="Joueur 2" maxlength="24" aria-label="Nom du minuteur 2" />
+      </div>
+
+      <div class="dial-wrap">
+        <svg viewBox="0 0 200 200">
+          <g class="ticks"></g>
+          <circle class="ring-track" cx="100" cy="100" r="80"></circle>
+          <circle class="ring-progress" cx="100" cy="100" r="80" data-ring></circle>
+          <line class="hand" x1="100" y1="100" x2="100" y2="34" data-hand></line>
+          <circle class="hand-nub" cx="100" cy="100" r="4"></circle>
+        </svg>
+        <div class="readout-overlay">
+          <div class="digits" data-digits>00:10:00</div>
+          <span class="state-pill" data-state>Prêt</span>
+        </div>
+      </div>
+
+      <div class="fields">
+        <div class="field">
+          <input type="number" min="0" max="99" value="0" data-unit="d" aria-label="Jours" />
+          <label>Jours</label>
+        </div>
+        <div class="field">
+          <input type="number" min="0" max="23" value="0" data-unit="h" aria-label="Heures" />
+          <label>Heures</label>
+        </div>
+        <div class="field">
+          <input type="number" min="0" max="59" value="10" data-unit="m" aria-label="Minutes" />
+          <label>Min.</label>
+        </div>
+        <div class="field">
+          <input type="number" min="0" max="59" value="0" data-unit="s" aria-label="Secondes" />
+          <label>Sec.</label>
+        </div>
+      </div>
+
+      <div class="chips">
+        <button class="chip" data-add="10">+10 s</button>
+        <button class="chip" data-add="60">+1 min</button>
+        <button class="chip" data-add="300">+5 min</button>
+        <button class="chip" data-add="600">+10 min</button>
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-primary" data-start>Démarrer</button>
+        <div class="actions-row">
+          <button class="btn btn-stop" data-stop disabled>Pause</button>
+          <button class="btn btn-ghost" data-reset>Réinitialiser</button>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <footer>Un seul chronographe décompte à la fois : démarrer l'un met l'autre en pause, comme au jeu d'échecs.</footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var RADIUS = 80;
+  var CIRC = 2 * Math.PI * RADIUS;
+
+  function buildTicks(svg){
+    var g = svg.querySelector('.ticks');
+    for (var i = 0; i < 12; i++){
+      var angle = i * 30;
+      var major = i % 3 === 0;
+      var line = document.createElementNS('http://www.w3.org/2000/svg','line');
+      line.setAttribute('x1','100');
+      line.setAttribute('y1', major ? '4' : '8');
+      line.setAttribute('x2','100');
+      line.setAttribute('y2', major ? '14' : '14');
+      line.setAttribute('class','tick' + (major ? ' major' : ''));
+      line.setAttribute('transform','rotate(' + angle + ' 100 100)');
+      g.appendChild(line);
+    }
+  }
+
+  function pad(n){ return String(n).padStart(2,'0'); }
+
+  function formatDuration(ms){
+    var totalSec = Math.max(0, Math.round(ms / 1000));
+    var days = Math.floor(totalSec / 86400);
+    var hours = Math.floor((totalSec % 86400) / 3600);
+    var mins = Math.floor((totalSec % 3600) / 60);
+    var secs = totalSec % 60;
+    var core = pad(hours) + ':' + pad(mins) + ':' + pad(secs);
+    return days > 0 ? { days: days, text: core } : { days: 0, text: core };
+  }
+
+  function TimerModule(root){
+    this.root = root;
+    this.accent = root.dataset.accent;
+    this.svg = root.querySelector('svg');
+    this.ring = root.querySelector('[data-ring]');
+    this.hand = root.querySelector('[data-hand]');
+    this.digitsEl = root.querySelector('[data-digits]');
+    this.stateEl = root.querySelector('[data-state]');
+    this.startBtn = root.querySelector('[data-start]');
+    this.stopBtn = root.querySelector('[data-stop]');
+    this.resetBtn = root.querySelector('[data-reset]');
+    this.fields = {
+      d: root.querySelector('[data-unit="d"]'),
+      h: root.querySelector('[data-unit="h"]'),
+      m: root.querySelector('[data-unit="m"]'),
+      s: root.querySelector('[data-unit="s"]')
+    };
+    this.chips = root.querySelectorAll('[data-add]');
+
+    this.ring.style.strokeDasharray = CIRC;
+    this.ring.style.strokeDashoffset = 0;
+
+    this.partner = null;
+    this.running = false;
+    this.finished = false;
+    this.hasStarted = false;
+    this.totalMs = this.readFieldsMs();
+    this.remainingMs = this.totalMs;
+    this.endTime = null;
+    this.intervalId = null;
+    this.audioCtx = null;
+
+    this.bind();
+    this.render();
+    buildTicks(this.svg);
+  }
+
+  TimerModule.prototype.readFieldsMs = function(){
+    var d = parseInt(this.fields.d.value, 10) || 0;
+    var h = parseInt(this.fields.h.value, 10) || 0;
+    var m = parseInt(this.fields.m.value, 10) || 0;
+    var s = parseInt(this.fields.s.value, 10) || 0;
+    return ((d * 86400) + (h * 3600) + (m * 60) + s) * 1000;
+  };
+
+  TimerModule.prototype.writeFieldsFromMs = function(ms){
+    var totalSec = Math.max(0, Math.round(ms / 1000));
+    this.fields.d.value = Math.floor(totalSec / 86400);
+    this.fields.h.value = Math.floor((totalSec % 86400) / 3600);
+    this.fields.m.value = Math.floor((totalSec % 3600) / 60);
+    this.fields.s.value = totalSec % 60;
+  };
+
+  // Mirrors this timer's configured duration onto its partner, so both
+  // sides always share the same starting time — like setting a chess
+  // clock's time control once for both players.
+  TimerModule.prototype.syncToPartner = function(){
+    var partner = this.partner;
+    if (!partner || partner.running) return;
+    Object.keys(this.fields).forEach(function(key){
+      partner.fields[key].value = this.fields[key].value;
+    }, this);
+    partner.finished = false;
+    partner.root.classList.remove('finished');
+    partner.totalMs = partner.readFieldsMs();
+    partner.remainingMs = partner.totalMs;
+    partner.render();
+  };
+
+  TimerModule.prototype.bind = function(){
+    var self = this;
+
+    Object.keys(this.fields).forEach(function(key){
+      self.fields[key].addEventListener('input', function(){
+        if (self.running) return;
+        self.finished = false;
+        self.totalMs = self.readFieldsMs();
+        self.remainingMs = self.totalMs;
+        self.render();
+        self.syncToPartner();
+      });
+    });
+
+    this.chips.forEach(function(chip){
+      chip.addEventListener('click', function(){
+        var addMs = parseInt(chip.dataset.add, 10) * 1000;
+        if (self.running){
+          self.endTime += addMs;
+          self.totalMs += addMs;
+          self.render();
+        } else {
+          self.finished = false;
+          self.totalMs = self.readFieldsMs() + addMs;
+          self.remainingMs = self.totalMs;
+          self.writeFieldsFromMs(self.totalMs);
+          self.render();
+          self.syncToPartner();
+        }
+      });
+    });
+
+    this.startBtn.addEventListener('click', function(){
+      if (!self.running) self.start();
+    });
+
+    this.stopBtn.addEventListener('click', function(){
+      if (!self.running) return;
+      self.pause();
+      // Chess-clock handoff: pausing your own chrono hands the move
+      // straight to the other one, unless it has already run out.
+      if (self.partner && !self.partner.finished){
+        self.partner.start();
+      }
+    });
+
+    this.resetBtn.addEventListener('click', function(){
+      self.stop();
+      self.finished = false;
+      self.root.classList.remove('finished');
+      self.totalMs = self.readFieldsMs();
+      self.remainingMs = self.totalMs;
+      self.hasStarted = false;
+      self.setFieldsDisabled(false);
+      self.startBtn.textContent = 'Démarrer';
+      self.updateButtons();
+      self.render();
+    });
+  };
+
+  TimerModule.prototype.setFieldsDisabled = function(disabled){
+    Object.keys(this.fields).forEach((function(key){
+      this.fields[key].disabled = disabled;
+    }).bind(this));
+  };
+
+  TimerModule.prototype.updateButtons = function(){
+    // Once a side has been launched, its own Démarrer button stays
+    // locked — mid-game, only the partner's Pause hands the move back,
+    // exactly like a chess clock (you never restart your own side).
+    // It unlocks again after a Réinitialiser, or once this side is
+    // Terminé so the pair can be relancé.
+    this.startBtn.disabled = this.running || (this.hasStarted && !this.finished);
+    this.stopBtn.disabled = !this.running;
+  };
+
+  TimerModule.prototype.start = function(){
+    if (this.remainingMs <= 0){
+      this.totalMs = this.readFieldsMs();
+      this.remainingMs = this.totalMs;
+    }
+    if (this.totalMs <= 0) return;
+
+    // Chess-clock rule: only one side ever counts down. Starting this
+    // one pauses the other automatically.
+    if (this.partner && this.partner.running){
+      this.partner.pause();
+    }
+
+    this.finished = false;
+    this.hasStarted = true;
+    this.root.classList.remove('finished');
+    this.running = true;
+    this.endTime = Date.now() + this.remainingMs;
+    this.setFieldsDisabled(true);
+    this.startBtn.textContent = 'En cours';
+    this.updateButtons();
+
+    var self = this;
+    this.tick();
+    this.intervalId = setInterval(function(){ self.tick(); }, 250);
+  };
+
+  TimerModule.prototype.pause = function(){
+    this.stop();
+    this.remainingMs = Math.max(0, this.endTime - Date.now());
+    this.setFieldsDisabled(false);
+    this.startBtn.textContent = 'Démarrer';
+    this.updateButtons();
+    this.render();
+  };
+
+  TimerModule.prototype.stop = function(){
+    this.running = false;
+    if (this.intervalId){
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
+  };
+
+  TimerModule.prototype.tick = function(){
+    this.remainingMs = this.endTime - Date.now();
+    if (this.remainingMs <= 0){
+      this.remainingMs = 0;
+      this.stop();
+      this.finished = true;
+      this.root.classList.add('finished');
+      this.setFieldsDisabled(false);
+      this.startBtn.textContent = 'Relancer';
+      this.updateButtons();
+      this.beep();
+    }
+    this.render();
+  };
+
+  TimerModule.prototype.beep = function(){
+    try {
+      if (!this.audioCtx){
+        var AudioCtx = window.AudioContext || window.webkitAudioContext;
+        this.audioCtx = new AudioCtx();
+      }
+      var ctx = this.audioCtx;
+      var freqs = [880, 880, 1175];
+      freqs.forEach(function(freq, i){
+        var osc = ctx.createOscillator();
+        var gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        var startAt = ctx.currentTime + i * 0.22;
+        gain.gain.setValueAtTime(0.0001, startAt);
+        gain.gain.exponentialRampToValueAtTime(0.18, startAt + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.18);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(startAt);
+        osc.stop(startAt + 0.2);
+      });
+    } catch (e) { /* audio not available, silently skip */ }
+  };
+
+  TimerModule.prototype.render = function(){
+    var fraction = this.totalMs > 0 ? Math.max(0, Math.min(1, this.remainingMs / this.totalMs)) : 0;
+    var elapsedFraction = 1 - fraction;
+
+    this.ring.style.strokeDashoffset = CIRC * (1 - fraction);
+    this.hand.style.transform = 'rotate(' + (elapsedFraction * 360) + 'deg)';
+
+    var d = formatDuration(this.remainingMs);
+    this.digitsEl.innerHTML = (d.days > 0 ? '<span class="days">' + d.days + 'j</span>' : '') + d.text;
+
+    var label = 'Prêt';
+    if (this.finished) label = 'Terminé';
+    else if (this.running) label = 'En cours';
+    else if (this.remainingMs < this.totalMs && this.remainingMs > 0) label = 'En pause';
+    this.stateEl.textContent = label;
+  };
+
+  var modules = Array.prototype.map.call(document.querySelectorAll('.timer'), function(el){
+    return new TimerModule(el);
+  });
+  if (modules.length === 2){
+    modules[0].partner = modules[1];
+    modules[1].partner = modules[0];
+    // Both sides share one time control from the start, like a chess clock.
+    modules[0].syncToPartner();
+  }
+})();
+</script>
+</body>
+</html>

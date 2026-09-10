@@ -710,10 +710,6 @@ function DocumentDetailPanel({
                         <i className="fa-solid fa-triangle-exclamation" />
                         <span>Document corrompu{detail.corruptionRaison ? ` — ${detail.corruptionRaison}` : ''}</span>
                     </div>
-                    <p className="corruption-banner-note">
-                        Seuls les administrateurs ayant autorité sur son UO et les éditeurs y ayant accès
-                        peuvent encore consulter ou télécharger ce document.
-                    </p>
 
                     {detail.suppressionPrevueLe ? (
                         <p className="corruption-banner-suppression">

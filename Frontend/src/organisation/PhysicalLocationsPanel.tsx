@@ -261,8 +261,7 @@ function PhysicalLocationsPanel({ uoId }: PhysicalLocationsPanelProps) {
         const nbDescendants = compterSousArbre(node) - 1;
         const message = nbDescendants > 0
             ? `Supprimer définitivement "${node.name}" ET ses ${nbDescendants} descendant(s) ? `
-              + `Impossible si l'un d'eux (lui-même ou l'un de ses descendants) a des documents rattachés.`
-            : `Supprimer définitivement "${node.name}" ? Impossible s'il a des documents rattachés.`;
+            : `Supprimer définitivement "${node.name}"`;
         if (!(await confirm({ message, danger: true }))) return;
         await withBusy(node.id, () => supprimerEmplacement(node.id));
     };
@@ -582,7 +581,7 @@ function PlNode({
                         <i className={`fa-solid ${isInactive ? 'fa-toggle-off' : 'fa-toggle-on'}`} />
                     </button>
                     <button
-                        title={node.children.length > 0 ? 'Supprimer avec sa sous-arborescence' : 'Supprimer'}
+                        title={node.children.length > 0 ? 'Supprimer' : 'Supprimer'}
                         className="pl-delete-btn pl-actions-standalone"
                         onClick={() => onDelete(node)} disabled={isBusy}>
                         <i className="fa-solid fa-trash" />

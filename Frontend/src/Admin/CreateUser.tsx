@@ -267,7 +267,7 @@ function CreateUser({ onsuccess, restrictToUO }: CreateUserProps) {
                     ) : (
                         <fieldset className="form-field-roles">
                             <legend className="roles-label">
-                                Unité organisationnelle {isGlobalAdmin ? "(désactivée pour un ADMIN)" : "(une seule, obligatoire)"} :
+                                Unité organisationnelle {isGlobalAdmin ? "(désactivée pour un ADMIN)" : ""} :
                             </legend>
                             <UOTreeSelect
                                 nodes={uos}

@@ -1,7 +1,16 @@
 # Build multi-étapes : Node compile les assets statiques, Nginx les sert —
 # jamais le serveur de dev Vite (npm run dev) en production, beaucoup plus
 # lourd et pas prévu pour ça.
-FROM node:20-alpine AS build
+#
+# node:22 (pas 20) : pdfjs-dist@6.3.289 exige Node >=22.13/24, react-router@8.3.0
+# exige >=22.22 (voir "npm warn EBADENGINE" sinon — juste un avertissement, pas
+# un blocage, donc facile à laisser filer sans remarquer). Sous Node 20, le
+# build arm64 (émulation QEMU du pipeline publish-images.yml) a planté avec
+# "qemu: uncaught target signal 4 (Illegal instruction)" pendant `npm ci`
+# (run GitHub Actions #5, 09/2026) — cohérent avec du code supposant des
+# fonctionnalités d'un moteur plus récent, exécuté sous une émulation CPU
+# imparfaite.
+FROM node:22-alpine AS build
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci

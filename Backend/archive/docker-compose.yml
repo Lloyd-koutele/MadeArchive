@@ -85,6 +85,11 @@ services:
     # pas de ce projet) : plafonné pour éviter qu'un pic mémoire sur ce conteneur seul
     # n'affame les autres, même logique que madearchive-chromium ci-dessous.
     mem_limit: 10g
+    # Plafonné à 5 des 10 cœurs de la machine (voir `sysctl -n hw.ncpu` / Docker
+    # Desktop Settings > Resources > CPUs) : la génération tourne en arrière-plan,
+    # best-effort (voir OllamaService), pas besoin de tout le CPU au détriment
+    # des autres conteneurs (postgres, app...) pendant un appel de génération.
+    cpus: 5
     ports:
       - "127.0.0.1:11434:11434"
     volumes:

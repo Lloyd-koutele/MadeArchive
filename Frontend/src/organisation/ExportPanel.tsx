@@ -188,25 +188,10 @@ function ExportPanel({ isOpen, onClose, uos, defaultUoId }: ExportPanelProps) {
                     if (pollRef.current) { window.clearInterval(pollRef.current); pollRef.current = null; }
                 }
             } catch {
-                // Best-effort — un raté ponctuel de sondage ne doit pas arrêter
-                // le suivi, le prochain tick réessaiera.
             }
         }, POLL_INTERVAL_MS);
     };
 
-    /**
-     * Exporte directement dès qu'une UO est choisie — pas besoin de passer
-     * par "Charger les documents" avant : l'aperçu détaillé (cases à cocher
-     * une par une) reste possible mais devient une manipulation optionnelle,
-     * pas une étape obligatoire.
-     *
-     * Si l'aperçu n'a jamais été chargé, résout silencieusement le périmètre
-     * puis applique le type/projet déjà choisis en haut du formulaire pour
-     * obtenir la liste de documents à exporter. Si l'aperçu a déjà été
-     * chargé (et éventuellement affiné coche par coche), la sélection
-     * manuelle prend le dessus — cohérent avec ce que l'utilisateur voit
-     * à l'écran à ce moment-là.
-     */
     const handleLancer = async () => {
         if (uoId == null) return;
         if (estAdmin && includePriveNonMembre && !motif.trim()) {
@@ -278,9 +263,6 @@ function ExportPanel({ isOpen, onClose, uos, defaultUoId }: ExportPanelProps) {
     return (
         <Modal isOpen={isOpen} onClose={onClose} title="Exporter des documents">
             <div className="export-panel">
-                <p className="export-hint">
-                    Génère un ZIP des documents déchiffrés (un dossier par type). Expire 48h après génération.
-                </p>
 
                 <label className="export-field">
                     Unité organisationnelle
@@ -352,8 +334,7 @@ function ExportPanel({ isOpen, onClose, uos, defaultUoId }: ExportPanelProps) {
                                 onChange={e => setIncludePriveNonMembre(e.target.checked)}
                                 disabled={jobEnCours}
                             />
-                            <i className="fa-solid fa-triangle-exclamation" /> Inclure les documents privés dont je
-                            ne suis pas membre
+                            <i className="fa-solid fa-triangle-exclamation" /> Inclure les documents privés
                         </label>
                         {includePriveNonMembre && (
                             <div className="export-motif">
@@ -372,12 +353,6 @@ function ExportPanel({ isOpen, onClose, uos, defaultUoId }: ExportPanelProps) {
                         )}
                     </>
                 )}
-
-                {/* "Exporter" apparaît dès qu'une UO est choisie — pas besoin
-                    de charger l'aperçu au préalable. "Charger les documents"
-                    reste disponible à côté pour qui veut affiner sa
-                    sélection document par document avant de lancer ; une
-                    manipulation optionnelle, pas une étape obligatoire. */}
                 {uoId != null && !apercu && (
                     <div className="export-quick-actions">
                         <button
