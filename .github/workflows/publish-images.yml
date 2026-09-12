@@ -1,13 +1,4 @@
 name: Publier les images (ghcr.io)
-
-# Déclenché par un tag Git de version (ex: v1.2.0 → git push --tags),
-# PAS à chaque push sur main — un correctif tout juste poussé n'est pas
-# forcément prêt pour les déploiements existants qui font
-# `docker compose pull` (voir DEPLOYMENT.md, section 9). Taguer une
-# release est un geste explicite qui documente aussi ce qui est publié
-# (l'historique des tags = l'historique des versions déployables).
-# "Run workflow" (workflow_dispatch) reste disponible en secours, par ex.
-# pour republier la même version après un souci d'infra ghcr.io.
 on:
   push:
     tags:
@@ -16,9 +7,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  # En dur, en minuscules : GHCR exige un nom d'image tout en minuscules,
-  # mais github.repository_owner reflète la casse réelle du compte
-  # ("Lloyd-koutele") — l'utiliser tel quel aurait échoué au push.
   IMAGE_APP: ghcr.io/lloyd-koutele/madearchive-app
   IMAGE_FRONTEND: ghcr.io/lloyd-koutele/madearchive-frontend
   IMAGE_TRAEFIK: ghcr.io/lloyd-koutele/madearchive-traefik
@@ -66,12 +54,6 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      # QEMU : émule arm64 sur ce runner amd64, pour construire les DEUX
-      # architectures dans la même image publiée — nécessaire pour qu'une VM
-      # Apple Silicon (Multipass sur Mac M1/M2/M3, arm64 nativement) puisse
-      # la tirer aussi bien qu'un VPS x86 classique. Sans ça : "no matching
-      # manifest for linux/arm64/v8", constaté en testant sur une VM Multipass.
       - uses: docker/setup-qemu-action@v3
 
       - uses: docker/setup-buildx-action@v3
@@ -98,11 +80,6 @@ jobs:
             ${{ env.IMAGE_FRONTEND }}:${{ github.sha }}
             ${{ env.IMAGE_FRONTEND }}:${{ steps.version.outputs.version }}
 
-      # Image Traefik "maison" (voir Backend/archive/traefik/Dockerfile) :
-      # ajoute un point d'entrée qui régénère dynamic.yml depuis
-      # dynamic.yml.template à chaque démarrage — voir docker-compose.yml et
-      # DEPLOYMENT.md pour le pourquoi (une seule source pour le domaine,
-      # APP_DOMAIN dans .env, au lieu de deux copies désynchronisables).
       - name: Build + push — traefik
         uses: docker/build-push-action@v6
         with:
