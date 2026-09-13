@@ -72,7 +72,7 @@ interface UONode {
 }
 
 type MainView = 'profile' | 'contenu';
-type Tab = 'utilisateurs' | 'documents' | 'archives' | 'corbeille' | 'projets' | 'emplacements' | 'journal' | 'integrite';
+type Tab = 'utilisateurs' | 'documents' | 'archives' | 'corbeille' | 'projets' | 'emplacements' | 'journal';
 
 const GLOBAL_VIEW_ID = -1;
 const GLOBAL_VIEW_NODE: UONode = {
@@ -113,6 +113,7 @@ function AdminDashboard() {
     const [isViewModalOpen, setIsViewModalOpen] = useState(false);
     const [isCreateTdModalOpen, setIsCreateTdModalOpen] = useState(false);
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+    const [isFixityCheckModalOpen, setIsFixityCheckModalOpen] = useState(false);
     const [isCreateUOModalOpen, setIsCreateUOModalOpen] = useState(false);
     const [createUOParentId, setCreateUOParentId] = useState<number | null>(null);
     const [createUONom, setCreateUONom] = useState('');
@@ -459,6 +460,15 @@ function AdminDashboard() {
                                 </button>
                             </div>
 
+                            <div className="main-header">
+                                <button
+                                    onClick={() => setIsFixityCheckModalOpen(true)}
+                                    className="sidebar-btn"
+                                >
+                                    <i className="fa-solid fa-shield-halved" /> Contrôle d'intégrité
+                                </button>
+                            </div>
+
                             <div className="sidebar-section-label">Organisation</div>
                             <UOTree
                                 nodes={treeNodes}
@@ -550,12 +560,6 @@ function AdminDashboard() {
                                 >
                                     Journal d'audit
                                 </button>
-                                <button
-                                    className={`uo-tab ${tab === 'integrite' ? 'active' : ''}`}
-                                    onClick={() => setTab('integrite')}
-                                >
-                                    <i className="fa-solid fa-shield-halved" /> Contrôle d'intégrité
-                                </button>
                             </div>
 
 
@@ -631,9 +635,22 @@ function AdminDashboard() {
                             )}
 
                             {tab === 'journal' && <AuditLogPanel />}
-                            {tab === 'integrite' && <FixityCheckPanel />}
                         </>
                     )}
+
+                    {/* DANS .main-content, pas à côté : même piège de centrage que
+                        documenté pour le modal d'import de documents
+                        (EditorDasboard.tsx) — un modal frère de .main-content se
+                        centre sur toute la fenêtre (sidebar comprise) au lieu de
+                        se centrer sur la seule zone de contenu. */}
+                    <Modal
+                        isOpen={isFixityCheckModalOpen}
+                        onClose={() => setIsFixityCheckModalOpen(false)}
+                        title="Contrôle d'intégrité"
+                        size="medium"
+                    >
+                        <FixityCheckPanel uos={allUOs} />
+                    </Modal>
                 </div>
 
                 <ExportPanel

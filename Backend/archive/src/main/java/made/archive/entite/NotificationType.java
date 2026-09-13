@@ -34,5 +34,15 @@ public enum NotificationType
      *  envoyée au DEMANDEUR une fois le contrôle terminé (succès ou échec),
      *  distincte de DOCUMENT_CORROMPU qui va, elle, aux ayants-droit de
      *  chaque document trouvé corrompu. Voir FixityCheckTriggerService. */
-    FIXITY_CHECK_TERMINE
+    FIXITY_CHECK_TERMINE,
+
+    /** Vous avez été ajouté au groupe d'accès d'un document privé — envoyée
+     *  au NOUVEAU membre lui-même, pas aux autres membres déjà présents.
+     *  Voir GroupeAccessService.ajouterMembre. */
+    GROUPE_MEMBRE_AJOUTE,
+
+    /** Vous avez été retiré du groupe d'accès d'un document privé — envoyée
+     *  au membre RETIRÉ lui-même (il perd l'accès au document à partir de ce
+     *  moment, il doit en être informé). Voir GroupeAccessService.retirerMembre. */
+    GROUPE_MEMBRE_RETIRE
 }

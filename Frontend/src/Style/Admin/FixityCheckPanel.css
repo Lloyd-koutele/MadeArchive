@@ -90,7 +90,50 @@
     align-items: center;
     gap: 0.6rem;
     font-size: 0.88rem;
+}
+
+.fixity-checklist-item label {
     cursor: pointer;
+}
+
+/* Pli/dépli de l'arborescence UO — même principe que .uo-tree-toggle côté
+   sidebar (UOTree.css), couleur adaptée : ce panneau a un fond clair,
+   la sidebar un fond sombre. */
+.fixity-tree-toggle,
+.fixity-tree-toggle-spacer {
+    width: 1.1rem;
+    flex-shrink: 0;
+}
+
+.fixity-tree-toggle {
+    background: none;
+    border: none;
+    color: var(--text-muted, #7c6a5a);
+    font-size: 0.7rem;
+    cursor: pointer;
+    padding: 0;
+}
+
+/* Regroupement des types de document par UO d'origine (étape 2) — distingue
+   visuellement à qui appartient chaque type quand plusieurs UO sont
+   sélectionnées, pour ne pas les confondre. */
+.fixity-types-group + .fixity-types-group {
+    margin-top: 0.7rem;
+    padding-top: 0.6rem;
+    border-top: 1px dashed var(--border-color, #e0d5c4);
+}
+
+.fixity-types-group-title {
+    margin: 0 0 0.3rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--accent, #8b5e3c);
+}
+
+.fixity-checklist-item-indent {
+    padding-left: 20px;
 }
 
 .fixity-empty {

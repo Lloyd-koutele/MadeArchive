@@ -19,6 +19,16 @@ public interface DocumentRepository extends JpaRepository<Document, UUID>, JpaSp
 {
     Optional<Document> findDocumntByTitre(String titre);
 
+    /**
+     * Charge uploadedBy en EAGER (LEFT JOIN FETCH) en plus du document lui-même —
+     * utilisé par HorodatageService.horodaterApresUpload, volontairement PAS
+     * @Transactional (voir sa Javadoc) : sans ce JOIN FETCH, doc.getUploadedBy()
+     * (FetchType.LAZY sur Document, nécessaire pour notifier un échec d'horodatage)
+     * lèverait une LazyInitializationException une fois la session fermée.
+     */
+    @Query("SELECT d FROM Document d LEFT JOIN FETCH d.uploadedBy WHERE d.id = :id")
+    Optional<Document> findByIdWithUploadedBy(@Param("id") UUID id);
+
     List<Document> findByTypeDocument_Id(Long id);
 
     /**
@@ -145,9 +155,17 @@ public interface DocumentRepository extends JpaRepository<Document, UUID>, JpaSp
      * HorodatageRetryScheduler (reprise différée). DELETED/CORBEILLE
      * exclus : inutile de retenter l'horodatage d'un document qui n'est
      * plus normalement consultable.
+     *
+     * uploadedBy chargé en EAGER (LEFT JOIN FETCH) : HorodatageService.retenterEchecs
+     * n'est volontairement PAS @Transactional (voir sa Javadoc) — sans ce JOIN
+     * FETCH, y accéder pour la notification de succès après la fermeture de la
+     * session lèverait une LazyInitializationException (uploadedBy est
+     * FetchType.LAZY sur Document).
      */
+    @Query("SELECT d FROM Document d LEFT JOIN FETCH d.uploadedBy "
+        + "WHERE d.horodatageToken IS NULL AND d.status NOT IN :statutsExclus")
     List<Document> findByHorodatageTokenIsNullAndStatusNotIn(
-        List<DocumentStatus> statutsExclus);
+        @Param("statutsExclus") List<DocumentStatus> statutsExclus);
 
     /**
      * Compte les documents d'un projet par type — sert à calculer la checklist

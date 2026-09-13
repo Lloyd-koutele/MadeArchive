@@ -387,15 +387,6 @@ function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
     };
 
     // ─────────────────────────────────────────────────────────────────────
-    // Groupe d'accès
-    // ─────────────────────────────────────────────────────────────────────
-
-    const openGroupe = (doc: DocumentListItemDto) => {
-        setGroupeDoc({ id: doc.documentId, titre: doc.titre });
-        setIsGroupeOpen(true);
-    };
-
-    // ─────────────────────────────────────────────────────────────────────
     // Attestation d'archivage
     // ─────────────────────────────────────────────────────────────────────
 
@@ -918,15 +909,6 @@ function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
                                                 : <i className="fa-solid fa-file-pdf" />
                                             }
                                         </button>
-                                        {doc.access === 'PRIVE' && (
-                                            <button
-                                                className="action-button"
-                                                onClick={() => openGroupe(doc)}
-                                                title="Voir qui a accès à ce document"
-                                            >
-                                                <i className="fa-solid fa-user-group" />
-                                            </button>
-                                        )}
                                         {doc.peutGererCorbeille && (
                                             <button
                                                 className="action-button delete"
@@ -1066,17 +1048,6 @@ function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
                                                         : <i className="fa-solid fa-file-pdf" />
                                                     }
                                                 </button>
-
-                                                {/* Qui a accès (documents privés uniquement) */}
-                                                {doc.access === 'PRIVE' && (
-                                                    <button
-                                                        className="action-button doc-actions-standalone"
-                                                        onClick={() => openGroupe(doc)}
-                                                        title="Voir qui a accès à ce document"
-                                                    >
-                                                        <i className="fa-solid fa-user-group" />
-                                                    </button>
-                                                )}
 
                                                 {/* Envoyer à la corbeille */}
                                                 {doc.peutGererCorbeille && (

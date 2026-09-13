@@ -100,7 +100,7 @@ function GestionGroupe({ documentId, documentTitre, onClose }: GestionGroupeProp
 
             {!peutGerer && (
                 <p className="groupe-readonly-hint">
-                    Seul l'éditeur ayant archivé ce document peut ajouter ou retirer des membres.
+                Ce document est privé
                 </p>
             )}
 

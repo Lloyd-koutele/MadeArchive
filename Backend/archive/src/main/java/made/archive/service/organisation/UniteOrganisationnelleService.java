@@ -310,6 +310,14 @@ public class UniteOrganisationnelleService
             verifierNomUniqueExclut(nomEffectif, parentIdEffectif, id);
         }
 
+        // Capturés AVANT toute mutation ci-dessous — nécessaires pour un message
+        // d'audit précis ("de X vers Y") au lieu du simple "Modification de l'UO
+        // X" générique d'origine, qui obligeait à recouper avec l'état ACTUEL de
+        // l'arbre pour savoir ce qui avait réellement changé (un déplacement,
+        // vers où ? depuis où ?).
+        String ancienNom = uo.getNom();
+        UniteOrganisationnelle ancienParent = uo.getParent();
+
         if (dto.getNom() != null && !dto.getNom().isBlank())
         {
             uo.setNom(dto.getNom());
@@ -343,12 +351,42 @@ public class UniteOrganisationnelleService
 
         if (nomChange || parentChange)
         {
+            String message = construireMessageModificationUO(
+                ancienNom, updated.getNom(), ancienParent, updated.getParent());
             auditLogService.log(currentUser, AuditAction.UO_MODIFIEE, AuditCible.UNITE_ORGANISATIONNELLE,
-                updated.getId().toString(), updated.getId(),
-                "Modification de l'UO " + updated.getNom(), true);
+                updated.getId().toString(), updated.getId(), message, true);
         }
 
         return toDTOAvecChemin(updated);
+    }
+
+    /**
+     * Message d'audit détaillé pour la modification d'une UO — précise
+     * EXACTEMENT ce qui a changé (nom, UO parente, ou les deux à la fois),
+     * plutôt que le "Modification de l'UO X" générique d'origine.
+     */
+    private String construireMessageModificationUO(
+        String ancienNom, String nouveauNom,
+        UniteOrganisationnelle ancienParent, UniteOrganisationnelle nouveauParent)
+    {
+        List<String> details = new ArrayList<>();
+
+        if (!ancienNom.equals(nouveauNom))
+        {
+            details.add("nom : \"" + ancienNom + "\" → \"" + nouveauNom + "\"");
+        }
+
+        boolean parentChange = (ancienParent == null) != (nouveauParent == null)
+            || (ancienParent != null && nouveauParent != null
+                && !ancienParent.getId().equals(nouveauParent.getId()));
+        if (parentChange)
+        {
+            String depuis = ancienParent != null ? ancienParent.getNom() : "racine";
+            String vers = nouveauParent != null ? nouveauParent.getNom() : "racine";
+            details.add("UO parente : \"" + depuis + "\" → \"" + vers + "\"");
+        }
+
+        return "Modification de l'UO " + nouveauNom + " (" + String.join(", ", details) + ")";
     }
 
     @Transactional
