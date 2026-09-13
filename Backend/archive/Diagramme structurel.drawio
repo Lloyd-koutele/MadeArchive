@@ -1,0 +1,706 @@
+<mxfile host="Electron">
+  <diagram name="Frontend, backend et authentification" id="madearchive-fonctionnel-3">
+    <mxGraphModel dx="2000" dy="1300" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2850" pageHeight="4900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="frame-auth" value="" parent="1" vertex="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#666666;dashed=1;verticalAlign=top;align=left;spacingLeft=10;spacingTop=8;fontFamily=Times New Roman;fontSize=13;fontStyle=2;fontColor=#666666;">
+          <mxGeometry x="20" y="0" width="1200" height="1170" as="geometry" />
+        </mxCell>
+        <mxCell id="frame-user" value="" parent="1" vertex="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#666666;dashed=1;verticalAlign=top;align=left;spacingLeft=10;spacingTop=8;fontFamily=Times New Roman;fontSize=13;fontStyle=2;fontColor=#666666;">
+          <mxGeometry x="20" y="1180" width="700" height="1800" as="geometry" />
+        </mxCell>
+        <mxCell id="frame-userdoc" value="" parent="1" vertex="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#666666;dashed=1;verticalAlign=top;align=left;spacingLeft=10;spacingTop=8;fontFamily=Times New Roman;fontSize=13;fontStyle=2;fontColor=#666666;">
+          <mxGeometry x="740" y="1180" width="480" height="920" as="geometry" />
+        </mxCell>
+        <mxCell id="frame-doc" value="" parent="1" vertex="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#666666;dashed=1;verticalAlign=top;align=left;spacingLeft=10;spacingTop=8;fontFamily=Times New Roman;fontSize=13;fontStyle=2;fontColor=#666666;">
+          <mxGeometry x="520" y="2960" width="1940" height="2420" as="geometry" />
+        </mxCell>
+        <mxCell id="frame-admin" value="" parent="1" vertex="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#666666;dashed=1;verticalAlign=top;align=left;spacingLeft=10;spacingTop=8;fontFamily=Times New Roman;fontSize=13;fontStyle=2;fontColor=#666666;">
+          <mxGeometry x="2300" y="1180" width="460" height="1240" as="geometry" />
+        </mxCell>
+        <mxCell id="legende" value="FRONTEND (React, bleu) --[echange HTTP/JSON via Traefik, fleche rouge]--&gt; BACKEND (Spring Boot, vert/rouge/violet = action/stockage/async)" parent="1" vertex="1" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fontStyle=2;fillColor=#f5f5f5;strokeColor=#666666;">
+          <mxGeometry x="40" y="-80" width="900" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="hdr-auth" value="AUTHENTIFICATION — connexion, jeton, scenarios" parent="1" vertex="1" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=16;fontStyle=1;fillColor=#1a1a1a;fontColor=#ffffff;strokeColor=none;">
+          <mxGeometry x="40" y="20" width="900" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="au-fe-login" value="FRONTEND : Ecran de connexion&#10;(email + mot de passe)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#cce5ff;strokeColor=#003d80;fontStyle=1;">
+          <mxGeometry x="40" y="90" width="260" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="au-login" value="POST /api/login&#10;[conteneur(s) : app]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;">
+          <mxGeometry x="340" y="90" width="300" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="au-dec-email" value="email connu ?" parent="1" vertex="1" style="rhombus;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=11;fillColor=#ffe6cc;strokeColor=#d79b00;">
+          <mxGeometry x="40" y="175" width="260" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="au-fail-email" value="Echec generique :&#10;&quot;email ou mot de passe incorrect&quot;" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;">
+          <mxGeometry x="40" y="275" width="260" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="au-dec-pwd" value="mot de passe&#10;correct ?" parent="1" vertex="1" style="rhombus;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=11;fillColor=#ffe6cc;strokeColor=#d79b00;">
+          <mxGeometry x="340" y="175" width="260" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="au-fail-pwd" value="Meme message generique&#10;(email/mdp incorrect)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;">
+          <mxGeometry x="340" y="275" width="260" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="au-dec-actif" value="compte actif&#10;(non bloque) ?" parent="1" vertex="1" style="rhombus;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=11;fillColor=#ffe6cc;strokeColor=#d79b00;">
+          <mxGeometry x="640" y="175" width="260" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="au-fail-actif" value="Refus explicite :&#10;&quot;contactez l&#x27;administrateur&quot;" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;">
+          <mxGeometry x="640" y="275" width="260" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="au-success" value="Succes : JWT (partage entre&#10;appareils, reutilise si encore&#10;valide) + refresh token&#10;(propre a cet appareil)&#10;[conteneur(s) : app, postgres]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;">
+          <mxGeometry x="340" y="360" width="300" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="au-fe-store" value="FRONTEND : Stocke le JWT, l&#x27;ajoute a&#10;chaque requete suivante&#10;(Authorization: Bearer ...)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#cce5ff;strokeColor=#003d80;fontStyle=1;">
+          <mxGeometry x="340" y="470" width="300" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="au-request" value="Requete protegee quelconque&#10;[conteneur(s) : app]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;">
+          <mxGeometry x="340" y="555" width="300" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="au-filter" value="JwtAuthFilter : token structurel-&#10;lement valide et non expire ?&#10;[conteneur(s) : app, redis (cache)]" parent="1" vertex="1" style="rhombus;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=11;fillColor=#ffe6cc;strokeColor=#d79b00;">
+          <mxGeometry x="340" y="630" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="au-expired" value="NON (expire/invalide)&#10;-&gt; 401" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;">
+          <mxGeometry x="40" y="730" width="260" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="au-dec-reason" value="OUI, mais raison de rejet ?&#10;(compte bloque, OU emis avant&#10;une invalidation forcee)" parent="1" vertex="1" style="rhombus;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=11;fillColor=#ffe6cc;strokeColor=#d79b00;">
+          <mxGeometry x="640" y="730" width="300" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="au-reject" value="401 + raison precisee :&#10;ACCOUNT_BLOCKED / mot de passe&#10;change / role change / UO changee /&#10;compte supprime" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;">
+          <mxGeometry x="640" y="850" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="au-ok" value="Authentifie,&#10;requete traitee" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;">
+          <mxGeometry x="340" y="730" width="260" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="au-fe-refresh-try" value="FRONTEND : Tentative automatique&#10;de renouvellement" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#cce5ff;strokeColor=#003d80;fontStyle=1;">
+          <mxGeometry x="40" y="810" width="260" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="au-refresh" value="POST /api/refresh&#10;[conteneur(s) : app]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;">
+          <mxGeometry x="40" y="890" width="260" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="au-dec-refresh-valide" value="refresh token valide&#10;et non expire ?" parent="1" vertex="1" style="rhombus;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=11;fillColor=#ffe6cc;strokeColor=#d79b00;">
+          <mxGeometry x="40" y="970" width="260" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="au-relogin" value="NON -&gt; revoque, &quot;session&#10;expiree, reconnexion requise&quot;" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;">
+          <mxGeometry x="40" y="1080" width="260" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="au-dec-access-valide" value="access token&#10;partage encore valide ?" parent="1" vertex="1" style="rhombus;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=11;fillColor=#ffe6cc;strokeColor=#d79b00;">
+          <mxGeometry x="340" y="970" width="260" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="au-reuse" value="OUI -&gt; le retourne&#10;tel quel" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;">
+          <mxGeometry x="340" y="1080" width="260" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="au-newtoken" value="NON -&gt; nouveau JWT&#10;emis pour TOUS les appareils" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;">
+          <mxGeometry x="640" y="1080" width="260" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="au-fe-logout" value="FRONTEND : Bouton Deconnexion" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#cce5ff;strokeColor=#003d80;fontStyle=1;">
+          <mxGeometry x="940" y="90" width="260" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="au-logout" value="POST /api/logout&#10;[conteneur(s) : app]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;">
+          <mxGeometry x="940" y="175" width="260" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="au-logout-dev" value="Revoque le refresh token&#10;DE CET APPAREIL uniquement&#10;[conteneur(s) : app, postgres]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;">
+          <mxGeometry x="940" y="260" width="260" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="au-dec-lastdevice" value="dernier appareil&#10;encore actif ?" parent="1" vertex="1" style="rhombus;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=11;fillColor=#ffe6cc;strokeColor=#d79b00;">
+          <mxGeometry x="940" y="350" width="260" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="au-logout-all" value="OUI -&gt; le JWT partage&#10;est expire immediatement" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;">
+          <mxGeometry x="940" y="460" width="260" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="au-invalidation" value="Invalidation FORCEE (hors&#10;logout) : mot de passe change,&#10;role/UO changee, compte bloque&#10;ou supprime -&gt; tout JWT emis&#10;AVANT reste rejete (voir ci-dessus)&#10;[conteneur(s) : app, postgres]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;">
+          <mxGeometry x="940" y="560" width="260" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="hdr-user" value="UTILISATEURS &amp; UNITES ORGANISATIONNELLES" parent="1" vertex="1" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=16;fontStyle=1;fillColor=#1a1a1a;fontColor=#ffffff;strokeColor=none;">
+          <mxGeometry x="40" y="1200" width="660" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="actor-admin" value="ADMIN (global)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=13;fontStyle=1;fillColor=#dae8fc;strokeColor=#6c8ebf;">
+          <mxGeometry x="40" y="1270" width="150" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="actor-adminuo" value="ADMIN_UO (sa sous-arborescence)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=13;fontStyle=1;fillColor=#dae8fc;strokeColor=#6c8ebf;">
+          <mxGeometry x="220" y="1270" width="180" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="u-fe-create" value="FRONTEND : Formulaire Creer un&#10;utilisateur (Admin Panel)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#cce5ff;strokeColor=#003d80;fontStyle=1;">
+          <mxGeometry x="40" y="1350" width="360" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="u-create" value="POST /admin_uo/users/create-user&#10;[conteneur(s) : app, postgres]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;">
+          <mxGeometry x="40" y="1435" width="360" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="u-dec-role" value="role demande = ADMIN ?" parent="1" vertex="1" style="rhombus;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=11;fillColor=#ffe6cc;strokeColor=#d79b00;">
+          <mxGeometry x="100" y="1520" width="200" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="u-admin-ok" value="OK si acteur=ADMIN&#10;seulement. Aucune UO." parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;">
+          <mxGeometry x="40" y="1620" width="150" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="u-not-admin" value="ADMIN_UO/EDITOR/USER :&#10;1 UO obligatoire" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;">
+          <mxGeometry x="210" y="1620" width="150" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="u-dec-editor" value="role = EDITOR ?" parent="1" vertex="1" style="rhombus;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=11;fillColor=#ffe6cc;strokeColor=#d79b00;">
+          <mxGeometry x="210" y="1720" width="150" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="u-pki" value="Cle PKI provisionnee&#10;automatiquement (HSM)&#10;[conteneur(s) : app]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#f8cecc;strokeColor=#b85450;">
+          <mxGeometry x="210" y="1820" width="150" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="u-fe-delete" value="FRONTEND : Bouton Supprimer un compte&#10;(liste des utilisateurs)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#cce5ff;strokeColor=#003d80;fontStyle=1;">
+          <mxGeometry x="40" y="1910" width="360" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="u-delete-req" value="DELETE /admin_uo/users/{id}&#10;(ADMIN: tous sauf dernier ADMIN.&#10;ADMIN_UO: sa sous-arborescence)&#10;[conteneur(s) : app, postgres]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;">
+          <mxGeometry x="40" y="1995" width="360" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="u-dec-connected" value="deja connecte au moins&#10;une fois (login reussi) ?" parent="1" vertex="1" style="rhombus;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=11;fillColor=#ffe6cc;strokeColor=#d79b00;">
+          <mxGeometry x="70" y="2095" width="300" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="u-delete-immediate" value="NON -&gt; suppression&#10;immediate et definitive" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;">
+          <mxGeometry x="30" y="2215" width="170" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="u-delete-grace" value="OUI -&gt; desactive +&#10;sessions invalidees.&#10;Delai de grace : 2 jours" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;">
+          <mxGeometry x="240" y="2215" width="180" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="u-fe-cancel" value="FRONTEND : Bouton Annuler&#10;(vu par un autre admin)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#cce5ff;strokeColor=#003d80;fontStyle=1;">
+          <mxGeometry x="440" y="2215" width="200" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="u-cancel-req" value="PUT .../annuler-suppression&#10;[conteneur(s) : app]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;">
+          <mxGeometry x="440" y="2300" width="200" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="u-dec-cancel" value="annulee avant&#10;l&#x27;echeance ?" parent="1" vertex="1" style="rhombus;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=11;fillColor=#ffe6cc;strokeColor=#d79b00;">
+          <mxGeometry x="240" y="2335" width="180" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="u-cancelled" value="Annulee, compte&#10;redevient actif" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;">
+          <mxGeometry x="460" y="2400" width="170" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="u-purged" value="Purge automatique&#10;et definitive (planifiee)&#10;[conteneur(s) : app, postgres]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;">
+          <mxGeometry x="240" y="2455" width="180" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="u-fe-createuo" value="FRONTEND : Bouton + Creer une UO&#10;(sidebar, racine ou enfant)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#cce5ff;strokeColor=#003d80;fontStyle=1;">
+          <mxGeometry x="40" y="2575" width="360" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="u-createuo" value="POST /admin_uo/uo&#10;[conteneur(s) : app, postgres]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;">
+          <mxGeometry x="40" y="2660" width="360" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="u-dec-racine" value="UO racine&#10;(sans parent) ?" parent="1" vertex="1" style="rhombus;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=11;fillColor=#ffe6cc;strokeColor=#d79b00;">
+          <mxGeometry x="100" y="2760" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="u-uo-racine" value="Reserve ADMIN&#10;uniquement" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;">
+          <mxGeometry x="40" y="2880" width="170" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="u-uo-enfant" value="ADMIN_UO : uniquement&#10;sous une UO ou il a&#10;deja autorite" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;">
+          <mxGeometry x="250" y="2880" width="190" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="hdr-userdoc" value="DOCUMENT — actions du role USER (base)" parent="1" vertex="1" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=16;fontStyle=1;fillColor=#1a1a1a;fontColor=#ffffff;strokeColor=none;">
+          <mxGeometry x="760" y="1200" width="440" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="actor-user" value="USER (role de base,&#10;herite par tous)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=13;fontStyle=1;fillColor=#dae8fc;strokeColor=#6c8ebf;">
+          <mxGeometry x="760" y="1270" width="200" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="us-fe-search" value="FRONTEND : Barre de recherche" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#cce5ff;strokeColor=#003d80;fontStyle=1;">
+          <mxGeometry x="760" y="1350" width="440" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="us-search" value="GET /user/docs/recherche&#10;[conteneur(s) : app, meilisearch]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;">
+          <mxGeometry x="760" y="1435" width="440" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="us-fe-detail" value="FRONTEND : Clic sur un document&#10;(bouton Detail)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#cce5ff;strokeColor=#003d80;fontStyle=1;">
+          <mxGeometry x="760" y="1520" width="440" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="us-detail" value="GET /user/docs/{id}&#10;[conteneur(s) : app, postgres]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;">
+          <mxGeometry x="760" y="1605" width="440" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="us-fe-view" value="FRONTEND : Bouton Voir le PDF /&#10;Telecharger" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#cce5ff;strokeColor=#003d80;fontStyle=1;">
+          <mxGeometry x="760" y="1690" width="440" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="us-view" value="GET .../view ou .../download/pdfa&#10;[conteneur(s) : app, minio]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;">
+          <mxGeometry x="760" y="1775" width="440" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="us-fe-attest" value="FRONTEND : Bouton Generer une&#10;attestation" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#cce5ff;strokeColor=#003d80;fontStyle=1;">
+          <mxGeometry x="760" y="1860" width="440" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="us-attest" value="POST .../docs/{id}/attestation&#10;[conteneur(s) : app]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;">
+          <mxGeometry x="760" y="1945" width="440" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="us-note" value="PAS d&#x27;upload ni de gestion&#10;(metadonnees/acces/corbeille) — reserve EDITOR" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;">
+          <mxGeometry x="760" y="2030" width="440" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="hdr-doc" value="DOCUMENT — pipeline complet de l&#x27;EDITOR, de l&#x27;upload a la suppression" parent="1" vertex="1" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=16;fontStyle=1;fillColor=#1a1a1a;fontColor=#ffffff;strokeColor=none;">
+          <mxGeometry x="760" y="2980" width="1500" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="actor-editor" value="EDITOR (cle PKI provisionnee)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=13;fontStyle=1;fillColor=#dae8fc;strokeColor=#6c8ebf;">
+          <mxGeometry x="760" y="3050" width="220" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="d-fe-upload" value="FRONTEND : Ecran Upload : choix du fichier&#10;(Phase 1)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#cce5ff;strokeColor=#003d80;fontStyle=1;">
+          <mxGeometry x="760" y="3130" width="400" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="d-entry1" value="POST /editor/ocr-preview&#10;[conteneur(s) : app]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;">
+          <mxGeometry x="760" y="3215" width="400" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="d-ocr" value="OCR&#10;[conteneur(s) : app — Tesseract embarque]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;">
+          <mxGeometry x="760" y="3300" width="400" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="d-prefill" value="Pre-remplissage : regex du type si&#10;deja generee, sinon extraction&#10;positionnelle (2 premieres pages)&#10;[conteneur(s) : app]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;">
+          <mxGeometry x="760" y="3390" width="400" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="d-fe-confirm" value="FRONTEND : Confirmation/correction des&#10;metadonnees (Phase 2)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#cce5ff;strokeColor=#003d80;fontStyle=1;">
+          <mxGeometry x="760" y="3500" width="400" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="d-entry2" value="POST /editor/finalize-upload&#10;[conteneur(s) : app]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;">
+          <mxGeometry x="760" y="3585" width="400" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="d-dec-doublon" value="SHA-256 deja archive&#10;dans cette UO ?&#10;[conteneur(s) : app, postgres]" parent="1" vertex="1" style="rhombus;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=11;fillColor=#ffe6cc;strokeColor=#d79b00;">
+          <mxGeometry x="800" y="3670" width="320" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="d-refuse" value="Refuse : document&#10;deja archive" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;">
+          <mxGeometry x="1200" y="3670" width="190" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="d-pdfa" value="Conversion PDF/A&#10;[conteneur(s) : gotenberg]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;">
+          <mxGeometry x="760" y="3780" width="400" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="d-store" value="Chiffrement AES-256-GCM&#10;+ stockage&#10;[conteneur(s) : app, minio]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#f8cecc;strokeColor=#b85450;">
+          <mxGeometry x="760" y="3870" width="400" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="d-pki" value="Signature PKI (cle personnelle)&#10;[conteneur(s) : app, volume hsm]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;">
+          <mxGeometry x="760" y="3970" width="400" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="d-save" value="Document enregistre (ACTIVE)&#10;[conteneur(s) : app, postgres]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#f8cecc;strokeColor=#b85450;">
+          <mxGeometry x="760" y="4060" width="400" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="d-index" value="Indexation plein texte&#10;[conteneur(s) : app, meilisearch]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#f8cecc;strokeColor=#b85450;">
+          <mxGeometry x="760" y="4150" width="400" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="d-async-regex-dec" value="ASYNC — 1er document&#10;de ce type ?&#10;[conteneur(s) : app, ollama]" parent="1" vertex="1" style="rhombus;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=11;fillColor=#ffe6cc;strokeColor=#d79b00;">
+          <mxGeometry x="1220" y="4060" width="300" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="d-async-regex-gen" value="Generation regex d&#x27;extraction&#10;[conteneur(s) : app, ollama]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#e1d5e7;strokeColor=#9673a6;">
+          <mxGeometry x="1220" y="4170" width="300" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="d-async-regex-corr-dec" value="ASYNC — valeur divergente&#10;de la suggestion ?&#10;[conteneur(s) : app, ollama]" parent="1" vertex="1" style="rhombus;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=11;fillColor=#ffe6cc;strokeColor=#d79b00;">
+          <mxGeometry x="1550" y="4060" width="300" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="d-async-regex-corr" value="Correction ciblee de la regex&#10;[conteneur(s) : app, ollama]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#e1d5e7;strokeColor=#9673a6;">
+          <mxGeometry x="1550" y="4170" width="300" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="d-async-horo" value="ASYNC — Horodatage RFC 3161&#10;[conteneur(s) : app, TSA externe]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#e1d5e7;strokeColor=#9673a6;">
+          <mxGeometry x="1880" y="4060" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="d-async-horo-dec" value="echec ?" parent="1" vertex="1" style="rhombus;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=11;fillColor=#ffe6cc;strokeColor=#d79b00;">
+          <mxGeometry x="1880" y="4160" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="d-async-horo-notif" value="Notifie l&#x27;EDITOR. Reprise&#10;automatique differee (planifiee)&#10;[conteneur(s) : app, postgres]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#e1d5e7;strokeColor=#9673a6;">
+          <mxGeometry x="1880" y="4260" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="d-access-dec" value="Acces choisi dans le meme&#10;formulaire : PUBLIC ou PRIVE ?&#10;[conteneur(s) : app, postgres]" parent="1" vertex="1" style="rhombus;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=11;fillColor=#ffe6cc;strokeColor=#d79b00;">
+          <mxGeometry x="760" y="4240" width="400" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="d-public" value="PUBLIC : visible&#10;par toute l&#x27;UO" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;">
+          <mxGeometry x="550" y="4340" width="180" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="d-private" value="PRIVE : groupe d&#x27;acces&#10;(ajout/retrait par tout EDITOR&#10;membre -&gt; notifie la personne&#10;concernee)&#10;[conteneur(s) : app, postgres]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;">
+          <mxGeometry x="980" y="4340" width="260" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="d-fe-integrity" value="FRONTEND : Bouton Lancer la verification&#10;(modal Controle d&#x27;integrite)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#cce5ff;strokeColor=#003d80;fontStyle=1;">
+          <mxGeometry x="760" y="4460" width="400" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="d-integrity" value="POST /admin_uo/fixity-check&#10;OU tache planifiee (chaque nuit 3h)&#10;[conteneur(s) : app]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;">
+          <mxGeometry x="760" y="4545" width="400" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="d-integrity-dec" value="SHA-256 recalcule&#10;= enregistre ?&#10;[conteneur(s) : app, minio]" parent="1" vertex="1" style="rhombus;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=11;fillColor=#ffe6cc;strokeColor=#d79b00;">
+          <mxGeometry x="800" y="4645" width="320" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="d-corrupted" value="NON -&gt; CORRUPTED,&#10;notifie les ayants-droit&#10;[conteneur(s) : app, postgres]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;">
+          <mxGeometry x="1200" y="4645" width="220" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="d-fe-delete" value="FRONTEND : Bouton Envoyer a la corbeille" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#cce5ff;strokeColor=#003d80;fontStyle=1;">
+          <mxGeometry x="760" y="4745" width="400" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="d-delete-trigger" value="POST .../docs/{id}/corbeille&#10;[conteneur(s) : app, postgres]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;">
+          <mxGeometry x="760" y="4830" width="400" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="d-retention-expiree" value="OU retention expiree&#10;(duree definie par type, tache planifiee)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;">
+          <mxGeometry x="1220" y="4830" width="300" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="d-corbeille" value="CORBEILLE — delai de grace&#10;de 3 jours, restaurable&#10;[conteneur(s) : app, postgres]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;">
+          <mxGeometry x="760" y="4915" width="400" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="d-fe-restaurer" value="FRONTEND : Bouton Restaurer (Corbeille)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#cce5ff;strokeColor=#003d80;fontStyle=1;">
+          <mxGeometry x="760" y="5005" width="400" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="d-restaurer-req" value="POST .../docs/{id}/restaurer&#10;[conteneur(s) : app]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;">
+          <mxGeometry x="760" y="5090" width="400" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="d-dec-restaure" value="restaure avant&#10;l&#x27;echeance ?" parent="1" vertex="1" style="rhombus;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=11;fillColor=#ffe6cc;strokeColor=#d79b00;">
+          <mxGeometry x="800" y="5175" width="320" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="d-restaure" value="Retour au statut&#10;precedent" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;">
+          <mxGeometry x="550" y="5275" width="190" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="d-purge" value="Purge : fichier supprime.&#10;Ligne Postgres CONSERVEE pour&#10;toujours (DELETED, &quot;tombstone&quot;)&#10;— SHA-256 pris definitivement&#10;[conteneur(s) : app, minio, postgres]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;">
+          <mxGeometry x="760" y="5275" width="400" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="hdr-admin" value="ADMINISTRATION — export en masse &amp; journal d&#x27;audit" parent="1" vertex="1" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=16;fontStyle=1;fillColor=#1a1a1a;fontColor=#ffffff;strokeColor=none;">
+          <mxGeometry x="2320" y="1200" width="480" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="actor-admin2" value="ADMIN / ADMIN_UO" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=13;fontStyle=1;fillColor=#dae8fc;strokeColor=#6c8ebf;">
+          <mxGeometry x="2320" y="1270" width="300" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="ex-fe-apercu" value="FRONTEND : Panneau Export : filtres&#10;(UO, type, periode) + Apercu" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#cce5ff;strokeColor=#003d80;fontStyle=1;">
+          <mxGeometry x="2320" y="1350" width="420" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="ex-apercu" value="POST /admin_uo/document-export/apercu&#10;[conteneur(s) : app, postgres]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;">
+          <mxGeometry x="2320" y="1435" width="420" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="ex-fe-lancer" value="FRONTEND : Bouton Lancer l&#x27;export" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#cce5ff;strokeColor=#003d80;fontStyle=1;">
+          <mxGeometry x="2320" y="1520" width="420" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="ex-lancer" value="POST /admin_uo/document-export/lancer&#10;(ASYNC)&#10;[conteneur(s) : app, minio, postgres]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#e1d5e7;strokeColor=#9673a6;">
+          <mxGeometry x="2320" y="1605" width="420" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="ex-zip" value="Generation du ZIP + manifeste CSV&#10;(dechiffrement de chaque fichier)&#10;[conteneur(s) : app, minio]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#e1d5e7;strokeColor=#9673a6;">
+          <mxGeometry x="2320" y="1690" width="420" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ex-notif" value="Notifie le demandeur (pret) ET,&#10;par transparence, tout proprietaire/&#10;ADMIN_UO non-membre d&#x27;un document&#10;prive inclus&#10;[conteneur(s) : app, postgres]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#e1d5e7;strokeColor=#9673a6;">
+          <mxGeometry x="2320" y="1790" width="420" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="ex-fe-telecharger" value="FRONTEND : Bouton Telecharger le ZIP" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#cce5ff;strokeColor=#003d80;fontStyle=1;">
+          <mxGeometry x="2320" y="1910" width="420" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="ex-telecharger" value="GET .../{jobId}/telecharger&#10;[conteneur(s) : app]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;">
+          <mxGeometry x="2320" y="1995" width="420" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="audit-fe-consulter" value="FRONTEND : Onglet Journal d&#x27;audit&#10;(filtrable par acteur)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#cce5ff;strokeColor=#003d80;fontStyle=1;">
+          <mxGeometry x="2320" y="2100" width="420" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="audit-consulter" value="GET /admin_uo/audit-logs&#10;[conteneur(s) : app, postgres]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#d5e8d4;strokeColor=#82b366;">
+          <mxGeometry x="2320" y="2185" width="420" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="audit-fe-export" value="FRONTEND : Bouton Exporter (CSV/.log)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#cce5ff;strokeColor=#003d80;fontStyle=1;">
+          <mxGeometry x="2320" y="2270" width="420" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="audit-export" value="GET /admin_uo/audit-logs/export&#10;(plafonne en nombre de lignes)&#10;[conteneur(s) : app]" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=12;fillColor=#fff2cc;strokeColor=#d6b656;">
+          <mxGeometry x="2320" y="2355" width="420" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="eauex1" value="HTTP" parent="1" source="au-fe-login" target="au-login" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;startArrow=block;fontFamily=Times New Roman;fontSize=10;fontColor=#a94442;strokeColor=#a94442;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eauex2" value="HTTP" parent="1" source="au-fe-refresh-try" target="au-refresh" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;startArrow=block;fontFamily=Times New Roman;fontSize=10;fontColor=#a94442;strokeColor=#a94442;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eauex3" value="HTTP" parent="1" source="au-fe-logout" target="au-logout" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;startArrow=block;fontFamily=Times New Roman;fontSize=10;fontColor=#a94442;strokeColor=#a94442;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eau1" value="" parent="1" source="au-login" target="au-dec-email" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eau2" value="non" parent="1" source="au-dec-email" target="au-fail-email" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eau3" value="oui" parent="1" source="au-dec-email" target="au-dec-pwd" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eau4" value="non" parent="1" source="au-dec-pwd" target="au-fail-pwd" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eau5" value="oui" parent="1" source="au-dec-pwd" target="au-dec-actif" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eau6" value="non" parent="1" source="au-dec-actif" target="au-fail-actif" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eau7" value="oui" parent="1" source="au-dec-actif" target="au-success" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eau8" value="" parent="1" source="au-success" target="au-fe-store" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;dashed=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eau9" value="" parent="1" source="au-fe-store" target="au-request" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;dashed=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eau10" value="" parent="1" source="au-request" target="au-filter" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eau11" value="non/expire" parent="1" source="au-filter" target="au-expired" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eau12" value="oui" parent="1" source="au-filter" target="au-dec-reason" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eau13" value="aucune" parent="1" source="au-dec-reason" target="au-ok" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eau14" value="une raison" parent="1" source="au-dec-reason" target="au-reject" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eau15" value="" parent="1" source="au-expired" target="au-fe-refresh-try" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;dashed=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eau16" value="" parent="1" source="au-refresh" target="au-dec-refresh-valide" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eau17" value="non" parent="1" source="au-dec-refresh-valide" target="au-relogin" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eau18" value="oui" parent="1" source="au-dec-refresh-valide" target="au-dec-access-valide" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eau19" value="oui" parent="1" source="au-dec-access-valide" target="au-reuse" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eau20" value="non" parent="1" source="au-dec-access-valide" target="au-newtoken" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eau21" value="" parent="1" source="au-logout" target="au-logout-dev" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eau22" value="" parent="1" source="au-logout-dev" target="au-dec-lastdevice" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eau23" value="oui" parent="1" source="au-dec-lastdevice" target="au-logout-all" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="euex1" value="HTTP" parent="1" source="u-fe-create" target="u-create" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;startArrow=block;fontFamily=Times New Roman;fontSize=10;fontColor=#a94442;strokeColor=#a94442;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="euex2" value="HTTP" parent="1" source="u-fe-delete" target="u-delete-req" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;startArrow=block;fontFamily=Times New Roman;fontSize=10;fontColor=#a94442;strokeColor=#a94442;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="euex3" value="HTTP" parent="1" source="u-fe-cancel" target="u-cancel-req" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;startArrow=block;fontFamily=Times New Roman;fontSize=10;fontColor=#a94442;strokeColor=#a94442;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="euex4" value="HTTP" parent="1" source="u-fe-createuo" target="u-createuo" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;startArrow=block;fontFamily=Times New Roman;fontSize=10;fontColor=#a94442;strokeColor=#a94442;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eu1" value="" parent="1" source="actor-admin" target="u-fe-create" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eu1b" value="" parent="1" source="actor-adminuo" target="u-fe-create" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eu2" value="" parent="1" source="u-create" target="u-dec-role" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eu3" value="oui" parent="1" source="u-dec-role" target="u-admin-ok" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eu4" value="non" parent="1" source="u-dec-role" target="u-not-admin" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eu5" value="" parent="1" source="u-not-admin" target="u-dec-editor" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eu6" value="oui" parent="1" source="u-dec-editor" target="u-pki" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eu7" value="" parent="1" source="u-pki" target="u-fe-delete" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;dashed=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eu8" value="" parent="1" source="u-delete-req" target="u-dec-connected" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eu9" value="non" parent="1" source="u-dec-connected" target="u-delete-immediate" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eu10" value="oui" parent="1" source="u-dec-connected" target="u-delete-grace" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eu11" value="" parent="1" source="u-delete-grace" target="u-fe-cancel" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;dashed=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eu11b" value="" parent="1" source="u-cancel-req" target="u-dec-cancel" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eu12" value="oui" parent="1" source="u-dec-cancel" target="u-cancelled" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eu13" value="non" parent="1" source="u-dec-cancel" target="u-purged" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eu14" value="compte actif" parent="1" source="u-cancelled" target="u-delete-req" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=10;dashed=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eu15" value="" parent="1" source="u-purged" target="u-fe-createuo" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;dashed=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eu16" value="" parent="1" source="u-createuo" target="u-dec-racine" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eu17" value="oui" parent="1" source="u-dec-racine" target="u-uo-racine" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eu18" value="non" parent="1" source="u-dec-racine" target="u-uo-enfant" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eusex1" value="HTTP" parent="1" source="us-fe-search" target="us-search" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;startArrow=block;fontFamily=Times New Roman;fontSize=10;fontColor=#a94442;strokeColor=#a94442;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eusex2" value="HTTP" parent="1" source="us-fe-detail" target="us-detail" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;startArrow=block;fontFamily=Times New Roman;fontSize=10;fontColor=#a94442;strokeColor=#a94442;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eusex3" value="HTTP" parent="1" source="us-fe-view" target="us-view" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;startArrow=block;fontFamily=Times New Roman;fontSize=10;fontColor=#a94442;strokeColor=#a94442;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eusex4" value="HTTP" parent="1" source="us-fe-attest" target="us-attest" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;startArrow=block;fontFamily=Times New Roman;fontSize=10;fontColor=#a94442;strokeColor=#a94442;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eus1" value="" parent="1" source="actor-user" target="us-fe-search" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eus2" value="" parent="1" source="us-search" target="us-fe-detail" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;dashed=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eus3" value="" parent="1" source="us-detail" target="us-fe-view" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;dashed=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eus4" value="" parent="1" source="us-view" target="us-fe-attest" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;dashed=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="eus5" value="" parent="1" source="us-attest" target="us-note" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;dashed=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edex1" value="HTTP" parent="1" source="d-fe-upload" target="d-entry1" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;startArrow=block;fontFamily=Times New Roman;fontSize=10;fontColor=#a94442;strokeColor=#a94442;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edex2" value="HTTP" parent="1" source="d-fe-confirm" target="d-entry2" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;startArrow=block;fontFamily=Times New Roman;fontSize=10;fontColor=#a94442;strokeColor=#a94442;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edex3" value="HTTP" parent="1" source="d-fe-integrity" target="d-integrity" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;startArrow=block;fontFamily=Times New Roman;fontSize=10;fontColor=#a94442;strokeColor=#a94442;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edex4" value="HTTP" parent="1" source="d-fe-delete" target="d-delete-trigger" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;startArrow=block;fontFamily=Times New Roman;fontSize=10;fontColor=#a94442;strokeColor=#a94442;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edex5" value="HTTP" parent="1" source="d-fe-restaurer" target="d-restaurer-req" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;startArrow=block;fontFamily=Times New Roman;fontSize=10;fontColor=#a94442;strokeColor=#a94442;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed1" value="" parent="1" source="actor-editor" target="d-fe-upload" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed2" value="" parent="1" source="d-entry1" target="d-ocr" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed3" value="" parent="1" source="d-ocr" target="d-prefill" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed4" value="" parent="1" source="d-prefill" target="d-fe-confirm" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;dashed=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed5" value="" parent="1" source="d-entry2" target="d-dec-doublon" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed6" value="oui" parent="1" source="d-dec-doublon" target="d-refuse" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed7" value="non" parent="1" source="d-dec-doublon" target="d-pdfa" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed8" value="" parent="1" source="d-pdfa" target="d-store" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed9" value="" parent="1" source="d-store" target="d-pki" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed10" value="" parent="1" source="d-pki" target="d-save" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed11" value="" parent="1" source="d-save" target="d-index" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed12" value="" parent="1" source="d-save" target="d-async-regex-dec" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=10;dashed=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed13" value="oui" parent="1" source="d-async-regex-dec" target="d-async-regex-gen" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed14" value="non" parent="1" source="d-async-regex-dec" target="d-async-regex-corr-dec" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed15" value="oui" parent="1" source="d-async-regex-corr-dec" target="d-async-regex-corr" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed16" value="" parent="1" source="d-save" target="d-async-horo" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=10;dashed=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed17" value="" parent="1" source="d-async-horo" target="d-async-horo-dec" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed18" value="oui" parent="1" source="d-async-horo-dec" target="d-async-horo-notif" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed19" value="" parent="1" source="d-index" target="d-access-dec" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed20" value="PUBLIC" parent="1" source="d-access-dec" target="d-public" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed21" value="PRIVE" parent="1" source="d-access-dec" target="d-private" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed22" value="" parent="1" source="d-public" target="d-fe-integrity" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;dashed=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed23" value="" parent="1" source="d-private" target="d-fe-integrity" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;dashed=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed24" value="" parent="1" source="d-integrity" target="d-integrity-dec" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed25" value="non" parent="1" source="d-integrity-dec" target="d-corrupted" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed26" value="oui" parent="1" source="d-integrity-dec" target="d-fe-delete" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=10;dashed=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed27" value="" parent="1" source="d-delete-trigger" target="d-corbeille" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed28" value="" parent="1" source="d-retention-expiree" target="d-corbeille" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed29" value="" parent="1" source="d-corbeille" target="d-fe-restaurer" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;dashed=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed29b" value="" parent="1" source="d-restaurer-req" target="d-dec-restaure" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed30" value="oui" parent="1" source="d-dec-restaure" target="d-restaure" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ed31" value="non" parent="1" source="d-dec-restaure" target="d-purge" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="exex1" value="HTTP" parent="1" source="ex-fe-apercu" target="ex-apercu" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;startArrow=block;fontFamily=Times New Roman;fontSize=10;fontColor=#a94442;strokeColor=#a94442;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="exex2" value="HTTP" parent="1" source="ex-fe-lancer" target="ex-lancer" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;startArrow=block;fontFamily=Times New Roman;fontSize=10;fontColor=#a94442;strokeColor=#a94442;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="exex3" value="HTTP" parent="1" source="ex-fe-telecharger" target="ex-telecharger" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;startArrow=block;fontFamily=Times New Roman;fontSize=10;fontColor=#a94442;strokeColor=#a94442;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="exex4" value="HTTP" parent="1" source="audit-fe-consulter" target="audit-consulter" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;startArrow=block;fontFamily=Times New Roman;fontSize=10;fontColor=#a94442;strokeColor=#a94442;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="exex5" value="HTTP" parent="1" source="audit-fe-export" target="audit-export" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;startArrow=block;fontFamily=Times New Roman;fontSize=10;fontColor=#a94442;strokeColor=#a94442;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ex1" value="" parent="1" source="actor-admin2" target="ex-fe-apercu" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ex2" value="" parent="1" source="ex-apercu" target="ex-fe-lancer" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;dashed=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ex3" value="" parent="1" source="ex-lancer" target="ex-zip" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ex4" value="" parent="1" source="ex-zip" target="ex-notif" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ex5" value="" parent="1" source="ex-notif" target="ex-fe-telecharger" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;dashed=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ex6" value="" parent="1" source="actor-admin2" target="audit-fe-consulter" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;dashed=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ex7" value="" parent="1" source="audit-consulter" target="audit-fe-export" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Times New Roman;fontSize=11;dashed=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

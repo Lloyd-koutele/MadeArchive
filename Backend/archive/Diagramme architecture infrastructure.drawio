@@ -1,0 +1,115 @@
+<mxfile host="Electron">
+  <diagram name="Architecture (style zones colorees)" id="madearchive-arch-style-1">
+    <mxGraphModel dx="1700" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="620" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="DIAGRAMME D&#x27;ARCHITECTURE : MADEARCHIVE — SYSTEME D&#x27;ARCHIVAGE ELECTRONIQUE" parent="1" vertex="1" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Helvetica;fontSize=20;fontStyle=1;fillColor=#f0f0f0;strokeColor=none;align=center;">
+          <mxGeometry x="20" y="20" width="1600" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="zone-client" value="CLIENTS UTILISATEURS&#10;(Front-end)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=14;spacingTop=10;fontFamily=Helvetica;fontSize=12;fontStyle=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#1f4e79;">
+          <mxGeometry x="20" y="90" width="220" height="460" as="geometry" />
+        </mxCell>
+        <mxCell id="zone-entree" value="ENTREE&#10;(Reverse proxy)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=14;spacingTop=10;fontFamily=Helvetica;fontSize=12;fontStyle=1;fillColor=#f8cecc;strokeColor=#b85450;fontColor=#7a1f1f;">
+          <mxGeometry x="280" y="90" width="220" height="460" as="geometry" />
+        </mxCell>
+        <mxCell id="zone-frontend" value="SERVI STATIQUEMENT&#10;(Front-end)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=14;spacingTop=10;fontFamily=Helvetica;fontSize=12;fontStyle=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#274e13;">
+          <mxGeometry x="540" y="90" width="220" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="zone-backend" value="SERVICES BACK-END&#10;(Monolithe)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=14;spacingTop=10;fontFamily=Helvetica;fontSize=12;fontStyle=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#274e13;">
+          <mxGeometry x="540" y="320" width="220" height="230" as="geometry" />
+        </mxCell>
+        <mxCell id="zone-data" value="STOCKAGE &amp; PERSISTANCE&#10;(Bases de donnees)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=14;spacingTop=10;fontFamily=Helvetica;fontSize=12;fontStyle=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontColor=#7a4a00;">
+          <mxGeometry x="800" y="90" width="260" height="460" as="geometry" />
+        </mxCell>
+        <mxCell id="zone-aux" value="SERVICES AUXILIAIRES&#10;(traitement)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=14;spacingTop=10;fontFamily=Helvetica;fontSize=12;fontStyle=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontColor=#4a2f5a;">
+          <mxGeometry x="1100" y="90" width="260" height="300" as="geometry" />
+        </mxCell>
+        <mxCell id="zone-externe" value="SERVICES EXTERNES&#10;(hors infrastructure)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=left;spacingLeft=14;spacingTop=10;fontFamily=Helvetica;fontSize=12;fontStyle=1;fillColor=#f5f5f5;strokeColor=#999999;fontColor=#555555;">
+          <mxGeometry x="1100" y="410" width="260" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="cl-mobile" value="Navigateur mobile&#10;(responsive)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontFamily=Helvetica;fontSize=12;fontStyle=1;">
+          <mxGeometry x="50" y="150" width="160" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="cl-web" value="Navigateur desktop&#10;(React / Vite)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontFamily=Helvetica;fontSize=12;fontStyle=1;">
+          <mxGeometry x="50" y="240" width="160" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="wf-traefik" value="Traefik&#10;reverse proxy + TLS&#10;(Let&#x27;s Encrypt)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#b85450;fontFamily=Helvetica;fontSize=12;fontStyle=1;">
+          <mxGeometry x="310" y="180" width="160" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="fe-nginx" value="Nginx&#10;sert les fichiers&#10;React statiques" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontFamily=Helvetica;fontSize=12;fontStyle=1;">
+          <mxGeometry x="570" y="150" width="160" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="be-app" value="app&#10;Spring Boot (monolithe)&#10;OCR, PKI, regex, audit,&#10;notifications, retention..." parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontFamily=Helvetica;fontSize=12;fontStyle=1;">
+          <mxGeometry x="570" y="380" width="160" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="db-postgres" value="PostgreSQL&#10;(donnees relationnelles)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d79b00;fontFamily=Helvetica;fontSize=12;fontStyle=1;">
+          <mxGeometry x="830" y="150" width="200" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="db-minio" value="MinIO&#10;(fichiers PDF/A chiffres)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d79b00;fontFamily=Helvetica;fontSize=12;fontStyle=1;">
+          <mxGeometry x="830" y="220" width="200" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="db-meili" value="Meilisearch&#10;(index plein texte)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d79b00;fontFamily=Helvetica;fontSize=12;fontStyle=1;">
+          <mxGeometry x="830" y="290" width="200" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="db-redis" value="Redis&#10;(cache / sessions)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d79b00;fontFamily=Helvetica;fontSize=12;fontStyle=1;">
+          <mxGeometry x="830" y="360" width="200" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="db-hsm" value="Volume hsm/&#10;(cles PKI)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d79b00;fontFamily=Helvetica;fontSize=12;fontStyle=1;">
+          <mxGeometry x="830" y="430" width="200" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="aux-ollama" value="Ollama&#10;IA locale (regex)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;fontFamily=Helvetica;fontSize=12;fontStyle=1;">
+          <mxGeometry x="1130" y="150" width="200" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="aux-gotenberg" value="Gotenberg&#10;conversion PDF/A" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;fontFamily=Helvetica;fontSize=12;fontStyle=1;">
+          <mxGeometry x="1130" y="220" width="200" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="aux-chromium" value="Chromium headless&#10;import web" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;fontFamily=Helvetica;fontSize=12;fontStyle=1;">
+          <mxGeometry x="1130" y="290" width="200" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="ext-tsa" value="Autorite d&#x27;horodatage&#10;(TSA, RFC 3161)" parent="1" vertex="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#999999;fontFamily=Helvetica;fontSize=12;fontStyle=1;">
+          <mxGeometry x="1130" y="450" width="200" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="f1" value="1. HTTPS (443)" parent="1" source="cl-web" target="wf-traefik" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Helvetica;fontSize=11;fontStyle=1;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f1b" value="" parent="1" source="cl-mobile" target="wf-traefik" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Helvetica;fontSize=11;fontStyle=1;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f2" value="2. route &quot;/&quot;" parent="1" source="wf-traefik" target="fe-nginx" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Helvetica;fontSize=11;fontStyle=1;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f3" value="3. route &quot;/api/*&quot;&#10;+ JWT" parent="1" source="wf-traefik" target="be-app" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Helvetica;fontSize=11;fontStyle=1;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f4a" value="4. requetes" parent="1" source="be-app" target="db-postgres" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Helvetica;fontSize=11;fontStyle=1;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f4b" value="" parent="1" source="be-app" target="db-minio" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Helvetica;fontSize=11;fontStyle=1;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f4c" value="" parent="1" source="be-app" target="db-meili" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Helvetica;fontSize=11;fontStyle=1;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f4d" value="" parent="1" source="be-app" target="db-redis" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Helvetica;fontSize=11;fontStyle=1;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f4e" value="" parent="1" source="be-app" target="db-hsm" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Helvetica;fontSize=11;fontStyle=1;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f5a" value="5. traitements" parent="1" source="be-app" target="aux-ollama" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Helvetica;fontSize=11;fontStyle=1;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f5b" value="" parent="1" source="be-app" target="aux-gotenberg" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Helvetica;fontSize=11;fontStyle=1;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f5c" value="" parent="1" source="be-app" target="aux-chromium" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Helvetica;fontSize=11;fontStyle=1;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f6" value="6. appel externe" parent="1" source="be-app" target="ext-tsa" edge="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;fontFamily=Helvetica;fontSize=11;fontStyle=1;strokeWidth=2;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
