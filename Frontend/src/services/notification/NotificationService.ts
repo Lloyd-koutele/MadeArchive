@@ -6,7 +6,9 @@ export type NotificationType =
     | 'PROJET_CREE'
     | 'UO_CREEE'
     | 'DOCUMENT_HORODATAGE_ECHEC'
-    | 'DOCUMENT_HORODATAGE_REUSSI';
+    | 'DOCUMENT_HORODATAGE_REUSSI'
+    | 'GROUPE_MEMBRE_AJOUTE'
+    | 'GROUPE_MEMBRE_RETIRE';
 
 export interface NotificationDto {
     id:       number;

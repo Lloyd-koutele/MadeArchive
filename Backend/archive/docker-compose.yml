@@ -3,19 +3,12 @@ services:
     image: postgres:16-alpine
     container_name: postgres
     ports:
-      # 5433 côté hôte (pas 5432) : le 5432 natif de la machine de dev est
-      # déjà pris par une installation PostgreSQL locale préexistante — sans
-      # impact sur l'app, qui parle à "postgres:5432" sur le réseau Docker
-      # interne, jamais via ce port publié. DBeaver/psql depuis l'hôte : 5433.
       - "127.0.0.1:5433:5432"
     environment:
       POSTGRES_USER: ${DB_USERNAME}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: madearchive
     volumes:
-      # Volume NOMMÉ (pas anonyme, contrairement à MinIO/Meilisearch pour
-      # l'instant) : les données relationnelles doivent survivre à un
-      # "docker compose down" sans -v, aucune exception envisageable ici.
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME}"]
@@ -33,21 +26,7 @@ services:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
     volumes:
-      # VOLONTAIREMENT anonyme en développement (repassé ainsi après un essai
-      # en volume nommé "minio_data") : supprimer le conteneur efface aussi
-      # le volume, pratique pour repartir d'un stockage MinIO vierge sans
-      # commande supplémentaire pendant qu'on développe/teste.
-      #
-      # À REPASSER en volume nommé avant un vrai déploiement — un volume
-      # anonyme est supprimé automatiquement par "docker compose down",
-      # alors que Postgres (déjà en volume nommé) garderait, lui, la trace
-      # des documents comme "archivés" en base malgré la disparition réelle
-      # des fichiers — constaté en conditions réelles, un vrai problème pour
-      # un système d'archivage. Pour repasser en persistant : remplacer la
-      # ligne ci-dessous par "- minio_data:/data" et redéclarer
-      # "minio_data:" dans le bloc "volumes:" tout en bas de ce fichier
-      # (déjà fait une fois, juste annulé ici pour le développement).
-      - /data
+      - minio_data:/data
     command: server /data --console-address ":9001"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
@@ -63,7 +42,7 @@ services:
     environment:
       MEILI_MASTER_KEY: ${MEILI_MASTER_KEY}
     volumes:
-      - /meili_data # <--- VOLUME ANONYME : Réindexation automatique au redémarrage
+      - meilisearch_data:/meili_data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:7700/health"]
       interval: 30s
@@ -73,34 +52,14 @@ services:
   ollama:
     image: ollama/ollama:latest
     container_name: ollama
-    # qwen2.5-coder:14b (voir entrypoint — remplace le 7b en 09/2026, seul modèle local
-    # à donner un gain net mesuré sur le harnais de test de génération de regex : 23-24/39
-    # contre 17-18/39 pour le 7b) : rien que les poids (Q4_K_M) chargés en RAM pèsent
-    # 8,15 Go mesurés (CPU_REPACK model buffer) — testé empiriquement : 8g et 9g de
-    # limite → OOM kill systématique, 10g → fonctionne. 10g fixé ici avec une petite
-    # marge, pas plus : le Docker Desktop de ce projet est alloué à 15,6 Go au total
-    # (Settings > Resources > Memory) partagés avec postgres/app/redis/... ci-dessous —
-    # une limite trop haute ici les affamerait. Toujours en CPU pur (aucun passthrough
-    # GPU possible vers Docker Desktop sur Apple Silicon, limite de Hypervisor.framework,
-    # pas de ce projet) : plafonné pour éviter qu'un pic mémoire sur ce conteneur seul
-    # n'affame les autres, même logique que madearchive-chromium ci-dessous.
     mem_limit: 10g
-    # Plafonné à 5 des 10 cœurs de la machine (voir `sysctl -n hw.ncpu` / Docker
-    # Desktop Settings > Resources > CPUs) : la génération tourne en arrière-plan,
-    # best-effort (voir OllamaService), pas besoin de tout le CPU au détriment
-    # des autres conteneurs (postgres, app...) pendant un appel de génération.
     cpus: 5
     ports:
       - "127.0.0.1:11434:11434"
     volumes:
-      - ollama_data:/root/.ollama # <--- VOLUME NOMMÉ : On le garde pour ne pas perdre le LLM
+      - ollama_data:/root/.ollama
     entrypoint: ["/bin/sh", "-c", "ollama serve & sleep 10 && ollama pull qwen2.5-coder:14b && wait"]
     healthcheck:
-      # L'image ollama/ollama ne contient pas curl/wget — on utilise le binaire
-      # ollama lui-même (toujours présent) : "ollama list" échoue si le serveur
-      # local ne répond pas, réussit sinon. Voir le run de diagnostic du
-      # 2026-08-27 : le serveur tournait très bien, seul le curl du healthcheck
-      # manquait, faisant échouer le conteneur en "unhealthy" à tort.
       test: ["CMD", "ollama", "list"]
       interval: 60s
       timeout: 30s
@@ -129,103 +88,39 @@ services:
       retries: 3
 
   chromium:
-    # Image dédiée (pas un Dockerfile maison) : Chromium récent bloque toute
-    # connexion CDP distante en forçant l'écoute sur 127.0.0.1 quel que soit
-    # --remote-debugging-address (durcissement sécurité volontaire, constaté
-    # en le testant directement — pas contournable par un simple relais TCP,
-    # il faut aussi réécrire l'en-tête Host de chaque requête). browserless
-    # résout précisément ce problème et expose un point d'entrée pensé pour
-    # Playwright (/playwright/chromium) — voir HeadlessBrowserImportService.
-    #
-    # Version épinglée (PAS "latest") délibérément : browserless implémente le
-    # protocole de connexion interne de Playwright, qui n'est pas garanti
-    # compatible entre versions éloignées du client Java (build.gradle) et du
-    # conteneur — un décalage casse la connexion silencieusement à l'exécution
-    # (constaté : Playwright Java 1.49.0 contre ce conteneur échoue, 1.62.0
-    # fonctionne, cette paire précise a été testée en conditions réelles). Si
-    # vous mettez à jour com.microsoft.playwright:playwright dans build.gradle,
-    # vérifiez/alignez cette version en conséquence (voir /meta sur ce
-    # conteneur pour la liste des versions Playwright qu'il supporte).
     image: ghcr.io/browserless/chromium:v2.56.0
     container_name: madearchive-chromium
-    # Isolation délibérée : mémoire/CPU plafonnés pour ce conteneur seul — un
-    # afflux de demandes d'import via lien web ne peut jamais faire déborder
-    # au-delà de ces limites, ni affecter "app".
     mem_limit: 1g
     cpus: 1.0
     ports:
-      - "127.0.0.1:3001:3000" # 3000 déjà pris par gotenberg sur l'hôte — inchangé côté conteneur/réseau interne
+      - "127.0.0.1:3001:3000"
     environment:
-      # Jeton choisi par vous (pas un compte/service tiers) — protège l'accès
-      # au navigateur distant. À définir dans .env, ex. CHROMIUM_TOKEN=un-secret-long-et-aleatoire
       TOKEN: ${CHROMIUM_TOKEN}
     healthcheck:
-      # CMD-SHELL (pas CMD) : nécessaire pour que $TOKEN soit substitué par le
-      # shell du conteneur — browserless exige ce jeton sur TOUTE requête, y
-      # compris /pressure. Invisible tant que CHROMIUM_TOKEN restait vide
-      # (warning "variable is not set" en local) ; dès qu'un vrai jeton est
-      # renseigné dans .env (comme il se doit), le healthcheck sans jeton se
-      # prenait un 401 systématique — repéré sur un vrai déploiement VM.
       test: ["CMD-SHELL", "curl -f http://localhost:3000/pressure?token=$$TOKEN"]
       interval: 30s
       timeout: 20s
       retries: 3
 
   traefik:
-    # Image "maison" (voir traefik/Dockerfile), pas l'image officielle
-    # directement : ajoute un point d'entrée (traefik/docker-entrypoint.sh)
-    # qui régénère traefik/dynamic.yml depuis dynamic.yml.template à chaque
-    # démarrage, en y substituant APP_DOMAIN (ci-dessous) — une seule source
-    # pour le domaine (celle-ci), plus de copie séparée à tenir à jour dans
-    # dynamic.yml. Comme "app"/"frontend" : image publiée sur ghcr.io pour un
-    # déploiement sans code source (voir DEPLOYMENT.md), reconstruite
-    # localement en développement (docker-compose.override.yml).
     image: ghcr.io/lloyd-koutele/madearchive-traefik:latest
     container_name: traefik
     ports:
       - "80:80"
       - "443:443"
     environment:
-      # Lu par traefik/docker-entrypoint.sh, PAS par Traefik lui-même — voir
-      # ce script. Doit être le même domaine nu que app.app-domain côté
-      # backend (variable APP_DOMAIN, unique source dans .env).
       APP_DOMAIN: ${APP_DOMAIN}
     volumes:
-      # Fournisseur "file", pas "docker" : Traefik n'a plus besoin du socket
-      # Docker du tout (ni de le lire ni d'y écrire) — testé en direct, le
-      # fournisseur Docker de Traefik s'est avéré incompatible avec cette
-      # version de Docker Desktop (400 Bad Request au démarrage). Un seul
-      # service statique ("app") n'a de toute façon pas besoin de découverte
-      # dynamique.
-      #
-      # Le GABARIT est monté ici (lecture seule) ; le vrai dynamic.yml est
-      # généré par le conteneur lui-même, à l'intérieur de son propre
-      # système de fichiers (jamais bind-monté depuis l'hôte, jamais
-      # versionné) — voir traefik/docker-entrypoint.sh.
       - ./traefik/dynamic.yml.template:/etc/traefik/dynamic-template/dynamic.yml.template:ro
-      # Certificat mkcert (dev/répétition locale — voir
-      # dynamic.yml.template, section tls.certificates) : approuvé
-      # uniquement sur les machines où l'autorité locale mkcert a été
-      # installée (mkcert -install), jamais publiquement. Sans effet pour un
-      # vrai déploiement (Let's Encrypt reprend la main si ces fichiers
-      # sont absents et qu'un vrai domaine public est configuré).
       - ./traefik/certs:/etc/traefik/certs:ro
-      # Volume nommé (pas un fichier bind-monté) : Traefik crée lui-même
-      # acme.json avec les permissions exactes qu'il exige (600) — un fichier
-      # bind-monté depuis l'hôte doit être pré-créé avec les bons droits à
-      # la main, plus fragile.
       - traefik_certs:/letsencrypt
     command:
       - "--providers.file.directory=/etc/traefik/dynamic"
       - "--providers.file.watch=true"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
-      # Tout HTTP est redirigé vers HTTPS automatiquement — jamais de contenu
-      # servi en clair.
       - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
       - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
-      # Défi HTTP-01 : le plus simple, ne nécessite aucun accès à l'API du
-      # fournisseur DNS — juste que le port 80 soit joignable publiquement.
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
       - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
@@ -238,35 +133,15 @@ services:
       retries: 3
 
   frontend:
-    # Image publiée (voir .github/workflows/publish-images.yml) — ce fichier
-    # est la version "distribution" : quelqu'un qui n'a QUE docker-compose.yml
-    # + .env (pas le code source) peut faire "docker compose up -d" tel quel.
-    # docker-compose.override.yml (dev local uniquement, jamais copié seul
-    # vers un déploiement) réintroduit "build:" et prend le dessus
-    # automatiquement quand les deux fichiers sont présents côte à côte.
-    #
-    # ":latest" convient pour une première installation, mais PAS pour un
-    # déploiement en production déjà en service : une image taguée
-    # explicitement (ex: ":1.2.0", publiée automatiquement sur "git tag
-    # v1.2.0 && git push --tags", voir publish-images.yml) permet de savoir
-    # exactement quelle version tourne et de revenir en arrière en changeant
-    # juste ce tag — voir DEPLOYMENT.md, section 9 "Mettre à jour un
-    # déploiement existant".
+
     image: ghcr.io/lloyd-koutele/madearchive-frontend:latest
     container_name: madearchive-frontend
-    # Même durcissement que "app" : pas de port publié, uniquement joignable
-    # via Traefik (routage par chemin — voir traefik/dynamic.yml : "/" vers
-    # ce service, "/api/*" vers "app", même domaine public pour les deux).
 
   app:
-    # Image publiée — voir le commentaire équivalent sur "frontend" ci-dessus
-    # (même recommandation : tag explicite en production, pas ":latest").
+
     image: ghcr.io/lloyd-koutele/madearchive-app:latest
     container_name: madearchive-app
-    # Plus de port publié directement vers l'hôte : Traefik (80/443) devient
-    # le seul point d'entrée public, "app" n'est joignable que sur le réseau
-    # Docker interne (routage statique défini dans traefik/dynamic.yml) —
-    # évite qu'un accès direct sur :8080 contourne complètement le HTTPS.
+
     env_file:
       - .env
     depends_on:
@@ -285,26 +160,12 @@ services:
       chromium:
         condition: service_healthy
     environment:
-      # Nom du service Docker "postgres" (ci-dessous), pas "localhost" — même
-      # raison que OLLAMA_BASE_URL/GOTENBERG_URL/REDIS_HOST juste en dessous :
-      # le .env garde "localhost" pour un usage natif (./gradlew bootRun hors
-      # Docker), cette surcharge ne s'applique qu'à l'intérieur du conteneur.
+
       DB_URL: jdbc:postgresql://postgres:5432/madearchive
       TESSERACT_DATA_PATH: /usr/share/tessdata
       OLLAMA_BASE_URL: http://ollama:11434
       CHROMIUM_WS_ENDPOINT: ws://chromium:3000/playwright/chromium?token=${CHROMIUM_TOKEN}
-      # MINIO_URL, pas MINIO_ENDPOINT : application.properties lit
-      # "minio.endpoint=${MINIO_URL}" — un mauvais nom de variable ici
-      # rendait cette surcharge totalement silencieuse (aucune erreur, juste
-      # ignorée), l'app retombait sur MINIO_URL=http://localhost:9000 du
-      # .env sans que rien ne le signale. Repéré en vérifiant chaque
-      # variable une par une contre application.properties.
       MINIO_URL: http://minio:9000
-      # Oublié jusqu'ici — l'app utilisait encore MEILISEARCH_HOST du .env
-      # (127.0.0.1:7700, donc elle-même à l'intérieur du conteneur) : la
-      # recherche/l'indexation aurait échoué au premier document, découvert
-      # en vérifiant cette liste après coup plutôt qu'en le laissant casser
-      # au runtime.
       MEILISEARCH_HOST: http://meilisearch:7700
       HSM_KEYSTORE_PATH: /app/hsm/editors-keystore.p12
       GOTENBERG_URL: http://gotenberg:3000
@@ -312,10 +173,12 @@ services:
       REDIS_PORT: 6379
       APP_DOMAIN: ${APP_DOMAIN:-localhost:5173}
     volumes:
-      - hsm_data:/app/hsm # <--- VOLUME NOMMÉ : le HSM fichier doit survivre aux redéploiements
+      - hsm_data:/app/hsm
 
 volumes:
   postgres_data:
+  minio_data:
+  meilisearch_data:
   ollama_data:
   hsm_data:
   traefik_certs:

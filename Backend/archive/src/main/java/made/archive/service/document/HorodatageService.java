@@ -17,7 +17,6 @@ import org.bouncycastle.tsp.TimeStampToken;
 import org.springframework.http.MediaType;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.math.BigInteger;
@@ -133,12 +132,24 @@ public class HorodatageService
      * revanche, prévient l'éditeur qui a archivé : le document existe et
      * reste consultable, seul l'horodatage manque pour l'instant, et
      * HorodatageRetryScheduler le complètera automatiquement plus tard.
+     *
+     * VOLONTAIREMENT PAS @Transactional (retiré le 09/2026 — même raisonnement
+     * que RegexGenerationService, voir sa Javadoc) : garder une connexion JDBC
+     * ouverte pendant l'appel TSA (jusqu'à 5s, voir horodater ci-dessus) pour un
+     * traitement qui peut tourner en parallèle sur CHAQUE document archivé
+     * (contrairement à RegexGenerationService, une seule fois par type) — un
+     * risque de contention sur le pool HikariCP bien réel sous charge, même si
+     * individuellement plus court que l'appel Ollama qui a motivé ce même
+     * correctif là-bas. findByIdWithUploadedBy charge uploadedBy en EAGER : sans
+     * ça, y accéder plus bas (notification d'échec) après la fermeture de la
+     * session lèverait une LazyInitializationException (uploadedBy est
+     * FetchType.LAZY sur Document, à la différence de metaData déjà EAGER pour
+     * RegexGenerationService).
      */
     @Async
-    @Transactional
     public void horodaterApresUpload(UUID documentId)
     {
-        Document doc = documentRepository.findById(documentId).orElse(null);
+        Document doc = documentRepository.findByIdWithUploadedBy(documentId).orElse(null);
         if (doc == null)
         {
             log.warn("[Horodatage] Document {} introuvable, horodatage ignoré", documentId);
@@ -179,8 +190,15 @@ public class HorodatageService
      * passage — voir horodaterApresUpload pour la seule alerte d'échec), un
      * SUCCÈS ici notifie l'éditeur : il avait été prévenu que ça manquait,
      * il mérite de savoir que c'est réglé.
+     *
+     * VOLONTAIREMENT PAS @Transactional (retiré le 09/2026 — même raisonnement
+     * que horodaterApresUpload/RegexGenerationService, voir leurs Javadoc) :
+     * cette méthode BOUCLE sur potentiellement plusieurs documents, chacun avec
+     * son propre appel TSA (jusqu'à 5s) — tenir UNE SEULE connexion JDBC ouverte
+     * pour tout le lot aurait été pire que le cas à un seul document. Chaque
+     * documentRepository.save(doc) dans la boucle ouvre désormais sa propre
+     * transaction courte, libérant la connexion entre deux documents.
      */
-    @Transactional
     public void retenterEchecs()
     {
         List<Document> aReessayer = documentRepository.findByHorodatageTokenIsNullAndStatusNotIn(STATUTS_EXCLUS);

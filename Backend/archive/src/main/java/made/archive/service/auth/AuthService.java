@@ -43,12 +43,6 @@ public class AuthService
     @Value("${jwt.refresh.expiration}")
     private long refreshExpiration;
 
-    /**
-     * UO actuelle de l'utilisateur, pour le contexte du journal d'audit — sans ça, les
-     * entrées de connexion/déconnexion restent invisibles pour tout ADMIN_UO (un IN SQL
-     * ne matche jamais NULL), même pour un membre de sa propre UO. Retourne null pour un
-     * ADMIN (non rattaché à une UO) — cas normal, pas une erreur.
-     */
     private Long uoDe(User user)
     {
         return uniteOrganisationnelleService.getUOActuelleUser(user.getId())

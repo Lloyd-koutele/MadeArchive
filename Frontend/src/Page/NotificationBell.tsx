@@ -16,6 +16,8 @@ const TYPE_ICONS: Record<string, string> = {
     UO_CREEE:          'fa-solid fa-sitemap notif-icon-projet',
     DOCUMENT_HORODATAGE_ECHEC:  'fa-solid fa-clock notif-icon-corrompu',
     DOCUMENT_HORODATAGE_REUSSI: 'fa-solid fa-stamp notif-icon-ajoute',
+    GROUPE_MEMBRE_AJOUTE:       'fa-solid fa-user-plus notif-icon-ajoute',
+    GROUPE_MEMBRE_RETIRE:       'fa-solid fa-user-minus notif-icon-corrompu',
 };
 
 const POLL_INTERVAL_MS = 60_000;

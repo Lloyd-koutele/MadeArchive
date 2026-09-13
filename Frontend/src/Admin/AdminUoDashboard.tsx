@@ -454,7 +454,7 @@ function AdminUoDashboard() {
                                     onClick={() => setIsFixityCheckModalOpen(true)}
                                     className="sidebar-btn"
                                 >
-                                    <i className="fa-solid fa-shield-halved"/> Contrôle d'intégrité
+                                    <i className="fa-solid fa-shield-halved"/> Contrôle d'intégrité documentaire
                                 </button>
                             </div>
 
@@ -620,16 +620,21 @@ function AdminUoDashboard() {
                             {tab === 'journal' && <AuditLogPanel />}
                         </>
                     )}
-                </div>
 
-                <Modal
-                    isOpen={isFixityCheckModalOpen}
-                    onClose={() => setIsFixityCheckModalOpen(false)}
-                    title="Contrôle d'intégrité"
-                    size="large"
-                >
-                    <FixityCheckPanel uos={treeNodes} />
-                </Modal>
+                    {/* DANS .main-content, pas à côté : même piège de centrage que
+                        documenté pour le modal d'import de documents
+                        (EditorDasboard.tsx) — un modal frère de .main-content se
+                        centre sur toute la fenêtre (sidebar comprise) au lieu de
+                        se centrer sur la seule zone de contenu. */}
+                    <Modal
+                        isOpen={isFixityCheckModalOpen}
+                        onClose={() => setIsFixityCheckModalOpen(false)}
+                        title="Contrôle d'intégrité"
+                        size="medium"
+                    >
+                        <FixityCheckPanel uos={treeNodes} />
+                    </Modal>
+                </div>
 
                 <ExportPanel
                     isOpen={isExportModalOpen}

@@ -8,6 +8,7 @@ import made.archive.entite.*;
 import made.archive.exception.BusinessException;
 import made.archive.repository.*;
 import made.archive.service.audit.AuditLogService;
+import made.archive.service.notification.NotificationService;
 import made.archive.service.organisation.UniteOrganisationnelleService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,6 +27,7 @@ public class GroupeAccessService
     private final UserRepository userRepository;
     private final AuditLogService auditLogService;
     private final UniteOrganisationnelleService uniteOrganisationnelleService;
+    private final NotificationService notificationService;
 
     /**
      * Liste tous les membres ayant accès au document, ouvert à N'IMPORTE QUEL
@@ -86,6 +88,12 @@ public class GroupeAccessService
             document.getUniteOrganisationnelle() != null ? document.getUniteOrganisationnelle().getId() : null,
             nouveauMembre.getEmail() + " ajouté au groupe d'accès du document \"" + document.getTitre() + "\"",
             true);
+
+        // Notifie le NOUVEAU membre lui-même — il vient de gagner accès à un
+        // document privé, il doit le savoir sans avoir à le découvrir par
+        // hasard en tombant dessus dans "Documents accessibles".
+        notificationService.notifier(List.of(nouveauMembre), NotificationType.GROUPE_MEMBRE_AJOUTE,
+            "Vous avez été ajouté au groupe d'accès du document \"" + document.getTitre() + "\"");
     }
 
     /**
@@ -112,17 +120,14 @@ public class GroupeAccessService
                 "L'éditeur ayant archivé ce document ne peut pas être retiré de son groupe d'accès");
         }
 
-        // Vérifier que le membre à retirer est bien dans le groupe
-        boolean estMembre = groupe.getMembres().stream()
-            .anyMatch(m -> m.getId().equals(membreARetirerID));
-        if (!estMembre)
-        {
-            throw new BusinessException(
-                "Cet utilisateur n'est pas membre du groupe");
-        }
-
-        String membreRetireEmail = userRepository.findById(membreARetirerID)
-            .map(User::getEmail).orElse(membreARetirerID.toString());
+        // Vérifier que le membre à retirer est bien dans le groupe — récupéré
+        // ici (pas juste son email) : nécessaire pour le notifier de son
+        // retrait juste en dessous, une fois réellement retiré.
+        User membreRetire = groupe.getMembres().stream()
+            .filter(m -> m.getId().equals(membreARetirerID))
+            .findFirst()
+            .orElseThrow(() -> new BusinessException(
+                "Cet utilisateur n'est pas membre du groupe"));
 
         groupe.getMembres().removeIf(m -> m.getId().equals(membreARetirerID));
         groupeAccessRepository.save(groupe);
@@ -136,8 +141,14 @@ public class GroupeAccessService
 
         auditLogService.log(acteur, AuditAction.GROUPE_MEMBRE_RETIRE, AuditCible.DOCUMENT,
             documentId.toString(), uoContexte,
-            membreRetireEmail + " retiré du groupe d'accès de \"" + document.getTitre() + "\"",
+            membreRetire.getEmail() + " retiré du groupe d'accès de \"" + document.getTitre() + "\"",
             true);
+
+        // Notifie le membre RETIRÉ lui-même — il perd l'accès à ce document
+        // privé à partir de maintenant, il doit en être informé plutôt que de
+        // le découvrir en le cherchant en vain plus tard.
+        notificationService.notifier(List.of(membreRetire), NotificationType.GROUPE_MEMBRE_RETIRE,
+            "Vous avez été retiré du groupe d'accès du document \"" + document.getTitre() + "\"");
     }
 
     /**

@@ -8,7 +8,6 @@ import java.util.stream.Collectors;
 
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -39,6 +38,23 @@ import made.archive.repository.TypeDocumentRepository;
  * repose sur un proxy AOP, un auto-appel (this.xxx()) le contournerait
  * silencieusement et exécuterait la méthode de façon synchrone sans
  * prévenir — même piège que @Cacheable, voir UOTreeCacheService.
+ *
+ * VOLONTAIREMENT PAS @Transactional sur genererSiPremierUsage/corrigerSiDivergence
+ * (retiré le 09/2026 — présent à l'origine) : une transaction Spring tient sa
+ * connexion JDBC ouverte pendant TOUTE la durée de la méthode annotée, y compris
+ * ici l'appel Ollama (jusqu'à 150-300s, voir OllamaService.TIMEOUT_SECONDS) qui ne
+ * touche pourtant jamais la base. Avec jusqu'à 8 exécutions @Async concurrentes
+ * (voir AsyncConfig) contre un pool HikariCP par défaut de 10 connexions, quelques
+ * imports concurrents suffisaient à épuiser le pool — bloquant alors TOUTE autre
+ * requête ayant besoin de la base (y compris un simple listage de documents) le
+ * temps que l'appel Ollama en cours libère enfin sa connexion. Constaté en
+ * conditions réelles : les cartes de documents ne s'affichaient plus tant qu'un
+ * import était en cours de traitement par Ollama, avec un rechargement de page
+ * nécessaire ensuite. Sans @Transactional ici, chaque appel au repository
+ * (findByIdWithMetaData, save) ouvre et referme SA PROPRE transaction courte —
+ * sûr uniquement parce que findByIdWithMetaData charge déjà metaData en EAGER
+ * (LEFT JOIN FETCH, voir TypeDocumentRepository) : rien à charger paresseusement
+ * après le retour de la requête, donc aucune session ouverte n'est nécessaire.
  */
 @Slf4j
 @Service
@@ -49,7 +65,6 @@ public class RegexGenerationService
     private final OllamaService ollamaService;
 
     @Async
-    @Transactional
     public void genererSiPremierUsage(Long typeDocumentId, String extractedText,
                                        Map<String, String> fieldValues)
     {
@@ -113,7 +128,6 @@ public class RegexGenerationService
      * suggéré ; les champs déjà corrects gardent leur regex telle quelle.
      */
     @Async
-    @Transactional
     public void corrigerSiDivergence(Long typeDocumentId, String extractedText,
                                       Map<String, String> suggestionsOriginales,
                                       Map<String, String> valeursConfirmees)
