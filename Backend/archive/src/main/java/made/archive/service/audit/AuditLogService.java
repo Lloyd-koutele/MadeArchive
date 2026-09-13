@@ -10,6 +10,7 @@ import made.archive.entite.AuditCible;
 import made.archive.entite.JournalAudit;
 import made.archive.entite.User;
 import made.archive.repository.JournalAuditRepository;
+import made.archive.security.ClientIpResolver;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -18,10 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
 
-import jakarta.servlet.http.HttpServletRequest;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -50,6 +48,7 @@ public class AuditLogService
 {
     private final JournalAuditRepository journalAuditRepository;
     private final ObjectMapper objectMapper;
+    private final ClientIpResolver clientIpResolver;
 
     // ═══════════════════════════════════════════════════════════════════════
     // ÉCRITURE
@@ -79,7 +78,7 @@ public class AuditLogService
                 .acteurId(acteur != null ? acteur.getId() : null)
                 .acteurEmail(acteur != null ? acteur.getEmail() : null)
                 .acteurRole(acteur != null ? rolesToString(acteur) : null)
-                .adresseIp(adresseIpCourante())
+                .adresseIp(clientIpResolver.resolve())
                 .action(action)
                 .cibleType(cibleType)
                 .cibleId(cibleId)
@@ -143,27 +142,6 @@ public class AuditLogService
         catch (Exception e)
         {
             log.warn("[Audit] Impossible de sérialiser les détails : {}", e.getMessage());
-            return null;
-        }
-    }
-
-    private String adresseIpCourante()
-    {
-        try
-        {
-            var attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
-            if (attrs == null) return null;
-
-            HttpServletRequest request = attrs.getRequest();
-            String transmis = request.getHeader("X-Forwarded-For");
-            if (StringUtils.hasText(transmis))
-            {
-                return transmis.split(",")[0].trim();
-            }
-            return request.getRemoteAddr();
-        }
-        catch (Exception e)
-        {
             return null;
         }
     }

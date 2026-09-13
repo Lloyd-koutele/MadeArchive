@@ -23,6 +23,7 @@ import made.archive.exception.BusinessException;
 import made.archive.repository.DeviceSessionRepository;
 import made.archive.repository.UserActiveTokenRepository;
 import made.archive.repository.UserRepository;
+import made.archive.security.ClientIpResolver;
 import made.archive.security.JwtService;
 import made.archive.service.audit.AuditLogService;
 import made.archive.service.organisation.UniteOrganisationnelleService;
@@ -39,6 +40,8 @@ public class AuthService
     private final DeviceSessionRepository deviceSessionRepository;
     private final AuditLogService auditLogService;
     private final UniteOrganisationnelleService uniteOrganisationnelleService;
+    private final LoginAttemptService loginAttemptService;
+    private final ClientIpResolver clientIpResolver;
 
     @Value("${jwt.refresh.expiration}")
     private long refreshExpiration;
@@ -51,13 +54,22 @@ public class AuthService
     }
 
     @Transactional
-    public AuthResponse authenticate(LoginRequest request) 
+    public AuthResponse authenticate(LoginRequest request)
     {
+        String ip = clientIpResolver.resolve();
+
+        // Vérifié AVANT toute chose (même avant de savoir si l'email existe) —
+        // voir LoginAttemptService.verifierAvantConnexion : un email ou une IP
+        // déjà bloqué n'a même pas besoin d'atteindre la vérification des
+        // identifiants. Lève une BusinessException (voir AuthController, 429)
+        // si l'un des deux est bloqué.
+        loginAttemptService.verifierAvantConnexion(request.getEmail(), ip);
 
         Optional<User> userOpt = userRepository.findByEmail(request.getEmail());
 
         if (userOpt.isEmpty())
         {
+            loginAttemptService.enregistrerEchec(request.getEmail(), ip);
             auditLogService.log(null, AuditAction.LOGIN_ECHOUE,
                 "Tentative de connexion avec un email inconnu : " + request.getEmail(), false);
             return AuthResponse.failed("Email ou mot de passe incorrect");
@@ -67,6 +79,7 @@ public class AuthService
 
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword()))
         {
+            loginAttemptService.enregistrerEchec(request.getEmail(), ip);
             auditLogService.log(user, AuditAction.LOGIN_ECHOUE, AuditCible.UTILISATEUR,
                 user.getId().toString(), uoDe(user), "Mot de passe incorrect pour " + user.getEmail(), false);
             return AuthResponse.failed("Email ou mot de passe incorrect");
@@ -74,12 +87,17 @@ public class AuthService
 
         if(!user.isActif())
         {
+            // Ne compte volontairement PAS comme un échec pour le bruteforce
+            // (voir LoginAttemptService.enregistrerEchec) : le compte est déjà
+            // bloqué pour une autre raison, ce n'est pas un signal de deviner
+            // le mot de passe.
             auditLogService.log(user, AuditAction.LOGIN_ECHOUE, AuditCible.UTILISATEUR,
                 user.getId().toString(), uoDe(user),
                 "Tentative de connexion sur un compte bloqué : " + user.getEmail(), false);
             return AuthResponse.failed("Accès non autorisé pour ce compte, veuillez contacter l'administrateur");
         }
 
+        loginAttemptService.reinitialiserApresSucces(request.getEmail(), ip);
         auditLogService.log(user, AuditAction.LOGIN_REUSSI, AuditCible.UTILISATEUR,
             user.getId().toString(), uoDe(user), "Connexion réussie : " + user.getEmail(), true);
 
