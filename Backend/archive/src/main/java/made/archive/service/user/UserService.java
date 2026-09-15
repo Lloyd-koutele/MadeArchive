@@ -80,6 +80,9 @@ public class UserService
     @Autowired
     private made.archive.repository.JournalAuditRepository journalAuditRepository;
 
+    @Autowired
+    private made.archive.service.auth.LoginAttemptService loginAttemptService;
+
     /** UO actuelle de l'utilisateur, pour le contexte du journal d'audit (null si aucune / ADMIN). */
     private Long uoDe(UUID userId)
     {
@@ -834,6 +837,32 @@ public class UserService
 
         dto.setPassword(null);
         return Optional.of(dto);
+    }
+
+    /**
+     * Lève manuellement le blocage anti-bruteforce (LoginAttemptService) d'un
+     * compte, par email — VOLONTAIREMENT indépendant d'un changement de mot
+     * de passe (updateUser ci-dessus ne touche jamais à LoginAttemptService :
+     * un mot de passe réinitialisé ne débloque pas seul l'accès si un
+     * blocage par email est encore actif). Ne touche jamais au blocage par
+     * IP — potentiellement partagée avec d'autres utilisateurs légitimes
+     * (voir LoginAttemptService.debloquerAdmin).
+     */
+    public void deverrouillerConnexion(UUID id, User currentUser)
+    {
+        User user = userRepository.findById(id)
+            .orElseThrow(() -> new BusinessException("Utilisateur non trouvé avec l'ID: " + id));
+
+        if (!uniteOrganisationnelleService.aAutoriteSurUtilisateur(id, currentUser))
+        {
+            throw new AccessDeniedException("Vous n'avez pas l'autorité sur cet utilisateur");
+        }
+
+        loginAttemptService.debloquerAdmin(user.getEmail(), null);
+
+        auditLogService.log(currentUser, AuditAction.CONNEXION_DEVERROUILLEE, AuditCible.UTILISATEUR,
+            user.getId().toString(), uoDe(user.getId()),
+            "Déblocage manuel de connexion pour " + user.getEmail(), true);
     }
 
     @Transactional

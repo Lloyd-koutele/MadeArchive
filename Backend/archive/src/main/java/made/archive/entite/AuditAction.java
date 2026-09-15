@@ -13,6 +13,10 @@ public enum AuditAction
     LOGOUT,
     TOKEN_RAFRAICHI,
     SESSION_INVALIDEE,
+    /** Levée manuelle, par un administrateur, du blocage anti-bruteforce d'un
+     *  compte (voir LoginAttemptService.debloquerAdmin) — distinct d'un simple
+     *  changement de mot de passe, qui ne lève jamais ce blocage à lui seul. */
+    CONNEXION_DEVERROUILLEE,
 
     // ── Comptes utilisateurs ─────────────────────────────────────────────────
     UTILISATEUR_CREE,
