@@ -202,6 +202,27 @@ public class AdminController
         }
     }
 
+    /**
+     * Lève manuellement le blocage anti-bruteforce (LoginAttemptService) du
+     * compte — voir UserService.deverrouillerConnexion. Indépendant de
+     * /users/update-user/{id} : un changement de mot de passe seul ne lève
+     * jamais ce blocage.
+     */
+    @Secured({"ROLE_ADMIN", "ROLE_ADMIN_UO"})
+    @PostMapping("/users/{id}/deverrouiller-connexion")
+    public ResponseEntity<?> deverrouillerConnexion(@PathVariable UUID id, @AuthenticationPrincipal UserDetailsImpl currentUser)
+    {
+        try
+        {
+            userService.deverrouillerConnexion(id, currentUser.getUser());
+            return ResponseEntity.ok().build();
+        }
+        catch (Exception e)
+        {
+            return errorResponse("Erreur lors du déverrouillage de connexion: " + e.getMessage());
+        }
+    }
+
     // getUser(id) a été retiré d'ici : @Secured("ROLE_USER") sous /api/admin_uo/** était
     // inatteignable pour un simple USER (la règle d'URL exige ROLE_ADMIN_UO avant même
     // d'atteindre cette annotation — même défaut qu'on a corrigé pour les projets et l'UO
