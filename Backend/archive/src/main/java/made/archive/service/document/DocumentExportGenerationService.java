@@ -8,7 +8,6 @@ import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -24,16 +23,15 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import made.archive.config.DocumentExportProperties;
 import made.archive.dto.DocumentExportRow;
-import made.archive.dto.UOCheminProjection;
 import made.archive.entite.DocumentStatus;
 import made.archive.entite.ExportJob;
 import made.archive.entite.ExportJobStatus;
 import made.archive.entite.NotificationType;
 import made.archive.repository.DocumentRepository;
 import made.archive.repository.ExportJobRepository;
-import made.archive.repository.UniteOrganisationnelleRepository;
 import made.archive.security.DocumentEncryptionService;
 import made.archive.service.notification.NotificationService;
+import made.archive.service.organisation.UniteOrganisationnelleService;
 import made.archive.service.storage.StorageService;
 
 /**
@@ -57,7 +55,7 @@ public class DocumentExportGenerationService
     private final DocumentEncryptionService         documentEncryptionService;
     private final NotificationService               notificationService;
     private final DocumentExportProperties          properties;
-    private final UniteOrganisationnelleRepository  uniteOrganisationnelleRepository;
+    private final UniteOrganisationnelleService     uniteOrganisationnelleService;
 
     private static final DateTimeFormatter FORMAT_DATE = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
@@ -104,18 +102,17 @@ public class DocumentExportGenerationService
         List<DocumentExportRow> documents = documentRepository.findAllByIdPourExport(job.getDocumentIds());
 
         // Chemins complets des UO (id -> "Ucad/Faculté Sciences/Département
-        // Info") calculés en une seule requête récursive pour tout l'arbre —
-        // même technique que UniteOrganisationnelleService.chargerCheminComplets,
-        // pour que l'arborescence du ZIP reflète la vraie hiérarchie
+        // Info") pour que l'arborescence du ZIP reflète la vraie hiérarchie
         // organisationnelle plutôt qu'un dossier par nom d'UO isolé (deux UO
         // homonymes dans des branches différentes ne se marchaient plus dessus).
-        Map<Long, String> cheminsUO = new HashMap<>();
-        for (UOCheminProjection p : uniteOrganisationnelleRepository.findAllCheminsComplets())
-        {
-            cheminsUO.put(p.getId(), p.getChemin());
-        }
+        // Tronqués à job.getRacineTroncatureId() si le demandeur était ADMIN_UO
+        // (résolu une fois à lancerExport(), voir sa Javadoc) : le ZIP ne doit
+        // jamais révéler le nom d'une UO parente au-dessus de son périmètre
+        // administré, même règle que partout ailleurs pour un ADMIN_UO.
+        Map<Long, String> cheminsUO =
+            uniteOrganisationnelleService.chargerCheminsPourExport(job.getRacineTroncatureId());
 
-        // Évite qu'un titre dupliqué dans la même UO/type/projet n'écrase
+        // Évite qu'un titre dupliqué dans la même UO/type/dossier n'écrase
         // silencieusement le fichier précédent dans le ZIP.
         Set<String> cheminsUtilises = new HashSet<>();
         List<String[]> lignesManifest = new ArrayList<>();
@@ -157,7 +154,7 @@ public class DocumentExportGenerationService
                             doc.id().toString(),
                             doc.titre(),
                             cheminUO != null ? cheminUO : "",
-                            doc.projetNom() != null ? doc.projetNom() : "",
+                            doc.dossierNom() != null ? doc.dossierNom() : "",
                             doc.typeDocumentNom() != null ? doc.typeDocumentNom() : "",
                             doc.status() == DocumentStatus.CORBEILLE ? "CORBEILLE" : "ACTIF",
                             doc.access() != null ? doc.access().name() : "",
@@ -207,24 +204,24 @@ public class DocumentExportGenerationService
     }
 
     /**
-     * <chemin complet UO>/<type>/[Corbeille/][<projet>/]<titre>.pdf — reflète
+     * <chemin complet UO>/<type>/[Corbeille/][<dossier>/]<titre>.pdf — reflète
      * la vraie hiérarchie des UO (dossiers imbriqués, pas un nom aplati) et
      * regroupe TOUJOURS par type de document, comme partout ailleurs dans
      * l'app ("Mes documents" côté éditeur). Avant cette version, ni le type
      * ni la hiérarchie n'apparaissaient : tous les documents d'une UO se
      * retrouvaient à plat dans un seul dossier, types mélangés. La
-     * séparation par projet reste optionnelle (job.isSeparateProjects) et
+     * séparation par dossier reste optionnelle (job.isSeparateProjects) et
      * s'imbrique désormais SOUS le type plutôt qu'à sa place.
      *
      * Un document en corbeille (inclus seulement si excludeCorbeille=false —
      * exclu par défaut) atterrit dans un sous-dossier "Corbeille" DANS son
-     * dossier de type, juste avant l'éventuel sous-dossier projet — sans
+     * dossier de type, juste avant l'éventuel sous-dossier dossier — sans
      * cette distinction, il était indiscernable d'un document actif dans le
      * ZIP (le manifeste, lui, porte aussi ce statut — voir genererManifestCsv).
      *
      * Le préfixe UUID du nom de fichier disparaît (redondant avec le
      * manifeste) au profit d'un titre lisible ; en cas de collision entre
-     * deux documents au même chemin (même UO/type/[projet]/titre),
+     * deux documents au même chemin (même UO/type/[dossier]/titre),
      * dédupliqué via un suffixe " (2)", " (3)"...
      */
     private String construireCheminEntree(
@@ -240,14 +237,14 @@ public class DocumentExportGenerationService
             chemin.append("Corbeille/");
         }
 
-        // Pas de dossier "Sans_projet" — inutile : un document sans projet
+        // Pas de dossier "Sans_dossier" — inutile : un document sans dossier
         // reste identifiable par sa seule présence dans le dossier de type,
         // pas besoin d'un niveau de plus qui ne dirait rien de plus. Le
-        // sous-dossier projet n'apparaît QUE pour un document qui en a
+        // sous-dossier dossier n'apparaît QUE pour un document qui en a
         // réellement un.
-        if (separateProjects && doc.projetNom() != null && !doc.projetNom().isBlank())
+        if (separateProjects && doc.dossierNom() != null && !doc.dossierNom().isBlank())
         {
-            chemin.append(nettoyer(doc.projetNom(), "Sans_projet")).append('/');
+            chemin.append(nettoyer(doc.dossierNom(), "Sans_dossier")).append('/');
         }
 
         // Le titre archivé inclut déjà ".pdf" (ex. "invoice_..._36652.pdf") —
@@ -317,7 +314,7 @@ public class DocumentExportGenerationService
         out.writeBytes(new byte[] { (byte) 0xEF, (byte) 0xBB, (byte) 0xBF }); // BOM UTF-8
 
         String entete = String.join(",",
-            "document_id", "titre", "uo", "projet", "type", "statut", "acces", "archive_le", "chemin_dans_zip");
+            "document_id", "titre", "uo", "dossier", "type", "statut", "acces", "archive_le", "chemin_dans_zip");
         out.writeBytes((entete + "\n").getBytes(StandardCharsets.UTF_8));
 
         for (String[] ligne : lignes)

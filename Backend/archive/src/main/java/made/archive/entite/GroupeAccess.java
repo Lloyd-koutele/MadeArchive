@@ -32,7 +32,7 @@ public class GroupeAccess
    private Long id;
 
    // Pas de nom — un GroupeAccess n'est identifié que par son id, jamais
-   // affiché ni utilisé nulle part (le document/projet auquel il est
+   // affiché ni utilisé nulle part (le document/dossier auquel il est
    // rattaché a déjà son propre nom ; voir GestionGroupe.tsx côté client,
    // qui ne montre jamais que la liste des MEMBRES).
 

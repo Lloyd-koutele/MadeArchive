@@ -23,6 +23,34 @@
     color: var(--accent, #8B5E3C);
     border: 1px solid rgba(139,94,60,0.2);
 }
+/* Document similaire détecté — un AVERTISSEMENT, jamais un blocage (voir
+   ImportDocuments.tsx, handleVoirDocumentSimilaire) : ambre, pas rouge, pour
+   ne pas donner l'impression d'une erreur qui empêcherait de continuer. */
+.up-alert-warning {
+    background: rgba(184,134,11,0.1);
+    color: #8a6414;
+    border: 1px solid rgba(184,134,11,0.25);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+.up-alert-warning button {
+    background: none;
+    border: 1px solid rgba(184,134,11,0.4);
+    border-radius: var(--radius-sm);
+    padding: 0.35rem 0.75rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #8a6414;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background var(--transition);
+}
+.up-alert-warning button:hover {
+    background: rgba(184,134,11,0.15);
+}
 
 /* ── Upload wrapper ── */
 .upload-wrapper {
@@ -145,6 +173,41 @@
     padding: 0.75rem 0.85rem;
     font-size: 0.88rem;
     cursor: pointer;
+}
+
+/* Emplacement physique à l'upload — choix existant + boutons ouvrant
+   EmplacementTreeModal (créer/modifier, même composant que
+   PhysicalLocationsPanel). */
+.up-emplacement-choix {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+.up-emplacement-choix .up-select {
+    flex: 1;
+}
+
+/* Bouton secondaire léger — "Gérer l'emplacement" à côté d'une action
+   principale, jamais seul, jamais de couleur pleine (voir .sidebar-btn pour
+   l'action principale correspondante). */
+.up-btn-secondary {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.6rem 0.9rem;
+    font-size: 0.82rem;
+    color: var(--text-light);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background var(--transition), color var(--transition);
+}
+.up-btn-secondary:hover:not(:disabled) {
+    background: var(--cream);
+    color: var(--dark-choc);
+}
+.up-btn-secondary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 .up-submit {
@@ -1046,7 +1109,7 @@ label.bulk-file-item { cursor: pointer; }
 /* Recherche (nom/email/téléphone) au-dessus d'une liste de membres — utilisé
    à la fois à la création (ImportDocuments.tsx, UploadSimple.tsx : liste de
    cases à cocher) et en gestion post-création (GestionGroupe.tsx,
-   GestionGroupeProjet.tsx : rétrécit les <option> d'un <select>). */
+   GestionGroupeDossier.tsx : rétrécit les <option> d'un <select>). */
 .membres-filtre-input {
     padding: 0.5rem 0.75rem;
     border: 1px solid var(--border);
@@ -1112,7 +1175,7 @@ label.bulk-file-item { cursor: pointer; }
 }
 
 /* ─── Bascule PUBLIC ↔ PRIVÉ (ChangerAccesPanel.tsx) ───────────────────────
-   Partagée entre documents et projets — voir la Javadoc du composant. */
+   Partagée entre documents et dossiers — voir la Javadoc du composant. */
 .acces-toggle-btn {
     display: inline-flex;
     align-items: center;
@@ -1489,7 +1552,57 @@ label.bulk-file-item { cursor: pointer; }
 
 /* ── MetaDataField — champs typés ───────────────────────────────────────────── */
 
-/* DATE — label toujours visible car pas de placeholder trick */
+/* Label flottant — STRING/INTEGER/FLOAT/CHAR/TEXT : le nom du champ vit DANS
+   la zone de saisie (comme un placeholder) tant qu'elle est vide, puis se
+   réduit en petite étiquette fixe en haut du champ dès qu'elle contient une
+   valeur ou reçoit le focus — ne disparaît donc plus jamais une fois la
+   valeur pré-remplie par l'OCR (contrairement à l'ancien comportement, où le
+   nom vivait uniquement dans le placeholder et s'effaçait avec la valeur).
+   Repose sur :placeholder-shown + sélecteur de fratrie adjacente, donc le
+   <label> doit rester juste APRÈS l'<input>/<textarea> dans le JSX, et
+   l'input doit avoir placeholder=" " (un espace, jamais vide — un
+   placeholder réellement vide ne déclenche pas :placeholder-shown de façon
+   fiable dans tous les navigateurs). */
+.meta-field-floating {
+    position: relative;
+}
+
+.meta-field-floating .form-field-input {
+    padding-top: 1.55rem;
+    padding-bottom: 0.3rem;
+}
+
+.meta-field-floating .meta-floating-label {
+    position: absolute;
+    left: 0.85rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.9rem;
+    color: var(--text-light);
+    pointer-events: none;
+    transition: top var(--transition), font-size var(--transition), color var(--transition), font-weight var(--transition);
+}
+
+.meta-field-floating .form-field-input:focus + .meta-floating-label,
+.meta-field-floating .form-field-input:not(:placeholder-shown) + .meta-floating-label {
+    top: 0.32rem;
+    transform: translateY(0);
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--accent);
+}
+
+.meta-field-floating .meta-textarea {
+    padding-top: 1.65rem;
+}
+
+/* BOOLEAN/DATE — label statique au-dessus, toujours visible : un <select>
+   natif ne supporte pas :placeholder-shown, et un <input type="date"> ne le
+   supporte pas de façon fiable non plus (le "trou" mm/jj/aaaa de Chrome n'est
+   pas un vrai placeholder) — le vrai flottement (ci-dessus) n'est donc
+   possible que pour les types texte/nombre. Toujours visible reste
+   strictement mieux que l'ancien comportement (disparu une fois rempli). */
+.meta-field-static-label,
 .meta-field-date {
     display: flex;
     flex-direction: column;
@@ -1522,7 +1635,7 @@ label.bulk-file-item { cursor: pointer; }
     cursor: not-allowed;
 }
 
-.meta-date-label {
+.meta-static-label {
     font-size: 0.8rem;
     font-weight: 500;
     color: var(--text-light);
@@ -1644,6 +1757,100 @@ label.bulk-file-item { cursor: pointer; }
     transform: scale(1.15);
 }
 
+/* "Archiver ici" — coin bas-droite de l'icône (jamais haut-gauche/haut-droite,
+   déjà pris par le retrait rapide et le compteur, voir DossiersPanel.tsx). */
+.folder-quick-add-btn {
+    position: absolute;
+    bottom: 4px;
+    right: 4px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: none;
+    background: var(--dark-soft);
+    color: var(--white-choc);
+    font-size: 0.7rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s, transform 0.15s;
+    z-index: 3;
+}
+
+.folder-card:hover .folder-quick-add-btn {
+    opacity: 1;
+}
+
+.folder-quick-add-btn:hover {
+    transform: scale(1.15);
+    background: var(--dark-mid);
+}
+
+/* Glisser-déposer d'un dossier (voir DossiersPanel.tsx) — même esprit que
+   .uo-tree-node.dragging/.drag-over (UOTree.css), appliqué ici à la carte
+   dossier plutôt qu'à un nœud d'arbre. */
+.folder-card.dossier-dragging {
+    opacity: 0.4;
+}
+
+.folder-card.dossier-drag-over .folder-icon-wrap {
+    outline: 2px dashed var(--accent);
+    outline-offset: 3px;
+    border-radius: 10px;
+}
+
+/* Sélection multiple (Cmd/Ctrl+clic, voir DossiersPanel.handleClickDossierCard)
+   — trait plein pour la distinguer du survol de dépôt (pointillé ci-dessus). */
+.folder-card.dossier-selected .folder-icon-wrap {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 10px;
+}
+
+.folder-card.dossier-selected .folder-name {
+    color: var(--accent);
+}
+
+/* Menu contextuel (clic droit) — voir DossiersPanel.contextMenuJsx. */
+.dossier-context-menu-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+}
+
+.dossier-context-menu {
+    position: fixed;
+    background: var(--white-choc);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-md);
+    padding: 0.35rem;
+    min-width: 180px;
+    z-index: 1001;
+}
+
+.dossier-context-menu button {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: none;
+    border: none;
+    color: var(--error);
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 0.5rem 0.7rem;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    text-align: left;
+}
+
+.dossier-context-menu button:hover {
+    background: rgba(155, 58, 58, 0.08);
+}
+
 /* ── Icône dossier — reproduction du modèle de référence, en tailles
    DYNAMIQUES ──
    Dossier plein (onglet + pochette arrière) → page nette qui dépasse par-
@@ -1730,7 +1937,7 @@ label.bulk-file-item { cursor: pointer; }
     border: 1px solid rgba(255, 255, 255, 0.6);
     border-radius: 14px;
     box-shadow: 0 8px 24px rgba(44, 26, 14, 0.08), inset 0 1px 2px rgba(255, 255, 255, 0.8);
-    /* Centre l'icône-filigrane des dossiers "projet" (voir
+    /* Centre l'icône-filigrane des dossiers "dossier" (voir
        .folder-type-watermark) — sans effet quand la pochette est vide
        (Mes documents, cartes type de document). */
     display: flex;
@@ -1738,14 +1945,40 @@ label.bulk-file-item { cursor: pointer; }
     justify-content: center;
 }
 
-/* Icône en filigrane distinguant un dossier "PROJET" d'un dossier "TYPE DE
-   DOCUMENT" (à l'intérieur d'un projet) — les deux niveaux partagent
+/* Icône en filigrane distinguant un dossier "DOSSIER" d'un dossier "TYPE DE
+   DOCUMENT" (à l'intérieur d'un dossier) — les deux niveaux partagent
    maintenant le même habillage carte-dossier, ce repère évite de les
    confondre. Posée sur la pochette de verre (pas derrière) : elle reste
    nette, seul le fond qu'elle recouvre est flouté. */
 .folder-type-watermark {
     font-size: 1.7rem;
     color: rgba(255, 255, 255, 0.6);
+    pointer-events: none;
+}
+
+/* Carte dossier — RÉUTILISE telle quelle l'icône complète des cartes "type de
+   document" (.folder-icon-wrap/.folder-tab/.folder-back/.glass-pocket, voir
+   plus haut) : même onglet, même corps chocolat, même pochette de verre
+   dépoli. SEULE différence : pas de .document-sheet (la feuille blanche qui
+   dépasse) — un dossier peut désormais contenir d'autres dossiers (voir
+   DossierCard), "un seul fichier dedans" n'a plus de sens pour cette carte.
+   La pochette de verre reste donc vide (juste le flou sur le corps en
+   dessous), et cette petite étiquette "Dossier" en bas-droite (même gabarit
+   que .folder-count, juste posée dans le coin opposé pour ne pas se
+   confondre avec un compteur) est le seul repère ajouté. */
+.folder-type-badge {
+    position: absolute;
+    bottom: 4px;
+    right: 4px;
+    z-index: 3;
+    background: rgba(253, 248, 243, 0.92);
+    color: var(--dark-choc);
+    font-size: 0.58rem;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 999px;
+    white-space: nowrap;
+    box-shadow: 0 1px 4px rgba(44, 26, 14, 0.22);
     pointer-events: none;
 }
 
@@ -1784,7 +2017,7 @@ label.bulk-file-item { cursor: pointer; }
     line-height: 1.3;
 }
 
-/* Légende secondaire sous le nom — créateur/date (cartes projet). */
+/* Légende secondaire sous le nom — créateur/date (cartes dossier). */
 .folder-meta {
     font-size: 0.68rem;
     color: var(--text-light, #9E8878);
@@ -2118,6 +2351,15 @@ label.bulk-file-item { cursor: pointer; }
 
 .breadcrumb-back:hover { opacity: 0.75; }
 
+/* Cible de dépôt "remonter d'un niveau" — glisser un sous-dossier ici le
+   déplace vers le parent du dossier actuellement ouvert (voir DossiersPanel.tsx). */
+.breadcrumb-back.dossier-drag-over {
+    outline: 2px dashed var(--accent, #4A90D9);
+    outline-offset: 4px;
+    border-radius: 6px;
+    opacity: 0.75;
+}
+
 .breadcrumb-sep {
     font-size: 0.65rem;
     color: var(--text-muted, #aaa);
@@ -2158,7 +2400,69 @@ label.bulk-file-item { cursor: pointer; }
     transition: opacity 0.15s;
 }
 
+/* Groupe de boutons de fin de barre (Accès/Archiver/Sous-dossier, voir
+   DossiersPanel.tsx) — la marge "poussée à droite" se met UNE SEULE FOIS ici,
+   sur le groupe entier, plutôt que sur chaque .breadcrumb-add-btn pris
+   individuellement : plusieurs marges "auto" dans la même ligne flex se
+   répartissent l'espace libre en parts égales ENTRE elles (comportement
+   flexbox), ce qui écartait les boutons au lieu de les coller ensemble. */
+.docs-breadcrumb-actions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.docs-breadcrumb-actions .breadcrumb-add-btn {
+    margin-left: 0;
+}
+
 .breadcrumb-add-btn:hover { opacity: 0.85; }
+
+/* Icône seule (ex. "+" sous-dossier) — mêmes couleurs que .breadcrumb-add-btn,
+   juste circulaire et sans libellé (voir DossiersPanel.tsx). */
+.breadcrumb-add-btn-icon-only {
+    padding: 0;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    justify-content: center;
+}
+
+/* "Archiver dans ce dossier" — même forme que .breadcrumb-add-btn-icon-only,
+   couleur distincte (dark-soft) pour se différencier du "+" sous-dossier
+   juste à côté (voir DossiersPanel.tsx). */
+.breadcrumb-archive-btn {
+    background: var(--dark-soft);
+}
+
+.breadcrumb-archive-btn:hover {
+    background: var(--dark-mid);
+}
+
+/* Crayon "Modifier" collé juste devant le nom du dossier ouvert (revu le
+   09/2026 — auparavant un bouton texte aligné à droite avec les autres
+   actions, voir .breadcrumb-add-btn). */
+.breadcrumb-edit-btn {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--white-choc);
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: var(--transition);
+    flex-shrink: 0;
+}
+
+.breadcrumb-edit-btn:hover {
+    background: var(--cream);
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════
    BARRE DE RECHERCHE DANS LE DOSSIER
@@ -2352,6 +2656,24 @@ label.bulk-file-item { cursor: pointer; }
     border-radius: 6px;
     font-size: 0.82rem;
     max-width: 320px;
+}
+
+/* Rattachement d'un document à un dossier (voir components/DossierAttachSection.tsx)
+   — DossierTreePicker est un bloc (filtre + arbre déroulant), pas un simple
+   <select> en ligne : empilé en colonne plutôt que dans .emplacement-edit
+   (rangée alignée au centre, pensée pour un <select> court). */
+.dossier-attach-edit {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.6rem;
+    width: 100%;
+    max-width: 420px;
+}
+
+.dossier-attach-edit-actions {
+    display: flex;
+    gap: 0.5rem;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

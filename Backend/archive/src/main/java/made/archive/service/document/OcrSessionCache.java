@@ -2,6 +2,7 @@ package made.archive.service.document;
 
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import made.archive.dto.DocumentSimilaireDto;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -13,11 +14,14 @@ import java.util.concurrent.ConcurrentHashMap;
  * Cache en mémoire pour stocker les données OCR temporaires.
  * Chaque session a une durée de vie de 30 minutes.
  *
- * Deux hashes sont stockés :
- *   originalSha256  → calculé sur le fichier source brut
- *                     utilisé pour la détection de doublons (Phase 1)
- *   pdfaSha256      → calculé sur le PDF/A-3b converti
- *                     utilisé pour la vérification d'intégrité (stocké en BDD)
+ * Trois hashes sont stockés :
+ *   originalSha256        → calculé sur le fichier source brut
+ *                           utilisé pour le BLOCAGE de doublons (Phase 1)
+ *   pdfaSha256            → calculé sur le PDF/A-3b converti
+ *                           utilisé pour la vérification d'intégrité (stocké en BDD)
+ *   texteNormaliseSha256  → calculé sur le texte OCR normalisé
+ *                           utilisé pour l'AVERTISSEMENT de document similaire
+ *                           (jamais un blocage, voir Document.texteNormaliseSha256)
  */
 @Slf4j
 @Service
@@ -52,6 +56,24 @@ public class OcrSessionCache
          * mais stable une fois archivé.
          */
         public String pdfaSha256;
+
+        /**
+         * SHA-256 du texte OCR normalisé — voir Document.texteNormaliseSha256.
+         * Null si aucun texte exploitable n'a été extrait.
+         */
+        public String texteNormaliseSha256;
+
+        /** Null si aucun document similaire trouvé, ou si non visible par l'uploadeur. */
+        public DocumentSimilaireDto documentSimilaire;
+
+        /**
+         * Plus petite taille de police (points) mesurée dans le PDF converti —
+         * null si non pertinent (pas un tableur, voir
+         * LibreOfficeConversionService.ConversionResult.singlePageSheetsApplied)
+         * ou si la mesure a échoué. Purement informatif, jamais un blocage —
+         * voir DocumentOcrService.mesurerPoliceMinimalePt.
+         */
+        public Double policeMinPt;
 
         // ── OCR ─────────────────────────────────────────────────────────────
         public String              extractedText;

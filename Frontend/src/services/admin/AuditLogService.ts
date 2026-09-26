@@ -3,7 +3,7 @@ import api from '../api';
 
 /**
  * Catalogue miroir de made.archive.entite.AuditAction (backend). Tenu à jour
- * manuellement — pas de génération automatique dans ce projet.
+ * manuellement — pas de génération automatique dans ce dossier.
  */
 export type AuditAction =
     | 'LOGIN_REUSSI' | 'LOGIN_ECHOUE' | 'LOGOUT' | 'TOKEN_RAFRAICHI' | 'SESSION_INVALIDEE'
@@ -15,11 +15,11 @@ export type AuditAction =
     | 'GROUPE_MEMBRE_AJOUTE' | 'GROUPE_MEMBRE_RETIRE'
     | 'TYPE_DOCUMENT_CREE' | 'TYPE_DOCUMENT_MODIFIE' | 'TYPE_DOCUMENT_REGEX_REINITIALISEE'
     | 'TYPE_DOCUMENT_REGEX_MODIFIEE' | 'TYPE_DOCUMENT_SUPPRIME'
-    | 'PROJET_CREE' | 'PROJET_TYPES_AJOUTES' | 'PROJET_SUPPRIME';
+    | 'DOSSIER_CREE' | 'DOSSIER_TYPES_AJOUTES' | 'DOSSIER_SUPPRIME';
 
 export type AuditCible =
     | 'SESSION' | 'UTILISATEUR' | 'UNITE_ORGANISATIONNELLE' | 'DOCUMENT'
-    | 'GROUPE_ACCES' | 'TYPE_DOCUMENT' | 'PROJET';
+    | 'GROUPE_ACCES' | 'TYPE_DOCUMENT' | 'DOSSIER';
 
 export interface AuditLogDto {
     id: number;

@@ -29,5 +29,5 @@ public record DocumentExportRow(
     Long uoId,
     String uoNom,
     String typeDocumentNom,
-    String projetNom
+    String dossierNom
 ) {}

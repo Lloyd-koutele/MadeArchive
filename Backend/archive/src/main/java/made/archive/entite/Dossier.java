@@ -26,48 +26,60 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * Un projet est un CONTENEUR qui regroupe des documents (dossier/affaire) —
+ * Un dossier est un CONTENEUR qui regroupe des documents (dossier/affaire) —
  * ex : un dossier client, une affaire, un chantier. Un Document peut être
- * rattaché à zéro ou un projet (voir Document.projet), au dépôt ou après coup.
+ * rattaché à zéro ou un dossier (voir Document.dossier), au dépôt ou après coup.
+ * Un dossier peut aussi contenir d'autres dossiers (voir parent ci-dessous,
+ * revu le 09/2026 — auparavant strictement plat).
  *
- * Pas de statut de cycle de vie : un projet existe pour recevoir des
+ * Pas de statut de cycle de vie : un dossier existe pour recevoir des
  * documents ; sa seule fin possible est la suppression (voir
- * ProjetService.supprimerProjet — uniquement s'il ne contient aucun document,
- * même s'il a des types attendus déclarés sans document fourni).
+ * DossierService.supprimerDossier — uniquement s'il ne contient aucun document
+ * NI aucun sous-dossier, même s'il a des types attendus déclarés sans document
+ * fourni).
  *
  * typesDocumentsAttendus : modèle de dossier — les types de documents que ce
- * projet est censé contenir (ex : CV, Diplôme, Casier judiciaire). Peut être
+ * dossier est censé contenir (ex : CV, Diplôme, Casier judiciaire). Peut être
  * vide à la création et complété après coup. PUREMENT INFORMATIF : sert à
  * afficher une checklist ("2/4 fournis") côté client, mais un document d'un
  * type hors-liste peut quand même être rattaché — pas de validation stricte
  * côté serveur.
  */
 @Entity
-@Table(name = "projets")
+@Table(name = "dossiers")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class Projet
+public class Dossier
 {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @NotBlank(message = "Le nom du projet est obligatoire")
+    @NotBlank(message = "Le nom du dossier est obligatoire")
     @Column(nullable = false, length = 150)
     private String nom;
 
-    @Column(length = 1000)
-    private String description;
-
-    /** UO propriétaire du projet — détermine qui est notifié à la création. */
+    /** UO propriétaire du dossier — détermine qui est notifié à la création. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "uo_id", nullable = false)
     @JsonIgnore
     private UniteOrganisationnelle uniteOrganisationnelle;
 
     /**
-     * PUBLIC (défaut) ou PRIVÉ — même mécanique que Document.access. Un projet
+     * Dossier parent — null si racine de l'UO. Toujours dans la MÊME UO que
+     * le parent (vérifié à la création, voir DossierService.creerDossier).
+     * INVARIANT de confidentialité : un enfant ne peut jamais être plus
+     * ouvert que son parent — un parent PRIVÉ force tout enfant PRIVÉ (voir
+     * DossierService pour le détail des règles de cascade PUBLIC↔PRIVÉ).
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "parent_id")
+    @JsonIgnore
+    private Dossier parent;
+
+    /**
+     * PUBLIC (défaut) ou PRIVÉ — même mécanique que Document.access. Un dossier
      * PRIVÉ a un GroupeAccess (ci-dessous) ; tout document versé dedans hérite
      * automatiquement de cette confidentialité et du MÊME groupe (voir
      * DocumentUploadeService) — jamais un groupe recréé par document.
@@ -77,9 +89,9 @@ public class Projet
     private TypeAccess access = TypeAccess.PUBLIC;
 
     /**
-     * Groupe d'accès du projet — non nul seulement si access == PRIVE. Le
+     * Groupe d'accès du dossier — non nul seulement si access == PRIVE. Le
      * créateur (creePar) en est le propriétaire : seul lui peut ajouter/retirer
-     * des membres (voir ProjetService), et il ne peut jamais s'en retirer
+     * des membres (voir DossierService), et il ne peut jamais s'en retirer
      * lui-même — même garde que pour un document privé.
      */
     @ManyToOne(fetch = FetchType.LAZY)
@@ -94,8 +106,8 @@ public class Projet
     @Column(nullable = false)
     private LocalDateTime createAt;
 
-    // @JsonIgnore : évite le cycle Projet → documents → Document → projet → ...
-    @OneToMany(mappedBy = "projet", fetch = FetchType.LAZY)
+    // @JsonIgnore : évite le cycle Dossier → documents → Document → dossier → ...
+    @OneToMany(mappedBy = "dossier", fetch = FetchType.LAZY)
     @JsonIgnore
     private List<Document> documents;
 
@@ -106,8 +118,8 @@ public class Projet
      */
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
-        name = "projet_types_documents_attendus",
-        joinColumns = @JoinColumn(name = "projet_id"),
+        name = "dossier_types_documents_attendus",
+        joinColumns = @JoinColumn(name = "dossier_id"),
         inverseJoinColumns = @JoinColumn(name = "type_document_id")
     )
     private List<TypeDocument> typesDocumentsAttendus;

@@ -42,6 +42,27 @@ export interface PhysicalLocationUpdateDto {
     description?: string;
 }
 
+/**
+ * Nœud d'arborescence envoyé à creerArborescence/mettreAJourArborescence —
+ * voir PhysicalLocationTreeNodeDto côté backend. id absent/undefined =
+ * nouveau nœud à créer ; présent = nœud existant à renommer (modification
+ * uniquement, jamais en création, storagePoint alors ignoré côté serveur).
+ */
+export interface PhysicalLocationTreeNodeDto {
+    id?: string;
+    name: string;
+    description?: string;
+    storagePoint: boolean;
+    children: PhysicalLocationTreeNodeDto[];
+}
+
+/** Toujours UNE SEULE racine (node) par appel — voir Javadoc backend. */
+export interface PhysicalLocationArborescenceRequestDto {
+    uniteOrganisationnelleId: number;
+    parentId?: string | null;
+    node: PhysicalLocationTreeNodeDto;
+}
+
 const extractMessage = (error: any): Error => {
     const msg = typeof error.response?.data === 'string'
         ? error.response.data
@@ -49,11 +70,50 @@ const extractMessage = (error: any): Error => {
     return msg ? new Error(msg) : error;
 };
 
-// ── Gestion (ADMIN / ADMIN_UO) — /api/admin_uo/physical-locations ──────────
-
-export const creerEmplacement = async (dto: PhysicalLocationCreateDto): Promise<PhysicalLocationDto> => {
+// ── Gestion COMPLÈTE (EDITOR, dans sa propre UO uniquement) — /api/editor/physical-locations ──
+// Revu le 09/2026 : ADMIN/ADMIN_UO n'ont plus AUCUN droit d'écriture (retiré
+// en deux temps — d'abord la création, puis tout le reste), uniquement un
+// droit de LECTURE (voir plus bas). Contrôleur backend SÉPARÉ (voir
+// PhysicalLocationEditorController) : la règle d'autorisation d'URL de
+// SecurityConfig bloque tout ROLE_EDITOR sur /api/admin_uo/**, même avec le
+// bon rôle sur la méthode elle-même — un /admin_uo/physical-locations/...
+// pour l'éditeur resterait donc inatteignable.
+export const creerEmplacementEditeur = async (dto: PhysicalLocationCreateDto): Promise<PhysicalLocationDto> => {
     try {
-        const response = await api.post('/admin_uo/physical-locations', dto);
+        const response = await api.post('/editor/physical-locations', dto);
+        return response.data;
+    } catch (error: any) {
+        throw extractMessage(error);
+    }
+};
+
+/**
+ * Crée UN emplacement et sa descendance (enfants imbriqués) en un seul appel
+ * — le brouillon est construit localement côté client (voir
+ * EmplacementTreeModal) avant cet unique envoi. Retourne la racine créée,
+ * avec ses enfants imbriqués (même forme que l'arbre lu par
+ * getArbreEmplacements).
+ */
+export const creerArborescence = async (dto: PhysicalLocationArborescenceRequestDto): Promise<PhysicalLocationNodeDto> => {
+    try {
+        const response = await api.post('/editor/physical-locations/arborescence', dto);
+        return response.data;
+    } catch (error: any) {
+        throw extractMessage(error);
+    }
+};
+
+/**
+ * Modifie UN emplacement existant (nom + description) et sa descendance en
+ * un seul appel — même principe que creerArborescence, mais pour un nœud
+ * déjà en base : le brouillon envoyé pré-remplit l'arborescence RÉELLE
+ * actuelle (id sur chaque nœud existant), permet de renommer n'importe quel
+ * nœud existant et d'ajouter de nouveaux descendants n'importe où. Ne
+ * supprime JAMAIS un nœud absent du brouillon — voir Javadoc backend.
+ */
+export const mettreAJourArborescence = async (rootId: string, node: PhysicalLocationTreeNodeDto): Promise<PhysicalLocationNodeDto> => {
+    try {
+        const response = await api.put(`/editor/physical-locations/${rootId}/arborescence`, node);
         return response.data;
     } catch (error: any) {
         throw extractMessage(error);
@@ -62,7 +122,7 @@ export const creerEmplacement = async (dto: PhysicalLocationCreateDto): Promise<
 
 export const modifierEmplacement = async (id: string, dto: PhysicalLocationUpdateDto): Promise<PhysicalLocationDto> => {
     try {
-        const response = await api.put(`/admin_uo/physical-locations/${id}`, dto);
+        const response = await api.put(`/editor/physical-locations/${id}`, dto);
         return response.data;
     } catch (error: any) {
         throw extractMessage(error);
@@ -71,7 +131,7 @@ export const modifierEmplacement = async (id: string, dto: PhysicalLocationUpdat
 
 export const changerTypeStockage = async (id: string, storagePoint: boolean): Promise<PhysicalLocationDto> => {
     try {
-        const response = await api.put(`/admin_uo/physical-locations/${id}/type-stockage`, null, {
+        const response = await api.put(`/editor/physical-locations/${id}/type-stockage`, null, {
             params: { storagePoint },
         });
         return response.data;
@@ -83,7 +143,7 @@ export const changerTypeStockage = async (id: string, storagePoint: boolean): Pr
 /** nouveauParentId undefined/null = devient une nouvelle racine. */
 export const deplacerEmplacement = async (id: string, nouveauParentId: string | null): Promise<PhysicalLocationDto> => {
     try {
-        const response = await api.put(`/admin_uo/physical-locations/${id}/deplacer`, null, {
+        const response = await api.put(`/editor/physical-locations/${id}/deplacer`, null, {
             params: nouveauParentId ? { nouveauParentId } : {},
         });
         return response.data;
@@ -94,7 +154,7 @@ export const deplacerEmplacement = async (id: string, nouveauParentId: string | 
 
 export const desactiverEmplacement = async (id: string): Promise<PhysicalLocationDto> => {
     try {
-        const response = await api.put(`/admin_uo/physical-locations/${id}/desactiver`);
+        const response = await api.put(`/editor/physical-locations/${id}/desactiver`);
         return response.data;
     } catch (error: any) {
         throw extractMessage(error);
@@ -103,7 +163,7 @@ export const desactiverEmplacement = async (id: string): Promise<PhysicalLocatio
 
 export const reactiverEmplacement = async (id: string): Promise<PhysicalLocationDto> => {
     try {
-        const response = await api.put(`/admin_uo/physical-locations/${id}/reactiver`);
+        const response = await api.put(`/editor/physical-locations/${id}/reactiver`);
         return response.data;
     } catch (error: any) {
         throw extractMessage(error);
@@ -112,7 +172,7 @@ export const reactiverEmplacement = async (id: string): Promise<PhysicalLocation
 
 export const supprimerEmplacement = async (id: string): Promise<void> => {
     try {
-        await api.delete(`/admin_uo/physical-locations/${id}`);
+        await api.delete(`/editor/physical-locations/${id}`);
     } catch (error: any) {
         throw extractMessage(error);
     }

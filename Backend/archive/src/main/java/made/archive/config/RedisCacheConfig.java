@@ -25,7 +25,7 @@ import made.archive.security.CachedUserAuth;
  * Cache Redis — voir security.AuthCacheService (résolution utilisateur pour le
  * filtre JWT, appelée à CHAQUE requête authentifiée) et
  * organisation.UOTreeCacheService (arbre des UO, lu à quasi chaque listing de
- * documents/projets, écrit seulement à la création/déplacement/suppression
+ * documents/dossiers, écrit seulement à la création/déplacement/suppression
  * d'une UO).
  *
  * Un sérialiseur JSON FORTEMENT TYPÉ par cache (pas un sérialiseur générique
@@ -69,6 +69,23 @@ public class RedisCacheConfig
      *  quand la fenêtre est passée. */
     public static final String CACHE_FIXITY_COOLDOWN = "fixityCheckCooldownCache";
 
+    /** Anti-spam pour l'alerte "LLM indisponible" (voir OllamaService.alerterAdminLlmInvalide) —
+     *  une seule entrée fixe ("llm-invalide"), présente = déjà alerté récemment. Même
+     *  principe que CACHE_FIXITY_COOLDOWN : le TTL Redis est le mécanisme de cooldown
+     *  lui-même. 8h, alignée sur la fréquence de RegexGenerationRetryScheduler — au
+     *  pire, une alerte par cycle de reprise tant que le LLM configuré reste injoignable,
+     *  jamais une par type de document en échec. */
+    public static final String CACHE_LLM_INVALIDE_COOLDOWN = "llmInvalideCooldownCache";
+
+    /** Anti-spam pour l'alerte "horodatage indisponible" (voir
+     *  HorodatageService.alerterAdminHorodatageInvalide) — même principe que
+     *  CACHE_LLM_INVALIDE_COOLDOWN : une seule entrée fixe, présente = déjà
+     *  alerté récemment. 8h malgré la reprise HORAIRE de HorodatageRetryScheduler
+     *  (bien plus fréquente que les 8h du LLM) : au pire une alerte toutes les
+     *  ~8 tentatives ratées consécutives tant que le TSA configuré reste
+     *  injoignable, jamais une par heure ni une par document en échec. */
+    public static final String CACHE_HORODATAGE_INVALIDE_COOLDOWN = "horodatageInvalideCooldownCache";
+
     @Bean
     public RedisCacheManager cacheManager(RedisConnectionFactory connectionFactory)
     {
@@ -91,10 +108,22 @@ public class RedisCacheConfig
                 .fromSerializer(new Jackson2JsonRedisSerializer<>(mapper, java.time.Instant.class)))
             .entryTtl(Duration.ofHours(6));
 
+        RedisCacheConfiguration llmInvalideCooldownConfig = baseConfig()
+            .serializeValuesWith(RedisSerializationContext.SerializationPair
+                .fromSerializer(new Jackson2JsonRedisSerializer<>(mapper, java.time.Instant.class)))
+            .entryTtl(Duration.ofHours(8));
+
+        RedisCacheConfiguration horodatageInvalideCooldownConfig = baseConfig()
+            .serializeValuesWith(RedisSerializationContext.SerializationPair
+                .fromSerializer(new Jackson2JsonRedisSerializer<>(mapper, java.time.Instant.class)))
+            .entryTtl(Duration.ofHours(8));
+
         Map<String, RedisCacheConfiguration> parCache = Map.of(
             CACHE_USER_AUTH, userAuthConfig,
             CACHE_UO_ARBRE, uoArbreConfig,
-            CACHE_FIXITY_COOLDOWN, fixityCooldownConfig
+            CACHE_FIXITY_COOLDOWN, fixityCooldownConfig,
+            CACHE_LLM_INVALIDE_COOLDOWN, llmInvalideCooldownConfig,
+            CACHE_HORODATAGE_INVALIDE_COOLDOWN, horodatageInvalideCooldownConfig
         );
 
         return RedisCacheManager.builder(connectionFactory)

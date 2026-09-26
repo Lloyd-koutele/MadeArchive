@@ -10,8 +10,8 @@ import made.archive.entite.TypeAccess;
 
 /**
  * Requête de bascule PUBLIC ↔ PRIVÉ après coup, pour un document déjà
- * archivé (DocumentService.modifierAcces) ou un projet déjà créé
- * (ProjetService.modifierAcces) — même DTO pour les deux, la logique de
+ * archivé (DocumentService.modifierAcces) ou un dossier déjà créé
+ * (DossierService.modifierAcces) — même DTO pour les deux, la logique de
  * bascule étant symétrique (voir leur Javadoc).
  */
 @Data

@@ -91,7 +91,7 @@ public class DocumentExportService
                 doc.getTitre(),
                 doc.getUniteOrganisationnelle() != null ? doc.getUniteOrganisationnelle().getNom() : null,
                 doc.getTypeDocument() != null ? doc.getTypeDocument().getNom() : null,
-                doc.getProjet() != null ? doc.getProjet().getNom() : null,
+                doc.getDossier() != null ? doc.getDossier().getNom() : null,
                 doc.getAccess(),
                 estVisibleSansElevation(doc, appelant)))
             .toList();
@@ -136,6 +136,7 @@ public class DocumentExportService
         ExportJob job = new ExportJob();
         job.setDemandePar(appelant);
         job.setUoIds(requete.getUoIds());
+        job.setRacineTroncatureId(uniteOrganisationnelleService.getRacineTroncatureId(appelant));
         job.setDocumentIds(documents.stream().map(Document::getId).toList());
         job.setIncludePriveNonMembre(requete.isIncludePriveNonMembre());
         job.setSeparateProjects(requete.isSeparateProjects());

@@ -148,13 +148,16 @@ export interface DocumentDetailDto {
     peutModifierEmplacement: boolean;
     /** UO du document — pour lister les emplacements physiques disponibles. */
     uniteOrganisationnelleId: number | null;
-    /** Projet auquel ce document est rattaché, s'il y en a un. Null sinon. */
-    projetId: number | null;
-    projetNom: string | null;
-    /** true si l'utilisateur consultant peut rattacher/migrer/détacher ce document d'un projet. */
-    peutModifierProjet: boolean;
+    /** Dossier auquel ce document est rattaché, s'il y en a un. Null sinon. */
+    dossierId: number | null;
+    dossierNom: string | null;
+    /** Fil d'Ariane complet jusqu'à ce dossier, ex. "DGE / M1" — racine en
+     *  premier. Null si pas de dossier (voir DossierService.construireChemin côté serveur). */
+    dossierCheminComplet: string | null;
+    /** true si l'utilisateur consultant peut rattacher/migrer/détacher ce document d'un dossier. */
+    peutModifierDossier: boolean;
     /** true si l'utilisateur consultant peut basculer PUBLIC ↔ PRIVÉ ce document
-     *  (toujours false si le document hérite de la confidentialité d'un projet PRIVÉ). */
+     *  (toujours false si le document hérite de la confidentialité d'un dossier PRIVÉ). */
     peutModifierAcces: boolean;
 }
 
@@ -441,9 +444,9 @@ export const modifierMetaDataDocument = async (
 /**
  * PUT /api/user/docs/{id}/acces
  * Bascule PUBLIC ↔ PRIVÉ après coup — réservé à l'éditeur ayant accès.
- * Refusé si le document hérite de la confidentialité d'un projet PRIVÉ
+ * Refusé si le document hérite de la confidentialité d'un dossier PRIVÉ
  * (voir DocumentService.modifierAcces côté serveur : il faut alors changer
- * l'accès du projet, pas celui du document). groupeMembresIds n'a d'effet
+ * l'accès du dossier, pas celui du document). groupeMembresIds n'a d'effet
  * que si access passe à 'PRIVE' (membres initiaux du nouveau groupe, en
  * plus de l'éditeur qui fait la demande).
  */
@@ -481,21 +484,21 @@ export const modifierEmplacementPhysique = async (
 };
 
 /**
- * PUT /api/user/docs/{id}/projet?projetId=...&fusionnerGroupes=...
- * Change le projet du document — omettre projetId le détache de son projet
- * actuel ("le faire sortir du projet") ; le fournir le migre vers ce
- * projet (qu'il en ait déjà un ou non). Réservé à l'éditeur ayant accès.
+ * PUT /api/user/docs/{id}/dossier?dossierId=...&fusionnerGroupes=...
+ * Change le dossier du document — omettre dossierId le détache de son dossier
+ * actuel ("le faire sortir du dossier") ; le fournir le migre vers ce
+ * dossier (qu'il en ait déjà un ou non). Réservé à l'éditeur ayant accès.
  *
  * fusionnerGroupes : à passer à true seulement après avoir appelé
- * verifierFusionGroupeProjet et obtenu la confirmation de l'éditeur si les
+ * verifierFusionGroupeDossier et obtenu la confirmation de l'éditeur si les
  * groupes diffèrent — voir ce dernier.
  */
-export const modifierProjetDocument = async (
-    id: string, projetId: number | null, fusionnerGroupes = false
+export const modifierDossierDocument = async (
+    id: string, dossierId: number | null, fusionnerGroupes = false
 ): Promise<DocumentDetailDto> => {
     try {
-        const response = await api.put(`/user/docs/${id}/projet`, null, {
-            params: projetId ? { projetId, fusionnerGroupes } : {},
+        const response = await api.put(`/user/docs/${id}/dossier`, null, {
+            params: dossierId ? { dossierId, fusionnerGroupes } : {},
         });
         return response.data;
     } catch (error: any) {
@@ -506,8 +509,8 @@ export const modifierProjetDocument = async (
 };
 
 /**
- * GET /api/user/docs/{id}/projet/{projetId}/verifier-fusion-groupe
- * À appeler avant modifierProjetDocument quand le document et le projet
+ * GET /api/user/docs/{id}/dossier/{dossierId}/verifier-fusion-groupe
+ * À appeler avant modifierDossierDocument quand le document et le dossier
  * cible sont tous les deux privés, pour savoir s'il faut avertir l'éditeur
  * qu'un rattachement fusionnera les deux groupes d'accès.
  */
@@ -516,11 +519,11 @@ export interface FusionGroupeCheckDto {
     membresQuiSerontAjoutes: string[];
 }
 
-export const verifierFusionGroupeProjet = async (
-    documentId: string, projetId: number
+export const verifierFusionGroupeDossier = async (
+    documentId: string, dossierId: number
 ): Promise<FusionGroupeCheckDto> => {
     try {
-        const response = await api.get(`/user/docs/${documentId}/projet/${projetId}/verifier-fusion-groupe`);
+        const response = await api.get(`/user/docs/${documentId}/dossier/${dossierId}/verifier-fusion-groupe`);
         return response.data;
     } catch (error: any) {
         throw error.response?.data?.message
@@ -543,8 +546,8 @@ export interface DocumentUploadDto {
     uploadedById: string;
     integrityLevel: IntegrityLevel;
     groupeMembresIds?: string[];
-    /** Rattache le document à un projet (dossier/affaire) existant. */
-    projetId?: number;
+    /** Rattache le document à un dossier (dossier/affaire) existant. */
+    dossierId?: number;
     /** Ce document devient la version suivante de ce document existant. */
     documentPrecedentId?: string;
     /** Emplacement physique de l'original papier, s'il y en a un (optionnel). */
@@ -659,12 +662,29 @@ export const finalizeUploadDocument = async (
 // │ Upload : BULK Same-Type — OCR Preview + Finalize                       │
 // └─────────────────────────────────────────────────────────────────────────┘
 
+/**
+ * Absent (undefined) si aucun document similaire trouvé, OU si l'utilisateur
+ * n'y a pas accès — jamais construit côté serveur dans ce cas (voir
+ * DocumentSimilaireDto backend), donc jamais l'indice qu'un document existe
+ * pour quelqu'un qui n'y a pas droit.
+ */
+export interface DocumentSimilaireDto {
+    documentId: string;
+    titre: string;
+}
+
 export interface OcrPreviewItemDto {
     sessionId:           string | null;
     /** Nom du fichier traité — notamment utile pour l'import via lien (pas de File[] côté client). */
     nomFichier?:         string;
     metaDataSuggestions: Record<string, string> | null;
     message?:            string;
+    /** Avertissement, jamais un blocage — voir Document.texteNormaliseSha256 côté backend. */
+    documentSimilaire?:  DocumentSimilaireDto;
+    /** Absent si non pertinent (pas un tableur mis à l'échelle) ou mesure
+     *  échouée. Sinon, plus petite taille de police (pt) trouvée dans le PDF
+     *  converti — voir DocumentOcrService.mesurerPoliceMinimalePt côté serveur. */
+    policeMinPt?:        number;
 }
 
 export interface BulkOcrPreviewResponseDto {
@@ -878,10 +898,10 @@ export const getAllUsers = async (uoId: number): Promise<UserDto[]> => {
 /**
  * GET /api/editor/uo/{uoId}/candidats-groupe
  * Utilisateurs proposables comme membres d'un groupe d'accès (document ou
- * projet privé) À LA CRÉATION — collègues de l'UO donnée, PLUS tous les
+ * dossier privé) À LA CRÉATION — collègues de l'UO donnée, PLUS tous les
  * ADMIN globaux (même règle que GroupeService.getDisponibles /
- * ProjetGroupeService.getDisponiblesProjet, utilisés eux APRÈS la création
- * une fois le document/projet et son groupe déjà créés).
+ * DossierGroupeService.getDisponiblesDossier, utilisés eux APRÈS la création
+ * une fois le document/dossier et son groupe déjà créés).
  */
 export const getCandidatsGroupe = async (uoId: number): Promise<UserDto[]> => {
     try {
@@ -926,8 +946,8 @@ export interface DocumentAccessFilterParams {
     statut?:         string;       // "ACTIVE" | "PENDING" | ...
     /** Restreint à une UO précise (navigation Admin/Admin_UO dans l'arbre). */
     uoId?:           number | null;
-    /** Restreint aux documents rattachés à un projet précis (voir ProjetsPanel). */
-    projetId?:       number | null;
+    /** Restreint aux documents rattachés à un dossier précis (voir DossiersPanel). */
+    dossierId?:       number | null;
     page?:           number;
     size?:           number;
 }
@@ -950,7 +970,7 @@ export const getDocumentsAccessibles = async (
                 ...(params.dateFin        ? { dateFin:        params.dateFin }                  : {}),
                 ...(params.statut         ? { statut:         params.statut }                   : {}),
                 ...(params.uoId           ? { uoId:           params.uoId }                     : {}),
-                ...(params.projetId       ? { projetId:       params.projetId }                 : {}),
+                ...(params.dossierId       ? { dossierId:       params.dossierId }                 : {}),
                 page: params.page ?? 1,
                 size: params.size ?? 10,
             },

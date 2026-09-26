@@ -13,7 +13,7 @@ import made.archive.repository.UniteOrganisationnelleRepository;
 
 /**
  * Cache des liaisons UO→parent (une seule requête, lue à quasi chaque
- * listing de documents/projets via UniteOrganisationnelleService — voir
+ * listing de documents/dossiers via UniteOrganisationnelleService — voir
  * getUoIdsVisiblesPourLecture/sousArbreDe/getUtilisateursAutorisesIds).
  *
  * Extrait dans son propre service (plutôt que @Cacheable directement sur

@@ -1,17 +1,15 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import Modal from '../Page/Modal';
 import {
     getArbreEmplacements,
-    creerEmplacement,
-    modifierEmplacement,
     changerTypeStockage,
     desactiverEmplacement,
     reactiverEmplacement,
     supprimerEmplacement,
     deplacerEmplacement,
 } from '../services/organisation/PhysicalLocationService';
-import type { PhysicalLocationNodeDto, PhysicalLocationCreateDto } from '../services/organisation/PhysicalLocationService';
+import type { PhysicalLocationNodeDto } from '../services/organisation/PhysicalLocationService';
+import EmplacementTreeModal from './EmplacementTreeModal';
 import '../Style/organisation/PhysicalLocationsPanel.css';
 import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus';
 import { useNotify } from '../notifications/NotificationProvider';
@@ -20,28 +18,42 @@ import { useConfirm } from '../notifications/ConfirmProvider';
 interface PhysicalLocationsPanelProps {
     /** null = pas d'UO sélectionnée (vue globale admin) — l'arbre est par UO, pas d'affichage possible. */
     uoId: number | null;
+    /**
+     * "gestion" (EDITOR, voir EditorDasboard) : TOUTES les actions — créer,
+     * modifier, convertir, activer/désactiver, supprimer, déplacer
+     * (glisser-déposer). Entièrement piloté par l'éditeur depuis le 09/2026,
+     * même modèle que les Dossiers.
+     * "lecture" (défaut, ADMIN/ADMIN_UO) : consultation seule de l'arbre,
+     * AUCUNE action — ADMIN/ADMIN_UO n'ont plus aucun droit d'écriture sur
+     * les emplacements physiques.
+     * Reflète exactement ce que le backend autorise pour ce rôle (voir
+     * PhysicalLocationEditorController/PhysicalLocationLectureController) ;
+     * une action non permise n'est même pas affichée, plutôt que montrée pour
+     * échouer en 403 au clic.
+     */
+    mode?: 'gestion' | 'lecture';
 }
 
-interface FormState {
-    parentId: string | null;
-    id?: string; // édition si présent
-    name: string;
-    description: string;
-    storagePoint: boolean;
-}
+/**
+ * État du modal unique de création/modification — voir EmplacementTreeModal.
+ * "create" : accroché exactement là où le bouton l'ayant ouvert a été cliqué
+ * (racine de l'UO si parentId===null, ou sous le nœud chemin concerné).
+ * "update" : porte le nœud cliqué ("Modifier") + sa descendance actuelle.
+ */
+type TreeModalState =
+    | { open: false }
+    | { open: true; mode: 'create'; parentId: string | null; parentLabel: string | null }
+    | { open: true; mode: 'update'; node: PhysicalLocationNodeDto };
 
-const FORM_VIDE: FormState = { parentId: null, name: '', description: '', storagePoint: true };
-
-function PhysicalLocationsPanel({ uoId }: PhysicalLocationsPanelProps) {
+function PhysicalLocationsPanel({ uoId, mode = 'lecture' }: PhysicalLocationsPanelProps) {
     const notify = useNotify();
     const confirm = useConfirm();
+    const estGestionnaire = mode === 'gestion';
     const [arbre, setArbre] = useState<PhysicalLocationNodeDto[]>([]);
     const [loading, setLoading] = useState(false);
     const [busyId, setBusyId] = useState<string | null>(null);
 
-    const [isFormOpen, setIsFormOpen] = useState(false);
-    const [form, setForm] = useState<FormState>(FORM_VIDE);
-    const [saving, setSaving] = useState(false);
+    const [treeModal, setTreeModal] = useState<TreeModalState>({ open: false });
 
     // ── Pliement/dépliement ──────────────────────────────────────────────
     const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -189,50 +201,17 @@ function PhysicalLocationsPanel({ uoId }: PhysicalLocationsPanelProps) {
     // écran (un autre onglet, un autre admin...) → rechargé au retour de focus.
     useRefetchOnFocus(charger);
 
-    const ouvrirCreation = (parentId: string | null) => {
-        setForm({ ...FORM_VIDE, parentId });
-        setIsFormOpen(true);
+    const ouvrirCreation = (parentId: string | null, parentLabel: string | null = null) => {
+        setTreeModal({ open: true, mode: 'create', parentId, parentLabel });
     };
 
     const ouvrirEdition = (node: PhysicalLocationNodeDto) => {
-        setForm({
-            id: node.id,
-            parentId: null,
-            name: node.name,
-            description: '',
-            storagePoint: node.storagePoint,
-        });
-        setIsFormOpen(true);
+        setTreeModal({ open: true, mode: 'update', node });
     };
 
-    const soumettreForm = async () => {
-        if (!form.name.trim()) {
-            notify.error('Le nom est obligatoire');
-            return;
-        }
-        setSaving(true);
-        try {
-            if (form.id) {
-                await modifierEmplacement(form.id, { name: form.name, description: form.description });
-            } else {
-                if (uoId == null) return;
-                const dto: PhysicalLocationCreateDto = {
-                    name: form.name,
-                    description: form.description || undefined,
-                    storagePoint: form.storagePoint,
-                    parentId: form.parentId,
-                    uniteOrganisationnelleId: uoId,
-                };
-                await creerEmplacement(dto);
-            }
-            setIsFormOpen(false);
-            notify.success(form.id ? 'Emplacement modifié avec succès' : 'Emplacement créé avec succès');
-            await charger();
-        } catch (err: any) {
-            notify.error(err.message ?? 'Erreur lors de l\'enregistrement');
-        } finally {
-            setSaving(false);
-        }
+    const handleTreeModalSaved = () => {
+        setTreeModal({ open: false });
+        charger();
     };
 
     const withBusy = async (id: string, action: () => Promise<void>) => {
@@ -323,18 +302,25 @@ function PhysicalLocationsPanel({ uoId }: PhysicalLocationsPanelProps) {
         return (
             <div className="pl-empty">
                 <i className="fa-solid fa-building-circle-exclamation" />
-                <p>Sélectionnez une unité organisationnelle pour gérer ses emplacements physiques.</p>
+                <p>{estGestionnaire
+                    ? 'Chargement de votre unité organisationnelle…'
+                    : 'Sélectionnez une unité organisationnelle pour consulter ses emplacements physiques.'}</p>
             </div>
         );
     }
 
     return (
         <div className="pl-panel">
-            <div className="main-header">
-                <button className="sidebar-btn" onClick={() => ouvrirCreation(null)}>
-                    <i className="fa-solid fa-plus" /> Créer un emplacement racine
-                </button>
-            </div>
+            {/* Écriture réservée à EDITOR (mode="gestion") — ADMIN/ADMIN_UO n'ont
+                plus aucun droit d'écriture (retiré le 09/2026, voir
+                PhysicalLocationService côté backend), consultation uniquement. */}
+            {estGestionnaire && (
+                <div className="main-header">
+                    <button className="sidebar-btn" onClick={() => ouvrirCreation(null)}>
+                        <i className="fa-solid fa-plus" /> Créer un emplacement
+                    </button>
+                </div>
+            )}
 
             <div className="pl-filters">
                 <div className="pl-search-field">
@@ -402,6 +388,7 @@ function PhysicalLocationsPanel({ uoId }: PhysicalLocationsPanelProps) {
                                 key={n.id}
                                 node={n}
                                 depth={0}
+                                estGestionnaire={estGestionnaire}
                                 busyId={busyId}
                                 draggedId={draggedId}
                                 dragOverId={dragOverId}
@@ -432,52 +419,24 @@ function PhysicalLocationsPanel({ uoId }: PhysicalLocationsPanelProps) {
                 </div>
             )}
 
-            <Modal
-                isOpen={isFormOpen}
-                onClose={() => setIsFormOpen(false)}
-                title={form.id ? 'Modifier l\'emplacement' : 'Nouvel emplacement'}
-            >
-                <div className="pl-form">
-                    <label>
-                        Nom
-                        <input type="text" value={form.name}
-                            onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))} />
-                    </label>
-                    <label>
-                        Description
-                        <textarea value={form.description} rows={2}
-                            onChange={(e) => setForm(f => ({ ...f, description: e.target.value }))} />
-                    </label>
-
-                    {!form.id && (
-                        <fieldset className="pl-type-choice">
-                            <legend>Nature du nœud (définitive tant qu'il contient des documents/enfants)</legend>
-                            <label>
-                                <input type="radio" checked={form.storagePoint}
-                                    onChange={() => setForm(f => ({ ...f, storagePoint: true }))} />
-                                Point de stockage
-                            </label>
-                            <label>
-                                <input type="radio" checked={!form.storagePoint}
-                                    onChange={() => setForm(f => ({ ...f, storagePoint: false }))} />
-                                Nœud chemin
-                            </label>
-                        </fieldset>
-                    )}
-
-                    <div className="pl-form-actions">
-                        <button type="button" className="sidebar-btn" disabled={saving} onClick={soumettreForm}>
-                            {saving ? <><i className="fa-solid fa-spinner fa-spin" /> Enregistrement…</> : 'Enregistrer'}
-                        </button>
-                    </div>
-                </div>
-            </Modal>
+            {estGestionnaire && treeModal.open && (
+                <EmplacementTreeModal
+                    isOpen={treeModal.open}
+                    onClose={() => setTreeModal({ open: false })}
+                    uoId={uoId}
+                    mode={treeModal.mode}
+                    parentId={treeModal.mode === 'create' ? treeModal.parentId : undefined}
+                    parentLabel={treeModal.mode === 'create' ? treeModal.parentLabel : undefined}
+                    existingNode={treeModal.mode === 'update' ? treeModal.node : undefined}
+                    onSaved={handleTreeModalSaved}
+                />
+            )}
         </div>
     );
 }
 
 function PlNode({
-    node, depth, busyId, draggedId, dragOverId,
+    node, depth, estGestionnaire, busyId, draggedId, dragOverId,
     expanded, onToggleExpand, filterActive, visibleIds, matchIds,
     onAddChild, onEdit, onToggleType, onToggleStatus, onDelete,
     onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop,
@@ -485,6 +444,10 @@ function PlNode({
 }: {
     node: PhysicalLocationNodeDto;
     depth: number;
+    /** true (EDITOR) : toutes les actions — créer/modifier/convertir/activer-désactiver/
+     *  supprimer/déplacer. false (ADMIN/ADMIN_UO) : aucune, lecture seule — voir Javadoc
+     *  de PhysicalLocationsPanelProps.mode. */
+    estGestionnaire: boolean;
     busyId: string | null;
     draggedId: string | null;
     dragOverId: string | 'ROOT' | null;
@@ -493,7 +456,7 @@ function PlNode({
     filterActive: boolean;
     visibleIds: Set<string> | null;
     matchIds: Set<string>;
-    onAddChild: (parentId: string) => void;
+    onAddChild: (parentId: string, parentLabel: string) => void;
     onEdit: (node: PhysicalLocationNodeDto) => void;
     onToggleType: (node: PhysicalLocationNodeDto) => void;
     onToggleStatus: (node: PhysicalLocationNodeDto) => void;
@@ -514,7 +477,7 @@ function PlNode({
     const isInactive = node.status === 'INACTIVE';
     const isBeingDragged = draggedId === node.id;
     const isDropTarget = dragOverId === node.id;
-    const isDraggable = !isBusy;
+    const isDraggable = !isBusy && estGestionnaire;
     const isMatch = matchIds.has(node.id);
 
     const enfantsAffiches = visibleIds ? node.children.filter(c => visibleIds.has(c.id)) : node.children;
@@ -559,79 +522,89 @@ function PlNode({
                     {/* Masqués sur écran réduit (voir PhysicalLocationsPanel.css,
                         .pl-actions-standalone) — repris à l'identique (mêmes icônes,
                         mêmes libellés, mêmes conditions) dans le menu "..." juste
-                        en dessous plutôt que disparaître. */}
-                    {!node.storagePoint && !isInactive && (
-                        <button title="Ajouter un enfant" className="pl-actions-standalone"
-                            onClick={() => onAddChild(node.id)} disabled={isBusy}>
-                            <i className="fa-solid fa-plus" />
-                        </button>
+                        en dessous plutôt que disparaître. Tout regroupé derrière
+                        estGestionnaire : ADMIN/ADMIN_UO (mode="lecture") ne voient
+                        plus AUCUNE de ces actions, même "Ajouter un enfant". */}
+                    {estGestionnaire && (
+                        <>
+                            {!node.storagePoint && !isInactive && (
+                                <button title="Ajouter un enfant" className="pl-actions-standalone"
+                                    onClick={() => onAddChild(node.id, node.name)} disabled={isBusy}>
+                                    <i className="fa-solid fa-plus" />
+                                </button>
+                            )}
+                            <button title="Modifier" className="pl-actions-standalone"
+                                onClick={() => onEdit(node)} disabled={isBusy}>
+                                <i className="fa-solid fa-pen" />
+                            </button>
+                            <button title={node.storagePoint ? 'Convertir en chemin' : 'Convertir en stockage'}
+                                className="pl-actions-standalone"
+                                onClick={() => onToggleType(node)} disabled={isBusy}>
+                                <i className="fa-solid fa-shuffle" />
+                            </button>
+                            <button title={isInactive ? 'Réactiver' : 'Désactiver'}
+                                className="pl-actions-standalone"
+                                onClick={() => onToggleStatus(node)} disabled={isBusy}>
+                                <i className={`fa-solid ${isInactive ? 'fa-toggle-off' : 'fa-toggle-on'}`} />
+                            </button>
+                            <button
+                                title={node.children.length > 0 ? 'Supprimer' : 'Supprimer'}
+                                className="pl-delete-btn pl-actions-standalone"
+                                onClick={() => onDelete(node)} disabled={isBusy}>
+                                <i className="fa-solid fa-trash" />
+                            </button>
+                        </>
                     )}
-                    <button title="Modifier" className="pl-actions-standalone"
-                        onClick={() => onEdit(node)} disabled={isBusy}>
-                        <i className="fa-solid fa-pen" />
-                    </button>
-                    <button title={node.storagePoint ? 'Convertir en chemin' : 'Convertir en stockage'}
-                        className="pl-actions-standalone"
-                        onClick={() => onToggleType(node)} disabled={isBusy}>
-                        <i className="fa-solid fa-shuffle" />
-                    </button>
-                    <button title={isInactive ? 'Réactiver' : 'Désactiver'}
-                        className="pl-actions-standalone"
-                        onClick={() => onToggleStatus(node)} disabled={isBusy}>
-                        <i className={`fa-solid ${isInactive ? 'fa-toggle-off' : 'fa-toggle-on'}`} />
-                    </button>
-                    <button
-                        title={node.children.length > 0 ? 'Supprimer' : 'Supprimer'}
-                        className="pl-delete-btn pl-actions-standalone"
-                        onClick={() => onDelete(node)} disabled={isBusy}>
-                        <i className="fa-solid fa-trash" />
-                    </button>
 
                     {/* Menu "..." compact — visible uniquement sous ~1100px, voir
                         PhysicalLocationsPanel.css. Reprend exactement les mêmes
-                        actions/icônes/conditions que les boutons autonomes ci-dessus. */}
-                    <div className="action-menu-wrapper pl-actions-compact">
-                        <button
-                            ref={(el) => { menuButtonRefs.current[node.id] = el; }}
-                            onClick={() => onToggleMenu(node.id)}
-                            disabled={isBusy}
-                            className="menu-toggle"
-                            aria-label="Plus d'actions"
-                            aria-expanded={openMenuId === node.id}
-                        >
-                            <i className="fa-solid fa-ellipsis" />
-                        </button>
-
-                        {openMenuId === node.id && menuPos && createPortal(
-                            <div
-                                ref={menuRef}
-                                className="action-menu"
-                                style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, transform: 'translateX(-100%)' }}
+                        actions/icônes/conditions que les boutons autonomes ci-dessus.
+                        Absent en mode "lecture" : rien à proposer, ADMIN/ADMIN_UO
+                        n'ont aucune action. */}
+                    {estGestionnaire && (
+                        <div className="action-menu-wrapper pl-actions-compact">
+                            <button
+                                ref={(el) => { menuButtonRefs.current[node.id] = el; }}
+                                onClick={() => onToggleMenu(node.id)}
+                                disabled={isBusy}
+                                className="menu-toggle"
+                                aria-label="Plus d'actions"
+                                aria-expanded={openMenuId === node.id}
                             >
-                                {!node.storagePoint && !isInactive && (
-                                    <button onClick={() => { onCloseMenu(); onAddChild(node.id); }} className="action-menu-item">
-                                        <i className="fa-solid fa-plus" /> Ajouter un enfant
+                                <i className="fa-solid fa-ellipsis" />
+                            </button>
+
+                            {openMenuId === node.id && menuPos && createPortal(
+                                <div
+                                    ref={menuRef}
+                                    className="action-menu"
+                                    style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, transform: 'translateX(-100%)' }}
+                                >
+                                    {!node.storagePoint && !isInactive && (
+                                        <button onClick={() => { onCloseMenu(); onAddChild(node.id, node.name); }} className="action-menu-item">
+                                            <i className="fa-solid fa-plus" /> Ajouter un enfant
+                                        </button>
+                                    )}
+                                    <button onClick={() => { onCloseMenu(); onEdit(node); }} className="action-menu-item">
+                                        <i className="fa-solid fa-pen" /> Modifier
                                     </button>
-                                )}
-                                <button onClick={() => { onCloseMenu(); onEdit(node); }} className="action-menu-item">
-                                    <i className="fa-solid fa-pen" /> Modifier
-                                </button>
-                                <button onClick={() => { onCloseMenu(); onToggleType(node); }} className="action-menu-item">
-                                    <i className="fa-solid fa-shuffle" />{' '}
-                                    {node.storagePoint ? 'Convertir en chemin' : 'Convertir en stockage'}
-                                </button>
-                                <button onClick={() => { onCloseMenu(); onToggleStatus(node); }} className="action-menu-item">
-                                    <i className={`fa-solid ${isInactive ? 'fa-toggle-off' : 'fa-toggle-on'}`} />{' '}
-                                    {isInactive ? 'Réactiver' : 'Désactiver'}
-                                </button>
-                                <button onClick={() => { onCloseMenu(); onDelete(node); }} className="action-menu-item">
-                                    <i className="fa-solid fa-trash" />{' '}
-                                    {node.children.length > 0 ? 'Supprimer avec sa sous-arborescence' : 'Supprimer'}
-                                </button>
-                            </div>,
-                            document.body
-                        )}
-                    </div>
+                                    <button onClick={() => { onCloseMenu(); onToggleType(node); }} className="action-menu-item">
+                                        <i className="fa-solid fa-shuffle" />{' '}
+                                        {node.storagePoint ? 'Convertir en chemin' : 'Convertir en stockage'}
+                                    </button>
+                                    <button onClick={() => { onCloseMenu(); onToggleStatus(node); }} className="action-menu-item">
+                                        <i className={`fa-solid ${isInactive ? 'fa-toggle-off' : 'fa-toggle-on'}`} />{' '}
+                                        {isInactive ? 'Réactiver' : 'Désactiver'}
+                                    </button>
+                                    <button onClick={() => { onCloseMenu(); onDelete(node); }} className="action-menu-item">
+                                        <i className="fa-solid fa-trash" />{' '}
+                                        {node.children.length > 0 ? 'Supprimer avec sa sous-arborescence' : 'Supprimer'}
+                                    </button>
+                                </div>,
+                                document.body
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
             {hasChildren && isExpanded && (
@@ -641,6 +614,7 @@ function PlNode({
                             key={c.id}
                             node={c}
                             depth={depth + 1}
+                            estGestionnaire={estGestionnaire}
                             busyId={busyId}
                             draggedId={draggedId}
                             dragOverId={dragOverId}

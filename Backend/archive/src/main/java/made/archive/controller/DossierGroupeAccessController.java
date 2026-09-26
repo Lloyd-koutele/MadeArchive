@@ -3,7 +3,7 @@ package made.archive.controller;
 import lombok.RequiredArgsConstructor;
 import made.archive.entite.User;
 import made.archive.repository.UserRepository;
-import made.archive.service.organisation.ProjetService;
+import made.archive.service.organisation.DossierService;
 import made.archive.exception.BusinessException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.annotation.Secured;
@@ -15,18 +15,18 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Gestion du groupe d'accès d'un projet PRIVÉ — même schéma que
+ * Gestion du groupe d'accès d'un dossier PRIVÉ — même schéma que
  * GroupeAccessController (documents) : réservé à un membre du groupe ayant
- * AUSSI le rôle éditeur (voir ProjetService.peutGererGroupeProjet), pas au
- * seul créateur — le créateur (projet.creePar) reste juste protégé, jamais
+ * AUSSI le rôle éditeur (voir DossierService.peutGererGroupeDossier), pas au
+ * seul créateur — le créateur (dossier.creePar) reste juste protégé, jamais
  * retirable de son propre groupe.
  */
 @RestController
-@RequestMapping("/api/user/projets/{projetId}/groupe")
+@RequestMapping("/api/user/dossiers/{dossierId}/groupe")
 @RequiredArgsConstructor
-public class ProjetGroupeAccessController
+public class DossierGroupeAccessController
 {
-    private final ProjetService projetService;
+    private final DossierService dossierService;
     private final UserRepository userRepository;
 
     private User getDemandeur(UserDetails userDetails)
@@ -36,19 +36,19 @@ public class ProjetGroupeAccessController
     }
 
     /**
-     * GET /api/user/projets/{projetId}/groupe/membres
+     * GET /api/user/dossiers/{dossierId}/groupe/membres
      * Ouvert à tout membre du groupe (pas seulement le créateur).
      */
     @Secured("ROLE_USER")
     @GetMapping("/membres")
     public ResponseEntity<?> getMembres(
-        @PathVariable Long projetId,
+        @PathVariable Long dossierId,
         @AuthenticationPrincipal UserDetails userDetails)
     {
         try
         {
             UUID demandeurId = getDemandeur(userDetails).getId();
-            return ResponseEntity.ok(projetService.getMembresProjet(projetId, demandeurId));
+            return ResponseEntity.ok(dossierService.getMembresDossier(dossierId, demandeurId));
         }
         catch (Exception e)
         {
@@ -57,19 +57,19 @@ public class ProjetGroupeAccessController
     }
 
     /**
-     * GET /api/user/projets/{projetId}/groupe/disponibles
+     * GET /api/user/dossiers/{dossierId}/groupe/disponibles
      * Réservé à un membre du groupe ayant AUSSI le rôle éditeur.
      */
     @Secured("ROLE_EDITOR")
     @GetMapping("/disponibles")
     public ResponseEntity<?> getDisponibles(
-        @PathVariable Long projetId,
+        @PathVariable Long dossierId,
         @AuthenticationPrincipal UserDetails userDetails)
     {
         try
         {
             UUID demandeurId = getDemandeur(userDetails).getId();
-            List<User> disponibles = projetService.getUtilisateursDisponiblesProjet(projetId, demandeurId);
+            List<User> disponibles = dossierService.getUtilisateursDisponiblesDossier(dossierId, demandeurId);
             return ResponseEntity.ok(disponibles);
         }
         catch (Exception e)
@@ -79,20 +79,20 @@ public class ProjetGroupeAccessController
     }
 
     /**
-     * POST /api/user/projets/{projetId}/groupe/membres?nouveauMembreId=
+     * POST /api/user/dossiers/{dossierId}/groupe/membres?nouveauMembreId=
      * Réservé à un membre du groupe ayant AUSSI le rôle éditeur.
      */
     @Secured("ROLE_EDITOR")
     @PostMapping("/membres")
     public ResponseEntity<?> ajouterMembre(
-        @PathVariable Long projetId,
+        @PathVariable Long dossierId,
         @RequestParam UUID nouveauMembreId,
         @AuthenticationPrincipal UserDetails userDetails)
     {
         try
         {
             UUID demandeurId = getDemandeur(userDetails).getId();
-            projetService.ajouterMembreProjet(projetId, demandeurId, nouveauMembreId);
+            dossierService.ajouterMembreDossier(dossierId, demandeurId, nouveauMembreId);
             return ResponseEntity.ok("Membre ajouté avec succès");
         }
         catch (Exception e)
@@ -102,21 +102,21 @@ public class ProjetGroupeAccessController
     }
 
     /**
-     * DELETE /api/user/projets/{projetId}/groupe/membres/{membreId}
+     * DELETE /api/user/dossiers/{dossierId}/groupe/membres/{membreId}
      * Réservé à un membre du groupe ayant AUSSI le rôle éditeur — le créateur
-     * du projet ne peut jamais être retiré, lui.
+     * du dossier ne peut jamais être retiré, lui.
      */
     @Secured("ROLE_EDITOR")
     @DeleteMapping("/membres/{membreId}")
     public ResponseEntity<?> retirerMembre(
-        @PathVariable Long projetId,
+        @PathVariable Long dossierId,
         @PathVariable UUID membreId,
         @AuthenticationPrincipal UserDetails userDetails)
     {
         try
         {
             UUID demandeurId = getDemandeur(userDetails).getId();
-            projetService.retirerMembreProjet(projetId, demandeurId, membreId);
+            dossierService.retirerMembreDossier(dossierId, demandeurId, membreId);
             return ResponseEntity.ok("Membre retiré avec succès");
         }
         catch (Exception e)

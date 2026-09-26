@@ -172,7 +172,7 @@ public class SecurityConfig
                         .requestMatchers("/api/public/**").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/admin_uo/**").hasRole("ADMIN_UO")
-                        // Les projets sont désormais entièrement pilotés par l'éditeur
+                        // Les dossiers sont désormais entièrement pilotés par l'éditeur
                         // (création, types attendus, suppression, confidentialité) —
                         // plus besoin de règle dédiée, la règle générale ci-dessous
                         // (EDITOR) suffit ; ADMIN_UO/ADMIN n'y ont qu'un droit de

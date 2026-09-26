@@ -30,7 +30,7 @@
     min-width: 200px;
     padding: 0.45rem 0.7rem;
     border: 1px solid var(--border, #E8D9C5);
-    border-radius: 6px;
+    border-radius: 999px;
     background: var(--white-choc, #fff);
     color: var(--text-light, #9E8878);
 }
@@ -56,7 +56,7 @@
 .pl-status-filter {
     padding: 0.45rem 0.7rem;
     border: 1px solid var(--border, #E8D9C5);
-    border-radius: 6px;
+    border-radius: 999px;
     background: var(--white-choc, #fff);
     color: var(--dark-choc, #2C1A0E);
     font-size: 0.85rem;
@@ -281,3 +281,180 @@
     display: flex;
     justify-content: flex-end;
 }
+
+/* ── Éditeur d'arborescence en organigramme (EmplacementTreeModal) ───────────
+   Nœud parent en haut, enfants reliés par des traits en dessous, TOUS les
+   niveaux toujours visibles (rien ne se replie) — voir recap. Le trait
+   horizontal partagé entre frères/sœurs (.tbo-branch::after, tronqué sur le
+   premier/dernier) + le trait vertical individuel (::before) forment le
+   classique connecteur d'organigramme en CSS pur, sans mesure JS. */
+
+.tbo-wrap {
+    max-height: 55vh;
+    overflow: auto;
+    padding: 0.5rem 0.2rem;
+}
+
+.tbo-root {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: fit-content;
+    margin: 0 auto;
+}
+
+.tbo-branch-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+/* grid (pas flex) + grid-template-columns injecté en ligne (repeat(N, 1fr))
+   depuis le composant — voir EmplacementNodeCard. Colonnes de largeur ÉGALE
+   entre frères/sœurs, même si l'un d'eux a ses propres enfants (donc un
+   sous-arbre plus large) et l'autre non : sans ça, le parent se centre sur
+   la largeur TOTALE du sous-arbre (grands-enfants compris) plutôt que sur
+   le milieu de ses enfants directs, et se retrouve visiblement décalé vers
+   le côté le plus "chargé". Avec des colonnes égales, chaque carte enfant
+   reste centrée dans sa propre colonne quelle que soit sa descendance, donc
+   le centre de la ligne = la moyenne des centres des enfants directs, et le
+   parent (centré sur la ligne entière) tombe exactement là. */
+.tbo-children {
+    display: grid;
+}
+
+.tbo-branch {
+    position: relative;
+    padding-top: 7px;
+    margin: 0 4px;
+}
+
+.tbo-branch::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: 1px;
+    height: 7px;
+    background: var(--border-strong, #C9B79E);
+}
+
+.tbo-branch::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: var(--border-strong, #C9B79E);
+}
+
+.tbo-branch:first-child::after { left: 50%; }
+.tbo-branch:last-child::after { right: 50%; }
+.tbo-branch:only-child::after { display: none; }
+
+/* Carte redessinée d'après la maquette validée : badge d'icône coloré +
+   étiquette de type en texte plein (jamais une icône seule — trop ambiguë,
+   voir recap) + "+ Enfant" juste à côté du badge (pas de description : jugée
+   superflue/encombrante, retirée de ce constructeur). "width" fixe (pas
+   juste min-width) sur .tbo-card elle-même — un <input> enfant sans largeur
+   explicite garde son défaut navigateur (~180px) pendant le calcul
+   "shrink-to-fit" du parent, quelle que soit sa propre min-width ; fixer
+   directement la largeur de la carte évite complètement ce piège et permet
+   au nom (flex:1) de se répartir dedans normalement. */
+.tbo-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    background: #fff;
+    border: 1px solid var(--border, #E8D9C5);
+    border-radius: 8px;
+    padding: 0.4rem 0.5rem;
+    width: 148px;
+    margin-bottom: 0.4rem;
+    cursor: pointer;
+}
+
+.tbo-card.focused { box-shadow: 0 0 0 2px var(--choc, #8B5E3C); }
+
+.tbo-card-header {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.tbo-icon-chip {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 6px;
+    font-size: 0.62rem;
+}
+
+.tbo-card.stockage .tbo-icon-chip { background: #E8F5E9; color: #2E7D32; }
+.tbo-card.chemin   .tbo-icon-chip { background: #ECEFF1; color: #455A64; }
+
+.tb-name-input {
+    flex: 1 1 0%;
+    min-width: 0;
+    width: auto;
+    padding: 0;
+    border: none;
+    background: transparent;
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--dark-choc, #2C1A0E);
+    font-family: inherit;
+    cursor: text;
+}
+
+.tb-name-input:focus { outline: none; }
+
+.tbo-type-pill {
+    align-self: flex-start;
+    border: none;
+    border-radius: 999px;
+    padding: 0.12rem 0.45rem;
+    font-size: 0.58rem;
+    font-weight: 500;
+    font-family: inherit;
+    white-space: nowrap;
+}
+
+.tbo-card.stockage .tbo-type-pill { background: #E8F5E9; color: #2E7D32; }
+.tbo-card.chemin   .tbo-type-pill { background: #ECEFF1; color: #455A64; }
+
+button.tbo-type-pill.clickable { cursor: pointer; }
+button.tbo-type-pill.clickable:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Badge de type + "+ Enfant" sur la même ligne, juste à côté (pas un pied de
+   carte séparé par un filet — demandé explicitement, plus compact). */
+.tbo-card-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.tbo-footer-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    border: 1px solid var(--border, #E8D9C5);
+    background: none;
+    border-radius: 6px;
+    padding: 0.15rem 0.35rem;
+    font-size: 0.58rem;
+    color: var(--choc, #8B5E3C);
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.tbo-footer-btn.danger {
+    margin-left: auto;
+    color: var(--text-light, #9E8878);
+}
+
+.tbo-footer-btn.danger:hover { color: var(--error, #9B3A3A); border-color: var(--error, #9B3A3A); }

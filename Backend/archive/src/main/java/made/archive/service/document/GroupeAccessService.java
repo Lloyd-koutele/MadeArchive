@@ -158,7 +158,7 @@ public class GroupeAccessService
      * ailleurs), plus tous les ADMIN globaux (rattachés à aucune UO, mais
      * légitimes sur tout document par leur rôle) — règle déléguée à
      * UniteOrganisationnelleService.getCandidatsGroupeAcces, PARTAGÉE avec
-     * ProjetService.getUtilisateursDisponiblesProjet (même règle, un projet
+     * DossierService.getUtilisateursDisponiblesDossier (même règle, un dossier
      * plutôt qu'un document) et UserService.getCandidatsGroupeAccesPourUO
      * (même règle, À LA CRÉATION plutôt qu'après coup). Ne renvoie jamais
      * ceux déjà membres.

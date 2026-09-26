@@ -5,13 +5,23 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import made.archive.config.ExternalLlmProperties;
 import made.archive.config.OllamaProperties;
+import made.archive.config.RedisCacheConfig;
 import made.archive.entite.MetaData;
+import made.archive.entite.NotificationType;
+import made.archive.entite.Role_Name;
+import made.archive.entite.User;
+import made.archive.repository.UserRepository;
+import made.archive.service.notification.NotificationService;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import jakarta.annotation.PostConstruct;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -27,15 +37,24 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
- * Service de génération automatique de regex via Ollama/Qwen.
+ * Service de génération automatique de regex via un LLM — local (Ollama) OU
+ * distant (API externe générique), au choix de l'administrateur via .env, les
+ * deux étant ENTIÈREMENT OPTIONNELS (voir genererViaLlm : aucun des deux
+ * configuré = fonctionnalité silencieusement désactivée, jamais une erreur).
+ *
+ * Priorité si les deux sont renseignés : l'API externe l'emporte (un choix
+ * explicite de l'admin — remplir une clé + une URL externes n'a de sens que
+ * s'il veut vraiment s'en servir). ATTENTION confidentialité : passer par une
+ * API externe envoie le texte OCR des documents à un tiers — c'est un choix
+ * assumé de l'administrateur, pas un défaut imposé.
  *
  * Utilisé lors de la PHASE 2 (finalisation) du PREMIER document d'un type
  * pour auto-générer les regex d'extraction des champs de métadonnées.
  *
  * Fonctionnement (v2) :
- *   1. UN SEUL appel à Qwen pour TOUS les champs du type (format JSON forcé),
- *      au lieu d'un appel par champ — moins de round-trips, moins de texte
- *      OCR répété inutilement.
+ *   1. UN SEUL appel au LLM pour TOUS les champs du type (JSON forcé quand le
+ *      fournisseur le permet), au lieu d'un appel par champ — moins de
+ *      round-trips, moins de texte OCR répété inutilement.
  *   2. Chaque regex reçue est d'abord réparée mécaniquement (voir
  *      repairCandidate) pour corriger les défauts récurrents qu'aucun réglage
  *      de prompt/température ni changement de modèle local n'élimine de façon
@@ -64,17 +83,19 @@ import java.util.stream.Collectors;
 public class OllamaService
 {
     private final OllamaProperties ollamaProperties;
+    private final ExternalLlmProperties externalLlmProperties;
     private final WebClient.Builder webClientBuilder;
     private final ObjectMapper objectMapper;
+    private final UserRepository userRepository;
+    private final NotificationService notificationService;
+    private final CacheManager cacheManager;
     private WebClient webClient;
+    private WebClient externalWebClient;
 
-    // qwen2.5-coder:14b (voir docker-compose.yml, remplace le 7B en 09/2026 — score
-    // mesuré 23-24/39 sur le harnais de test contre 17-18/39 pour le 7B, seul gain net
-    // observé parmi tous les modèles locaux testés cette investigation) est plus lent
-    // ET plus gourmand en RAM que le 7B qu'il remplace (~10 Go de RAM au chargement
-    // contre ~5 Go — voir mem_limit du service ollama dans docker-compose.yml, relevé
-    // en conséquence).
-    private static final String MODEL             = "qwen2.5-coder:14b";
+    /** Clé fixe unique dans CACHE_LLM_INVALIDE_COOLDOWN — le cooldown est GLOBAL,
+     *  pas par type de document (voir alerterAdminLlmInvalide). */
+    private static final String CLE_COOLDOWN_LLM_INVALIDE = "llm-invalide";
+
     private static final int    MAX_TEXT_CHARS     = 3000;
     // 30s était trop juste pour un appel groupé (5 champs, ~3000 caractères de contexte)
     // sur un modèle tournant en CPU/Metal — la génération est best-effort (voir
@@ -96,10 +117,30 @@ public class OllamaService
     @PostConstruct
     public void init()
     {
-        this.webClient = webClientBuilder
-            .baseUrl(ollamaProperties.getBaseUrl())
-            .build();
-        log.info("[Ollama] Service initialisé avec le modèle : {}", MODEL);
+        if (ollamaProperties.estConfiguree())
+        {
+            this.webClient = webClientBuilder.baseUrl(ollamaProperties.getBaseUrl()).build();
+        }
+        if (externalLlmProperties.estConfiguree())
+        {
+            this.externalWebClient = webClientBuilder.baseUrl(externalLlmProperties.getApiUrl()).build();
+        }
+
+        if (externalLlmProperties.estConfiguree())
+        {
+            log.info("[LLM] API externe configurée : {} (modèle {}) — prioritaire sur Ollama local si les deux sont renseignés",
+                externalLlmProperties.getApiUrl(), externalLlmProperties.getModel());
+        }
+        else if (ollamaProperties.estConfiguree())
+        {
+            log.info("[LLM] Ollama local configuré : {} (modèle {})",
+                ollamaProperties.getBaseUrl(), ollamaProperties.getModel());
+        }
+        else
+        {
+            log.info("[LLM] Aucun LLM configuré (ni OLLAMA_BASE_URL ni LLM_API_URL dans .env) — "
+                + "génération automatique de regex désactivée, aucun impact sur l'archivage.");
+        }
     }
 
     @PreDestroy
@@ -190,18 +231,19 @@ public class OllamaService
         Map<String, String> fieldValuesSafe    = fieldValues != null ? fieldValues : Map.of();
         Map<String, String> regexesEnEchecSafe = regexesEnEchec != null ? regexesEnEchec : Map.of();
 
-        log.info("[Ollama] Génération de regex (1 appel groupé) pour {} métadonnée(s) "
+        log.info("[LLM] Génération de regex (1 appel groupé) pour {} métadonnée(s) "
             + "avec {} valeur(s) saisie(s), {} tentative(s) précédente(s) en échec)",
             metaDataList.size(), fieldValuesSafe.size(), regexesEnEchecSafe.size());
 
         // ── 1er passage : tous les champs ────────────────────────────────────
-        Map<String, String> raw = callQwenBatch(metaDataList, truncatedText, fieldValuesSafe, regexesEnEchecSafe);
+        LlmBatchResult premierPassage = callLlmBatch(metaDataList, truncatedText, fieldValuesSafe, regexesEnEchecSafe);
+        boolean llmJoignable = premierPassage.llmJoignable();
         Map<String, String> result   = new LinkedHashMap<>();
         List<MetaData>       toRetry = new ArrayList<>();
 
         for (MetaData metaData : metaDataList)
         {
-            String candidate = raw.get(metaData.getNom());
+            String candidate = premierPassage.regexParChamp().get(metaData.getNom());
             String validated = validateCandidate(candidate, truncatedText,
                 fieldValuesSafe.get(metaData.getNom()));
 
@@ -218,15 +260,16 @@ public class OllamaService
         // ── Retry groupé, une seule fois, uniquement pour les champs en échec ─
         if (!toRetry.isEmpty())
         {
-            log.info("[Ollama] {} champ(s) invalide(s) au 1er passage, retry groupé : {}",
+            log.info("[LLM] {} champ(s) invalide(s) au 1er passage, retry groupé : {}",
                 toRetry.size(),
                 toRetry.stream().map(MetaData::getNom).collect(Collectors.joining(", ")));
 
-            Map<String, String> retryRaw = callQwenBatch(toRetry, truncatedText, fieldValuesSafe, regexesEnEchecSafe);
+            LlmBatchResult retryPassage = callLlmBatch(toRetry, truncatedText, fieldValuesSafe, regexesEnEchecSafe);
+            llmJoignable = llmJoignable || retryPassage.llmJoignable();
 
             for (MetaData metaData : toRetry)
             {
-                String candidate = retryRaw.get(metaData.getNom());
+                String candidate = retryPassage.regexParChamp().get(metaData.getNom());
                 String validated = validateCandidate(candidate, truncatedText,
                     fieldValuesSafe.get(metaData.getNom()));
 
@@ -234,16 +277,53 @@ public class OllamaService
                 {
                     result.put(metaData.getNom(), validated);
                 }
-                else
+                else if (llmJoignable)
                 {
-                    log.warn("[Ollama] ❌ Aucune regex valide pour '{}' après retry — fallback '{}'",
+                    // Le LLM a bien répondu (à ce passage ou au précédent) mais n'a jamais
+                    // produit de motif exploitable pour ce champ — un repli ".+" a plus de
+                    // valeur qu'aucune regex. Voir TypeDocumentService.resetRegex() pour
+                    // repartir à zéro si besoin.
+                    log.warn("[LLM] ❌ Aucune regex valide pour '{}' après retry — fallback '{}'",
                         metaData.getNom(), FALLBACK_REGEX);
                     result.put(metaData.getNom(), FALLBACK_REGEX);
                 }
+                // else : le LLM n'a JAMAIS répondu (ni ce passage ni le précédent) — pas de
+                // ".+" ici, voir le garde-fou juste en dessous : on préfère laisser le champ
+                // totalement absent, pour que l'appelant (RegexGenerationService) sache qu'il
+                // doit réessayer plus tard plutôt que de considérer le type comme résolu.
             }
         }
 
-        log.info("[Ollama] Génération terminée : {} regex", result.size());
+        if (!llmJoignable)
+        {
+            // Panne d'infrastructure RÉELLE : ni le 1er passage ni le retry n'ont pu
+            // joindre le LLM (llmJoignable est un OU des deux — voir sa Javadoc). C'est
+            // ICI, et seulement ici, qu'on alerte l'admin : un retry qui échoue seul
+            // après un 1er passage réussi ne doit JAMAIS déclencher cette alerte — le
+            // LLM était bien joignable, il a juste raté un second appel restreint à
+            // quelques champs, et le résultat final contient déjà de vraies regex pour
+            // les autres. Alerter dans ce cas ferait croire à une panne totale
+            // ("indisponible... pas joignable") alors que la génération a partiellement
+            // réussi — constaté en conditions réelles quand l'alerte était encore
+            // déclenchée directement depuis appellerOllama/appellerLlmExterne à chaque
+            // appel individuel en échec, sans tenir compte des appels précédents.
+            //
+            // Ne JAMAIS renvoyer de ".+" de complaisance ici : un Map vide signale
+            // clairement à l'appelant qu'il n'y a rien d'exploitable à stocker,
+            // pour qu'il laisse regexGenerated=false et retente plus tard (voir
+            // RegexGenerationService.retenterEchecs) plutôt que de figer le type
+            // sur des regex inutiles qui ne seront plus jamais régénérées.
+            String description = externalLlmProperties.estConfiguree()
+                ? "l'API LLM externe configurée (" + externalLlmProperties.getApiUrl() + ")"
+                : "Ollama local (" + ollamaProperties.getBaseUrl() + ")";
+            alerterAdminLlmInvalide(description);
+
+            log.warn("[LLM] Aucune réponse du LLM sur les {} champ(s) — rien stocké, à retenter plus tard",
+                metaDataList.size());
+            return Map.of();
+        }
+
+        log.info("[LLM] Génération terminée : {} regex", result.size());
         return result;
     }
 
@@ -471,10 +551,21 @@ public class OllamaService
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Appel groupé à Qwen (tous les champs d'un coup, réponse JSON forcée)
+    // Appel groupé au LLM (tous les champs d'un coup, réponse JSON si possible)
     // ─────────────────────────────────────────────────────────────────────────
 
-    private Map<String, String> callQwenBatch(
+    /**
+     * @param regexParChamp résultat exploitable (peut être vide même si llmJoignable=true,
+     *                      ex. réponse reçue mais non-JSON)
+     * @param llmJoignable  false UNIQUEMENT en cas de panne d'infrastructure (voir
+     *                      appellerOllama/appellerLlmExterne) — jamais pour une réponse
+     *                      reçue mais mal formée, qui compte comme "joignable" malgré tout.
+     *                      Distingue "le LLM n'a rien à proposer pour ce champ" de "le LLM
+     *                      n'a jamais pu être contacté" — voir generateRegexForMetaData.
+     */
+    private record LlmBatchResult(Map<String, String> regexParChamp, boolean llmJoignable) {}
+
+    private LlmBatchResult callLlmBatch(
         List<MetaData>      metaDataList,
         String              ocrText,
         Map<String, String> fieldValues,
@@ -482,8 +573,51 @@ public class OllamaService
     {
         String prompt = buildBatchPrompt(metaDataList, ocrText, fieldValues, regexesEnEchec);
 
+        String jsonBody = genererViaLlm(prompt);
+        if (jsonBody == null)
+        {
+            return new LlmBatchResult(Map.of(), false);
+        }
+
+        try
+        {
+            Map<String, String> parsed = objectMapper.readValue(jsonBody, new TypeReference<Map<String, String>>() {});
+            return new LlmBatchResult(parsed, true);
+        }
+        catch (Exception parseError)
+        {
+            // Distingué de l'échec de connexion ci-dessus : le modèle a bien répondu, mais pas
+            // avec le JSON attendu (ex : prompt trop complexe pour un petit modèle) — pas une
+            // panne d'infrastructure, jamais d'alerte admin pour ça (llmJoignable reste true).
+            // Le corps brut est indispensable pour diagnostiquer SANS avoir à reproduire l'appel.
+            log.error("[LLM] Réponse non-JSON du modèle pour {} champ(s) — {} : {}",
+                metaDataList.size(), parseError.getMessage(), jsonBody);
+            return new LlmBatchResult(Map.of(), true);
+        }
+    }
+
+    /**
+     * Choisit le LLM à interroger (externe prioritaire, voir Javadoc de classe)
+     * et retourne sa réponse texte brute, ou null si rien n'est configuré OU si
+     * l'appel a échoué (déjà loggé/alerté par la méthode appelée le cas échéant).
+     */
+    private String genererViaLlm(String prompt)
+    {
+        if (externalLlmProperties.estConfiguree())
+        {
+            return appellerLlmExterne(prompt);
+        }
+        if (ollamaProperties.estConfiguree())
+        {
+            return appellerOllama(prompt);
+        }
+        return null;
+    }
+
+    private String appellerOllama(String prompt)
+    {
         Map<String, Object> requestBody = Map.of(
-            "model",       MODEL,
+            "model",       ollamaProperties.getModel(),
             "prompt",      prompt,
             "stream",      false,
             "format",      "json",   // force une réponse JSON valide côté Ollama
@@ -502,30 +636,107 @@ public class OllamaService
 
             if (response == null || !response.containsKey("response"))
             {
-                log.warn("[Ollama] Réponse invalide ou vide");
-                return Map.of();
+                log.warn("[LLM] Réponse Ollama invalide ou vide — pas une panne réseau, pas d'alerte");
+                return null;
+            }
+            return (String) response.get("response");
+        }
+        catch (Exception e)
+        {
+            // Pas d'alerte admin ICI — un seul appel (1er passage OU retry) en échec ne
+            // dit rien sur la réussite globale du cycle. Voir generateRegexForMetaData,
+            // seul endroit qui alerte, une fois les deux passages connus.
+            log.error("[LLM] Échec de connexion à Ollama ({}) : {}",
+                ollamaProperties.getBaseUrl(), e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Format "Chat Completions" — voir Javadoc d'ExternalLlmProperties pour la
+     * liste (non limitative) des fournisseurs compatibles. response_format en
+     * JSON forcé (supporté par OpenAI et la plupart des compatibles ; ignoré
+     * sans erreur par un fournisseur qui ne le supporte pas, l'instruction JSON
+     * du prompt lui-même reste alors le seul filet).
+     */
+    private String appellerLlmExterne(String prompt)
+    {
+        Map<String, Object> requestBody = Map.of(
+            "model",           externalLlmProperties.getModel(),
+            "messages",        List.of(Map.of("role", "user", "content", prompt)),
+            "temperature",     0.3,
+            "response_format", Map.of("type", "json_object")
+        );
+
+        try
+        {
+            Map<?, ?> response = externalWebClient.post()
+                .uri("/chat/completions")
+                .header("Authorization", "Bearer " + externalLlmProperties.getApiKey())
+                .bodyValue(requestBody)
+                .retrieve()
+                .bodyToMono(Map.class)
+                .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
+                .block();
+
+            List<?> choices = response != null ? (List<?>) response.get("choices") : null;
+            if (choices == null || choices.isEmpty())
+            {
+                log.warn("[LLM] Réponse de l'API externe invalide ou vide — pas une panne réseau, pas d'alerte");
+                return null;
             }
 
-            String jsonBody = (String) response.get("response");
-            try
+            Object messageObj = ((Map<?, ?>) choices.get(0)).get("message");
+            if (!(messageObj instanceof Map<?, ?> message))
             {
-                return objectMapper.readValue(jsonBody, new TypeReference<Map<String, String>>() {});
+                log.warn("[LLM] Réponse de l'API externe sans champ 'message' exploitable");
+                return null;
             }
-            catch (Exception parseError)
+            return (String) message.get("content");
+        }
+        catch (Exception e)
+        {
+            // Pas d'alerte admin ICI — voir la même remarque dans appellerOllama.
+            log.error("[LLM] Échec de connexion à l'API externe ({}) : {}",
+                externalLlmProperties.getApiUrl(), e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Alerte best-effort à tous les ADMIN globaux — jamais plus d'une fois par
+     * cooldown (voir RedisCacheConfig.CACHE_LLM_INVALIDE_COOLDOWN, 8h), même si
+     * plusieurs types de documents échouent dans la même fenêtre : un seul
+     * message suffit, l'admin n'a pas besoin d'un par type pour comprendre que
+     * c'est LE LIEN vers le LLM qui est cassé, pas tel ou tel document.
+     */
+    private void alerterAdminLlmInvalide(String description)
+    {
+        try
+        {
+            Cache cache = cacheManager.getCache(RedisCacheConfig.CACHE_LLM_INVALIDE_COOLDOWN);
+            if (cache != null && cache.get(CLE_COOLDOWN_LLM_INVALIDE) != null)
             {
-                // Distingué de l'échec réseau ci-dessous : le modèle a bien répondu, mais pas
-                // avec le JSON attendu (ex : prompt trop complexe pour un modèle 3B) — le corps
-                // brut est indispensable pour diagnostiquer SANS avoir à reproduire l'appel.
-                log.error("[Ollama] Réponse non-JSON du modèle pour {} champ(s) — {} : {}",
-                    metaDataList.size(), parseError.getMessage(), jsonBody);
-                return Map.of();
+                return;
+            }
+
+            List<User> admins = userRepository.findByRoleName(Role_Name.ADMIN);
+            notificationService.notifier(admins, NotificationType.LLM_GENERATION_INDISPONIBLE,
+                "La génération automatique de regex par IA est actuellement indisponible : "
+                    + description + " n'est pas joignable ou a refusé la connexion. "
+                    + "La génération automatique de regex est simplement suspendue (aucun document "
+                    + "n'est bloqué) — vérifiez la configuration LLM dans le fichier .env du serveur.");
+
+            if (cache != null)
+            {
+                cache.put(CLE_COOLDOWN_LLM_INVALIDE, Instant.now());
             }
         }
         catch (Exception e)
         {
-            log.error("[Ollama] Échec de l'appel groupé Qwen ({} champ(s)) : {}",
-                metaDataList.size(), e.getMessage());
-            return Map.of();
+            // Best-effort — une alerte manquée ne doit jamais faire échouer la génération
+            // elle-même, déjà en cours d'échec pour une tout autre raison.
+            log.warn("[LLM] Échec de la notification d'indisponibilité (best-effort) : {}", e.getMessage());
         }
     }
 

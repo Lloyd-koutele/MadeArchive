@@ -57,11 +57,35 @@ public class LibreOfficeConversionService
         "application/pdf"
     );
 
+    // Tableurs — voir singlePageSheets ci-dessous : sans cette option, un
+    // tableau plus large que la zone d'impression par défaut de LibreOffice
+    // se retrouve scindé sur PLUSIEURS pages PDF distinctes (colonnes de
+    // gauche sur une page, colonnes de droite sur la suivante), cassant la
+    // correspondance ligne par ligne entre elles — constaté en conditions
+    // réelles sur une feuille de présence (noms sur une page, colonnes
+    // Présent/Absent sur une autre, sans plus aucun moyen de les recroiser).
+    private static final Set<String> SPREADSHEET_MIME = Set.of(
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.oasis.opendocument.spreadsheet",
+        "text/csv"
+    );
+
+    /**
+     * Résultat d'une conversion — singlePageSheetsApplied indique si l'option
+     * de mise à l'échelle forcée sur une page (voir SPREADSHEET_MIME) a été
+     * utilisée, pour que l'appelant sache s'il doit vérifier la taille de
+     * police résultante (voir DocumentOcrService.mesurerPoliceMinimalePt) —
+     * jamais pertinent pour un Word/PowerPoint, dont la mise en page n'est
+     * pas retouchée par cette conversion.
+     */
+    public record ConversionResult(byte[] pdfBytes, boolean singlePageSheetsApplied) {}
+
     /**
      * Convertit n'importe quel format supporté en PDF via Gotenberg.
      * Si le fichier est déjà un PDF, le retourne tel quel.
      */
-    public byte[] convertToPdf(byte[] fileBytes, String originalFilename)
+    public ConversionResult convertToPdf(byte[] fileBytes, String originalFilename)
             throws PdfAConversionException
     {
         String mimeType = tika.detect(fileBytes);
@@ -70,7 +94,7 @@ public class LibreOfficeConversionService
         if (ALREADY_PDF.contains(mimeType))
         {
             log.info("[Gotenberg] Déjà un PDF, pas de conversion nécessaire");
-            return fileBytes;
+            return new ConversionResult(fileBytes, false);
         }
 
         if (!SUPPORTED_MIME.contains(mimeType))
@@ -80,10 +104,12 @@ public class LibreOfficeConversionService
             );
         }
 
-        return convertWithGotenberg(fileBytes, originalFilename);
+        boolean isSpreadsheet = SPREADSHEET_MIME.contains(mimeType);
+        byte[] pdfBytes = convertWithGotenberg(fileBytes, originalFilename, isSpreadsheet);
+        return new ConversionResult(pdfBytes, isSpreadsheet);
     }
 
-    private byte[] convertWithGotenberg(byte[] fileBytes, String originalFilename)
+    private byte[] convertWithGotenberg(byte[] fileBytes, String originalFilename, boolean isSpreadsheet)
             throws PdfAConversionException
     {
         try
@@ -97,6 +123,11 @@ public class LibreOfficeConversionService
                     return originalFilename;
                 }
             });
+
+            if (isSpreadsheet)
+            {
+                builder.part("singlePageSheets", "true");
+            }
 
             byte[] pdfBytes = webClient()
                 .post()

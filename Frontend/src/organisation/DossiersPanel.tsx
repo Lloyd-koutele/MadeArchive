@@ -1,16 +1,19 @@
 import { useEffect, useState } from 'react';
 import {
-    creerProjet,
-    modifierProjet,
-    modifierAccesProjet,
-    getProjetsDeUO,
-    getProjetDetail,
+    creerDossier,
+    modifierDossier,
+    modifierAccesDossier,
+    cascaderAccesPublicVersDescendants,
+    getDossiersDeUO,
+    getDossierDetail,
     ajouterTypesAttendus,
     retirerTypeAttendu,
-    supprimerProjet,
-} from '../services/organisation/ProjetService';
+    supprimerDossier,
+    previsualiserDeplacement,
+    deplacerDossier,
+} from '../services/organisation/DossierService';
 import ChangerAccesPanel from '../components/ChangerAccesPanel';
-import type { ProjetDto, ProjetDetailDto, TypeAttenduDto } from '../services/organisation/ProjetService';
+import type { DossierDto, DossierDetailDto, TypeAttenduDto } from '../services/organisation/DossierService';
 import { getTypeDocumentsByUO } from '../services/document/TypedocumentService';
 import type { TypeDocumentDto } from '../services/document/TypedocumentService';
 import {
@@ -21,14 +24,15 @@ import {
     getThumbnailBlob,
     downloadPdfA,
 } from '../services/document/DocumentService';
-import type { UserDto, DocumentListItemDto, DocumentDetailDto } from '../services/document/DocumentService';
+import type { UserDto, DocumentListItemDto, DocumentDetailDto, BulkUploadReportDto } from '../services/document/DocumentService';
 import Modal from '../Page/Modal';
 import VersionBadge from '../document/VersionBadge';
-import GestionGroupeProjet from './GestionGroupeProjet';
+import GestionGroupeDossier from './GestionGroupeDossier';
+import ImportDocuments from '../document/ImportDocuments';
 import { useNotify } from '../notifications/NotificationProvider';
 import { useConfirm } from '../notifications/ConfirmProvider';
 import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus';
-import '../Style/Admin/ProjetsPanel.css';
+import '../Style/Admin/DossiersPanel.css';
 // Les cartes dossier (types de documents) et la grille de documents
 // réutilisent telles quelles les classes de "Mes documents"/"Documents
 // accessibles" (.folders-grid, .documents-grid, .doc-grid-card...) — importé
@@ -39,7 +43,7 @@ import '../Style/Editor/Editor.css';
 // de "Documents accessibles".
 import '../Style/document/Filtre.css';
 
-interface ProjetsPanelProps {
+interface DossiersPanelProps {
     uoId: number | null;
     /** Affiche le bouton de création — réservé à ROLE_EDITOR (vérifié aussi côté serveur). */
     canCreate?: boolean;
@@ -74,15 +78,15 @@ const FOLDER_GLASS_COLOR = '#8B5E3C';
 // Composant principal
 // ─────────────────────────────────────────────────────────────────────────────
 
-function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
+function DossiersPanel({ uoId, canCreate = true }: DossiersPanelProps) {
     const notify = useNotify();
     const confirm = useConfirm();
 
-    // ── Navigation : projets → types (dossiers) → documents d'un type ──────
-    type PanelView = 'projets' | 'types' | 'documents';
-    const [panelView, setPanelView] = useState<PanelView>('projets');
+    // ── Navigation : dossiers → types (dossiers) → documents d'un type ──────
+    type PanelView = 'dossiers' | 'types' | 'documents';
+    const [panelView, setPanelView] = useState<PanelView>('dossiers');
 
-    const [projets, setProjets]           = useState<ProjetDto[]>([]);
+    const [dossiers, setDossiers]           = useState<DossierDto[]>([]);
     const [loading, setLoading]           = useState(false);
 
     // ── Modal création/modification — un seul formulaire pour les deux, le
@@ -91,7 +95,6 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
     type ModalMode = 'create' | 'edit' | null;
     const [modalMode, setModalMode]           = useState<ModalMode>(null);
     const [nom, setNom]                       = useState('');
-    const [description, setDescription]       = useState('');
     const [typesUO, setTypesUO]               = useState<TypeDocumentDto[]>([]);
     const [selectedTypeIds, setSelectedTypeIds] = useState<number[]>([]);
     // Filtre local — recherche dans la liste des types proposés dans le modal.
@@ -103,14 +106,14 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
     const [filtreMembreModal, setFiltreMembreModal] = useState('');
     const [formSaving, setFormSaving]         = useState(false);
 
-    // ── Filtres de la liste des projets (purement client — le volume de
-    // projets par UO reste faible, pas besoin d'un aller-retour serveur) ──
+    // ── Filtres de la liste des dossiers (purement client — le volume de
+    // dossiers par UO reste faible, pas besoin d'un aller-retour serveur) ──
     const [filtreNom, setFiltreNom]             = useState('');
     const [filtreCreateur, setFiltreCreateur]   = useState('');
     const [filtreDateDebut, setFiltreDateDebut] = useState('');
     const [filtreDateFin, setFiltreDateFin]     = useState('');
 
-    const projetsFiltres = projets.filter(p => {
+    const dossiersFiltres = dossiers.filter(p => {
         if (filtreNom.trim() && !p.nom.toLowerCase().includes(filtreNom.trim().toLowerCase())) {
             return false;
         }
@@ -129,20 +132,44 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
         return true;
     });
 
-    const nbFiltresProjetsActifs = [filtreNom, filtreCreateur, filtreDateDebut, filtreDateFin]
+    const nbFiltresDossiersActifs = [filtreNom, filtreCreateur, filtreDateDebut, filtreDateFin]
         .filter(v => v.trim() !== '').length;
 
-    const reinitialiserFiltresProjets = () => {
+    const reinitialiserFiltresDossiers = () => {
         setFiltreNom('');
         setFiltreCreateur('');
         setFiltreDateDebut('');
         setFiltreDateFin('');
     };
 
-    // ── Projet ouvert (vue "types") ─────────────────────────────────────────
-    const [projetActif, setProjetActif]         = useState<ProjetDetailDto | null>(null);
-    const [projetActifLoading, setProjetActifLoading] = useState(false);
+    // ── Dossier ouvert (vue "types") ─────────────────────────────────────────
+    const [dossierActif, setDossierActif]         = useState<DossierDetailDto | null>(null);
+    const [dossierActifLoading, setDossierActifLoading] = useState(false);
     const [isGroupeOpen, setIsGroupeOpen]       = useState(false);
+
+    // ── Archiver directement dans ce dossier — bouton dans la barre d'outils
+    // (dossier cible seul, type à choisir) ET "+" sur chaque carte type de
+    // document (dossier ET type déjà pré-remplis, voir ImportDocuments). ────
+    const [isUploadOpen, setIsUploadOpen] = useState(false);
+    const [uploadTypeId, setUploadTypeId] = useState<number | null>(null);
+
+    // ── Sous-dossiers du dossier ouvert (un dossier peut contenir d'autres
+    // dossiers, voir recap) — chargés en parallèle du détail, affichés dans la
+    // MÊME grille mélangée que les types attendus, vue "types". ─────────────
+    const [sousDossiers, setSousDossiers]               = useState<DossierDto[]>([]);
+    const [sousDossiersLoading, setSousDossiersLoading] = useState(false);
+
+    // ── Filtre du CONTENU d'un dossier ouvert (sous-dossiers + types attendus
+    // mélangés, voir grille ci-dessous) — un seul champ nom, purement client,
+    // réinitialisé à chaque changement de dossier (voir ouvrirDossier). ─────
+    const [filtreContenuDossier, setFiltreContenuDossier] = useState('');
+    const filtreContenuNormalise = filtreContenuDossier.trim().toLowerCase();
+    const sousDossiersFiltres = filtreContenuNormalise
+        ? sousDossiers.filter(sd => sd.nom.toLowerCase().includes(filtreContenuNormalise))
+        : sousDossiers;
+    const typesAttendusFiltres = filtreContenuNormalise
+        ? (dossierActif?.typesAttendus ?? []).filter(t => t.nom.toLowerCase().includes(filtreContenuNormalise))
+        : (dossierActif?.typesAttendus ?? []);
 
     // ── Type ouvert (vue "documents") ───────────────────────────────────────
     const [typeActif, setTypeActif] = useState<TypeAttenduDto | null>(null);
@@ -169,7 +196,7 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
     const [pdfLoading, setPdfLoading] = useState(false);
     const [lectureDoc, setLectureDoc] = useState<DocumentListItemDto | null>(null);
 
-    // ── Détail document (lecture seule — pas d'édition depuis les projets) ─
+    // ── Détail document (lecture seule — pas d'édition depuis les dossiers) ─
     const [docDetail, setDocDetail]         = useState<DocumentDetailDto | null>(null);
     const [docDetailLoading, setDocDetailLoading] = useState(false);
     const [isDocDetailOpen, setIsDocDetailOpen]   = useState(false);
@@ -178,20 +205,21 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
     const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
     // ─────────────────────────────────────────────────────────────────────
-    // Chargement projets
+    // Chargement dossiers
     // ─────────────────────────────────────────────────────────────────────
 
-    const chargerProjets = () => {
+    const chargerDossiers = () => {
         if (!uoId) return;
         setLoading(true);
-        getProjetsDeUO(uoId)
-            .then(setProjets)
+        getDossiersDeUO(uoId)
+            .then(setDossiers)
             .catch(err => notify.error(err.message))
             .finally(() => setLoading(false));
     };
 
     useEffect(() => {
-        chargerProjets();
+        chargerDossiers();
+        setSelectedDossierIds(new Set());
         if (uoId) {
             getTypeDocumentsByUO(uoId).then(setTypesUO).catch(() => setTypesUO([]));
             getCandidatsGroupe(uoId).then(setUsersUO).catch(() => setUsersUO([]));
@@ -202,26 +230,33 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [uoId]);
 
-    // Projet créé/modifié depuis une autre interface pendant qu'on reste sur
-    // cet écran → rechargé au retour de focus (liste projets uniquement — la
-    // vue détail d'un projet ouvert se recharge elle-même via ses handlers).
-    useRefetchOnFocus(chargerProjets);
+    // Dossier créé/modifié depuis une autre interface pendant qu'on reste sur
+    // cet écran → rechargé au retour de focus (liste dossiers uniquement — la
+    // vue détail d'un dossier ouvert se recharge elle-même via ses handlers).
+    useRefetchOnFocus(chargerDossiers);
 
-    const ouvrirCreation = () => {
+    // parentId : où accroche le dossier créé (null = racine de l'UO, sinon
+    // sous-dossier de dossierActif). parentPrive : le parent est-il privé ?
+    // Si oui, l'accès est FORCÉ privé (invariant — voir DossierService côté
+    // serveur), pas de choix PUBLIC/PRIVÉ affiché.
+    const [creationParentId, setCreationParentId] = useState<number | null>(null);
+    const [creationParentPrive, setCreationParentPrive] = useState(false);
+
+    const ouvrirCreation = (parentId: number | null = null, parentPrive: boolean = false) => {
         setNom('');
-        setDescription('');
         setSelectedTypeIds([]);
-        setAccessCreation('PUBLIC');
+        setAccessCreation(parentPrive ? 'PRIVE' : 'PUBLIC');
         setSelectedMembreIds([]);
         setFiltreTypeModal('');
+        setCreationParentId(parentId);
+        setCreationParentPrive(parentPrive);
         setModalMode('create');
     };
 
     const ouvrirEdition = () => {
-        if (!projetActif) return;
-        setNom(projetActif.nom);
-        setDescription(projetActif.description ?? '');
-        setSelectedTypeIds(projetActif.typesAttendus.map(t => t.typeDocumentId));
+        if (!dossierActif) return;
+        setNom(dossierActif.nom);
+        setSelectedTypeIds(dossierActif.typesAttendus.map(t => t.typeDocumentId));
         setFiltreTypeModal('');
         setModalMode('edit');
     };
@@ -242,11 +277,11 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
 
     /**
      * Enregistre le formulaire modal — création ou modification selon
-     * modalMode. En modification, le nom/description part via modifierProjet
+     * modalMode. En modification, le nom part via modifierDossier
      * et les types attendus sont mis à jour par DIFFÉRENCE avec l'état
-     * actuel du projet (un appel ajouterTypesAttendus pour les nouveaux, un
+     * actuel du dossier (un appel ajouterTypesAttendus pour les nouveaux, un
      * retirerTypeAttendu par type retiré — le serveur refuse individuellement
-     * un retrait si ce type a déjà des documents dans ce projet, auquel cas
+     * un retrait si ce type a déjà des documents dans ce dossier, auquel cas
      * on continue les autres retraits et on le signale à la fin plutôt que
      * de tout annuler).
      */
@@ -257,18 +292,22 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
             if (!uoId) return;
             setFormSaving(true);
             try {
-                await creerProjet({
+                await creerDossier({
                     nom: nom.trim(),
-                    description: description.trim() || undefined,
                     uoId,
+                    parentId: creationParentId,
                     typeDocumentIds: selectedTypeIds.length > 0 ? selectedTypeIds : undefined,
                     access: accessCreation,
                     groupeMembresIds: accessCreation === 'PRIVE' && selectedMembreIds.length > 0
                         ? selectedMembreIds : undefined,
                 });
                 fermerModal();
-                notify.success('Projet créé avec succès');
-                chargerProjets();
+                notify.success('Dossier créé avec succès');
+                if (creationParentId != null) {
+                    chargerSousDossiers(creationParentId);
+                } else {
+                    chargerDossiers();
+                }
             } catch (err: any) {
                 notify.error(err.message);
             } finally {
@@ -277,42 +316,41 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
             return;
         }
 
-        if (modalMode === 'edit' && projetActif) {
+        if (modalMode === 'edit' && dossierActif) {
             setFormSaving(true);
             try {
-                await modifierProjet(projetActif.id, {
+                await modifierDossier(dossierActif.id, {
                     nom: nom.trim(),
-                    description: description.trim() || undefined,
                 });
 
-                const typesActuels = projetActif.typesAttendus.map(t => t.typeDocumentId);
+                const typesActuels = dossierActif.typesAttendus.map(t => t.typeDocumentId);
                 const aAjouter = selectedTypeIds.filter(id => !typesActuels.includes(id));
                 const aRetirer = typesActuels.filter(id => !selectedTypeIds.includes(id));
 
                 if (aAjouter.length > 0) {
-                    await ajouterTypesAttendus(projetActif.id, aAjouter);
+                    await ajouterTypesAttendus(dossierActif.id, aAjouter);
                 }
 
                 let retraitsEchoues = 0;
                 for (const typeId of aRetirer) {
                     try {
-                        await retirerTypeAttendu(projetActif.id, typeId);
+                        await retirerTypeAttendu(dossierActif.id, typeId);
                     } catch {
                         retraitsEchoues++;
                     }
                 }
 
-                rafraichirProjetActif();
-                chargerProjets(); // le nom a pu changer, la liste doit suivre
+                rafraichirDossierActif();
+                chargerDossiers(); // le nom a pu changer, la liste doit suivre
                 fermerModal();
 
                 if (retraitsEchoues > 0) {
                     notify.error(
-                        `Projet mis à jour, mais ${retraitsEchoues} type${retraitsEchoues > 1 ? 's' : ''} `
-                        + `n'ont pas pu être retiré(s) — des documents de ce type existent déjà dans ce projet.`
+                        `Dossier mis à jour, mais ${retraitsEchoues} type${retraitsEchoues > 1 ? 's' : ''} `
+                        + `n'ont pas pu être retiré(s) — des documents de ce type existent déjà dans ce dossier.`
                     );
                 } else {
-                    notify.success('Projet mis à jour avec succès');
+                    notify.success('Dossier mis à jour avec succès');
                 }
             } catch (err: any) {
                 notify.error(err.message);
@@ -323,22 +361,353 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
     };
 
     // ─────────────────────────────────────────────────────────────────────
-    // Navigation : projets → types
+    // Navigation : dossiers → types
     // ─────────────────────────────────────────────────────────────────────
 
-    const ouvrirProjet = (id: number) => {
-        setProjetActifLoading(true);
+    const ouvrirDossier = (id: number) => {
+        setDossierActifLoading(true);
         setPanelView('types');
-        getProjetDetail(id)
-            .then(setProjetActif)
-            .catch(err => { notify.error(err.message); setPanelView('projets'); })
-            .finally(() => setProjetActifLoading(false));
+        setFiltreContenuDossier('');
+        setSelectedDossierIds(new Set());
+        getDossierDetail(id)
+            .then(setDossierActif)
+            .catch(err => { notify.error(err.message); setPanelView('dossiers'); })
+            .finally(() => setDossierActifLoading(false));
+        chargerSousDossiers(id);
     };
 
-    /** Recharge le projet ouvert sans changer de vue — après ajout/retrait d'un type attendu. */
-    const rafraichirProjetActif = () => {
-        if (!projetActif) return;
-        getProjetDetail(projetActif.id).then(setProjetActif).catch(() => {});
+    const chargerSousDossiers = (parentId: number) => {
+        if (!uoId) return;
+        setSousDossiersLoading(true);
+        getDossiersDeUO(uoId, parentId)
+            .then(setSousDossiers)
+            .catch(() => setSousDossiers([]))
+            .finally(() => setSousDossiersLoading(false));
+    };
+
+    /** Recharge le dossier ouvert sans changer de vue — après ajout/retrait d'un type attendu. */
+    const rafraichirDossierActif = () => {
+        if (!dossierActif) return;
+        getDossierDetail(dossierActif.id).then(setDossierActif).catch(() => {});
+    };
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Archiver directement dans le dossier ouvert — voir ImportDocuments
+    // (preselectedDossierId/preselectedTypeId, tous deux modifiables) et le
+    // bouton "Archiver ici"/le "+" par carte type dans le rendu plus bas.
+    // ─────────────────────────────────────────────────────────────────────
+    const ouvrirUpload = (typeId: number | null, e?: React.MouseEvent) => {
+        e?.stopPropagation();
+        setUploadTypeId(typeId);
+        setIsUploadOpen(true);
+    };
+
+    const fermerUpload = () => {
+        setIsUploadOpen(false);
+        setUploadTypeId(null);
+    };
+
+    const handleUploadSuccess = (report: BulkUploadReportDto) => {
+        fermerUpload();
+        rafraichirDossierActif();
+        if (dossierActif) chargerSousDossiers(dossierActif.id);
+
+        if (report.failed === 0) {
+            notify.success(
+                report.success > 1
+                    ? `${report.success} documents archivés avec succès`
+                    : 'Document archivé avec succès'
+            );
+        } else if (report.success === 0) {
+            const premiereErreur = report.details.find(d => d.status === 'FAILED')?.erreur;
+            notify.error(
+                `Échec de l'archivage — ${report.failed} document(s) non archivé(s)`
+                + (premiereErreur ? ` : ${premiereErreur}` : '')
+            );
+        } else {
+            notify.warning(
+                `${report.success} document(s) archivé(s), ${report.failed} échec(s) — voir le détail`
+            );
+        }
+    };
+
+    /**
+     * Remonte d'UN niveau — vers le dossier parent s'il y en a un (arbitrairement
+     * profond, chaque clic remonte d'un cran), sinon vers la liste racine de
+     * l'UO. Utilisé par le fil d'Ariane ET après suppression du dossier ouvert.
+     */
+    const retourAuNiveauParent = () => {
+        if (dossierActif?.parentId != null) {
+            ouvrirDossier(dossierActif.parentId);
+        } else {
+            setPanelView('dossiers');
+            setDossierActif(null);
+            setSousDossiers([]);
+            setSelectedDossierIds(new Set());
+        }
+    };
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Sélection multiple de dossiers (Cmd+clic sur Mac, Ctrl+clic ailleurs —
+    // même convention qu'un gestionnaire de fichiers) : permet de déplacer ou
+    // supprimer plusieurs dossiers d'un coup (voir plus bas). Portée limitée
+    // au niveau actuellement affiché (racine OU sous-dossiers d'un dossier
+    // ouvert) — réinitialisée à chaque navigation pour éviter de traîner une
+    // sélection d'un autre niveau (voir ouvrirDossier/retourAuNiveauParent).
+    // ─────────────────────────────────────────────────────────────────────
+    const [selectedDossierIds, setSelectedDossierIds] = useState<Set<number>>(new Set());
+
+    // Échap — efface la sélection en cours (et ferme le menu contextuel s'il
+    // est ouvert, voir contextMenu plus bas), convention standard.
+    useEffect(() => {
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                setSelectedDossierIds(new Set());
+                setContextMenu(null);
+            }
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, []);
+
+    const toggleSelectionDossier = (id: number) => {
+        setSelectedDossierIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id); else next.add(id);
+            return next;
+        });
+    };
+
+    const handleClickDossierCard = (e: React.MouseEvent, dossierId: number) => {
+        if (e.metaKey || e.ctrlKey) {
+            e.preventDefault();
+            toggleSelectionDossier(dossierId);
+            return;
+        }
+        // Un clic normal ouvre TOUJOURS le dossier en un seul clic — même
+        // s'il y avait une sélection multiple en cours, qui est alors juste
+        // effacée au passage plutôt que d'exiger un second clic pour naviguer.
+        if (selectedDossierIds.size > 0) {
+            setSelectedDossierIds(new Set());
+        }
+        ouvrirDossier(dossierId);
+    };
+
+    // ── Menu contextuel (clic droit) — Supprimer la sélection courante, ou
+    // juste le dossier cliqué s'il n'était pas déjà dans la sélection. ──────
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+
+    const handleContextMenuDossier = (e: React.MouseEvent, dossierId: number) => {
+        e.preventDefault();
+        if (!selectedDossierIds.has(dossierId)) {
+            setSelectedDossierIds(new Set([dossierId]));
+        }
+        setContextMenu({ x: e.clientX, y: e.clientY });
+    };
+
+    const handleSupprimerSelection = async () => {
+        setContextMenu(null);
+        const ids = [...selectedDossierIds];
+        if (ids.length === 0) return;
+
+        if (!(await confirm({
+            message: ids.length === 1
+                ? 'Supprimer définitivement ce dossier ?'
+                : `Supprimer définitivement ces ${ids.length} dossiers ?`,
+            danger: true,
+        }))) {
+            return;
+        }
+
+        let succes = 0;
+        let echecs = 0;
+        for (const id of ids) {
+            try {
+                await supprimerDossier(id);
+                succes++;
+            } catch {
+                echecs++;
+            }
+        }
+
+        setSelectedDossierIds(new Set());
+        if (dossierActif) {
+            chargerSousDossiers(dossierActif.id);
+        } else {
+            chargerDossiers();
+        }
+
+        if (echecs === 0) {
+            notify.success(succes > 1 ? `${succes} dossiers supprimés avec succès` : 'Dossier supprimé avec succès');
+        } else {
+            notify.error(
+                `${succes} dossier(s) supprimé(s), ${echecs} échec(s) — un dossier non vide `
+                + '(sous-dossiers ou documents) ne peut pas être supprimé'
+            );
+        }
+    };
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Glisser-déposer un ou plusieurs dossiers vers un nouveau parent (voir
+    // DossierService.deplacerDossier côté serveur). Deux cibles possibles :
+    //   - une autre carte dossier du même niveau → devient son enfant ;
+    //   - le bouton "retour" du fil d'Ariane (vue "types" uniquement) →
+    //     remonte au parent du dossier actuellement ouvert.
+    // Avant tout déplacement effectif, un aperçu (previsualiserDeplacement)
+    // détermine s'il faut alerter l'éditeur (passage forcé en privé, ou
+    // membres divergents entre les deux groupes d'accès — voir recap confirmé).
+    // Glisser une carte qui fait partie de la sélection multiple courante
+    // déplace TOUTE la sélection ; glisser une carte hors sélection déplace
+    // seulement celle-ci (et efface la sélection précédente, voir
+    // handleDragStartDossier) — même convention qu'un gestionnaire de fichiers.
+    // ─────────────────────────────────────────────────────────────────────
+    const [draggedDossierId, setDraggedDossierId] = useState<number | null>(null);
+    const [dragOverDossierId, setDragOverDossierId] = useState<number | null>(null);
+    const [dragOverParentCible, setDragOverParentCible] = useState(false);
+
+    /** Ids réellement déplacés par le glisser-déposer en cours (voir commentaire ci-dessus). */
+    const idsEnCoursDeDeplacement = (): number[] => {
+        if (draggedDossierId === null) return [];
+        if (selectedDossierIds.size > 1 && selectedDossierIds.has(draggedDossierId)) {
+            return [...selectedDossierIds];
+        }
+        return [draggedDossierId];
+    };
+
+    const handleDragStartDossier = (e: React.DragEvent, id: number) => {
+        if (!selectedDossierIds.has(id)) {
+            setSelectedDossierIds(new Set());
+        }
+        setDraggedDossierId(id);
+        e.dataTransfer.setData('text/plain', String(id));
+        e.dataTransfer.effectAllowed = 'move';
+    };
+
+    const handleDragEndDossier = () => {
+        setDraggedDossierId(null);
+        setDragOverDossierId(null);
+        setDragOverParentCible(false);
+    };
+
+    const handleDragOverCarte = (e: React.DragEvent, id: number) => {
+        if (draggedDossierId === null || idsEnCoursDeDeplacement().includes(id)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        if (dragOverDossierId !== id) setDragOverDossierId(id);
+    };
+
+    const handleDragLeaveCarte = (id: number) => {
+        setDragOverDossierId(prev => (prev === id ? null : prev));
+    };
+
+    const handleDragOverParentCible = (e: React.DragEvent) => {
+        if (draggedDossierId === null) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        setDragOverParentCible(true);
+    };
+
+    /**
+     * silencieux : true pour un déplacement en LOT (voir
+     * executerDeplacementMultiple) — les alertes de confirmation par dossier
+     * restent affichées si nécessaire (divergence de groupes, passage forcé
+     * en privé), mais le toast de succès/erreur individuel est supprimé au
+     * profit d'un seul toast consolidé à la fin du lot.
+     */
+    const executerDeplacement = async (
+        id: number, nouveauParentId: number | null, silencieux = false
+    ): Promise<boolean> => {
+        try {
+            const preview = await previsualiserDeplacement(id, nouveauParentId);
+
+            if (preview.deviendraPrive || preview.divergenceGroupes) {
+                const lignes: string[] = [];
+                if (preview.deviendraPrive) {
+                    lignes.push(
+                        'Ce dossier est actuellement public et le dossier cible est privé : il deviendra '
+                        + 'PRIVÉ, avec un nouveau groupe d\'accès hérité des membres du dossier cible.'
+                    );
+                }
+                if (preview.divergenceGroupes) {
+                    const noms = preview.membresDivergents.map(m => `${m.prenom} ${m.nom}`).join(', ');
+                    lignes.push(
+                        'Les groupes d\'accès du dossier déplacé et du dossier cible ont des points de '
+                        + 'divergence entre leurs utilisateurs. Le dossier déplacé garde son propre groupe, '
+                        + `mais ses membres absents du groupe cible y seront ajoutés par défaut : ${noms}.`
+                    );
+                }
+                if (!(await confirm({
+                    title: 'Confirmer le déplacement',
+                    message: lignes.join('\n\n'),
+                    confirmLabel: 'Déplacer quand même',
+                }))) {
+                    return false;
+                }
+            }
+
+            await deplacerDossier(id, nouveauParentId);
+            if (!silencieux) {
+                notify.success('Dossier déplacé avec succès');
+            }
+
+            // Toujours rafraîchir la liste racine (même invisible dans la vue
+            // courante) : un déplacement peut faire entrer/sortir un dossier de
+            // la racine (voir handleDropVersParentCible), sinon elle reste
+            // périmée jusqu'au prochain focus de fenêtre (useRefetchOnFocus) —
+            // ce qui donnait l'impression qu'il fallait recharger la page.
+            chargerDossiers();
+            if (dossierActif) {
+                chargerSousDossiers(dossierActif.id);
+            }
+            return true;
+        } catch (err: any) {
+            if (!silencieux) {
+                notify.error(err.message ?? 'Erreur lors du déplacement du dossier');
+            }
+            return false;
+        }
+    };
+
+    /** Déplace plusieurs dossiers vers le même nouveau parent — voir commentaire de section ci-dessus. */
+    const executerDeplacementMultiple = async (ids: number[], nouveauParentId: number | null) => {
+        if (ids.length === 1) {
+            await executerDeplacement(ids[0], nouveauParentId);
+            setSelectedDossierIds(new Set());
+            return;
+        }
+
+        let succes = 0;
+        for (const id of ids) {
+            if (await executerDeplacement(id, nouveauParentId, true)) {
+                succes++;
+            }
+        }
+
+        setSelectedDossierIds(new Set());
+        if (succes > 0) {
+            notify.success(`${succes} dossier(s) déplacé(s) avec succès`);
+        }
+        if (succes < ids.length) {
+            notify.error(`${ids.length - succes} dossier(s) n'ont pas pu être déplacés`);
+        }
+    };
+
+    const handleDropSurCarte = async (e: React.DragEvent, targetId: number) => {
+        e.preventDefault();
+        setDragOverDossierId(null);
+        const ids = idsEnCoursDeDeplacement().filter(id => id !== targetId);
+        setDraggedDossierId(null);
+        if (ids.length === 0) return;
+        await executerDeplacementMultiple(ids, targetId);
+    };
+
+    const handleDropVersParentCible = async (e: React.DragEvent) => {
+        e.preventDefault();
+        setDragOverParentCible(false);
+        const ids = idsEnCoursDeDeplacement();
+        setDraggedDossierId(null);
+        if (ids.length === 0 || !dossierActif) return;
+        await executerDeplacementMultiple(ids, dossierActif.parentId);
     };
 
     // ─────────────────────────────────────────────────────────────────────
@@ -346,14 +715,14 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
     // ─────────────────────────────────────────────────────────────────────
     const [savingAcces, setSavingAcces] = useState(false);
 
-    const handleRendreProjetPrive = async (groupeMembresIds: string[]) => {
-        if (!projetActif) return;
+    const handleRendreDossierPrive = async (groupeMembresIds: string[]) => {
+        if (!dossierActif) return;
         setSavingAcces(true);
         try {
-            await modifierAccesProjet(projetActif.id, 'PRIVE', groupeMembresIds);
-            rafraichirProjetActif();
-            chargerProjets();
-            notify.success('Projet rendu privé');
+            await modifierAccesDossier(dossierActif.id, 'PRIVE', groupeMembresIds);
+            rafraichirDossierActif();
+            chargerDossiers();
+            notify.success('Dossier rendu privé');
         } catch (err: any) {
             notify.error(err.message ?? "Erreur lors du changement d'accès");
         } finally {
@@ -361,18 +730,31 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
         }
     };
 
-    const handleRendreProjetPublic = async () => {
-        if (!projetActif) return;
+    const handleRendreDossierPublic = async () => {
+        if (!dossierActif) return;
         if (!(await confirm(
-            'Rendre ce projet public ? Il deviendra visible par tous les membres de son UO, ainsi que les documents '
+            'Rendre ce dossier public ? Il deviendra visible par tous les membres de son UO, ainsi que les documents '
             + 'qu\'il contient et qui partagent encore son groupe d\'accès.'
         ))) return;
         setSavingAcces(true);
         try {
-            await modifierAccesProjet(projetActif.id, 'PUBLIC');
-            rafraichirProjetActif();
-            chargerProjets();
-            notify.success('Projet rendu public');
+            await modifierAccesDossier(dossierActif.id, 'PUBLIC');
+            rafraichirDossierActif();
+            chargerDossiers();
+            notify.success('Dossier rendu public');
+
+            // Cascade OPTIONNELLE vers les sous-dossiers privés — jamais
+            // automatique côté serveur (voir DossierService.modifierAcces) :
+            // un enfant privé sous un parent public reste un état valide,
+            // donc on demande explicitement plutôt que de forcer.
+            if (sousDossiers.length > 0 && await confirm(
+                'Rendre aussi PUBLICS tous les sous-dossiers de ce dossier (et leurs documents qui partagent '
+                + 'encore leur groupe d\'accès) ? Sans confirmation, les sous-dossiers déjà privés le restent.'
+            )) {
+                await cascaderAccesPublicVersDescendants(dossierActif.id);
+                chargerSousDossiers(dossierActif.id);
+                notify.success('Sous-dossiers rendus publics en cascade');
+            }
         } catch (err: any) {
             notify.error(err.message ?? "Erreur lors du changement d'accès");
         } finally {
@@ -384,31 +766,28 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
      * Retrait rapide d'un type depuis sa carte-dossier (la croix au survol) —
      * sans passer par le modal de modification, contrairement à
      * handleEnregistrer. Le serveur refuse toujours ce retrait si des
-     * documents de ce type existent déjà dans ce projet.
+     * documents de ce type existent déjà dans ce dossier.
      */
     const handleRetirerTypeRapide = async (e: React.MouseEvent, typeId: number) => {
         e.stopPropagation();
-        if (!projetActif) return;
+        if (!dossierActif) return;
         try {
-            await retirerTypeAttendu(projetActif.id, typeId);
-            rafraichirProjetActif();
+            await retirerTypeAttendu(dossierActif.id, typeId);
+            rafraichirDossierActif();
         } catch (err: any) {
             notify.error(err.message);
         }
     };
 
-    const retourAuxProjets = () => {
-        setPanelView('projets');
-        setProjetActif(null);
-    };
-
-    const handleSupprimer = async (id: number, nomProjet: string) => {
-        if (!(await confirm({ message: `Supprimer définitivement le projet "${nomProjet}" ?`, danger: true }))) return;
+    /** Déclenché depuis la modale "Modifier" (voir modalCreationEdition) — ferme la modale dans tous les cas. */
+    const handleSupprimer = async (id: number, nomDossier: string) => {
+        if (!(await confirm({ message: `Supprimer définitivement le dossier "${nomDossier}" ?`, danger: true }))) return;
         try {
-            await supprimerProjet(id);
-            notify.success('Projet supprimé avec succès');
-            retourAuxProjets();
-            chargerProjets();
+            await supprimerDossier(id);
+            fermerModal();
+            notify.success('Dossier supprimé avec succès');
+            retourAuNiveauParent();
+            chargerDossiers();
         } catch (err: any) {
             notify.error(err.message);
         }
@@ -419,10 +798,10 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
     // ─────────────────────────────────────────────────────────────────────
 
     const chargerDocumentsDuType = (type: TypeAttenduDto, page: number) => {
-        if (!projetActif) return;
+        if (!dossierActif) return;
         setDocsLoading(true);
         getDocumentsAccessibles({
-            projetId:       projetActif.id,
+            dossierId:       dossierActif.id,
             typeDocumentId: type.typeDocumentId,
             page,
             size: 10,
@@ -537,47 +916,67 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
     // ─────────────────────────────────────────────────────────────────────
 
     // Modal création/modification — calculé UNE FOIS ici puis réutilisé dans
-    // les 3 vues (documents/types/projets, voir plus bas) : "Modifier" se
+    // les 3 vues (documents/types/dossiers, voir plus bas) : "Modifier" se
     // déclenche depuis la vue "types", donc le modal doit rester monté dans
-    // CETTE vue plutôt que dans la seule vue "projets", sans quoi il ne
-    // s'affichait qu'après être retourné à la liste des projets.
+    // CETTE vue plutôt que dans la seule vue "dossiers", sans quoi il ne
+    // s'affichait qu'après être retourné à la liste des dossiers.
     const modalCreationEdition = (
         <Modal
             isOpen={modalMode !== null}
             onClose={fermerModal}
-            title={modalMode === 'edit' ? 'Modifier le projet' : 'Créer un projet'}
+            title={modalMode === 'edit' ? 'Modifier le dossier' : 'Créer un dossier'}
         >
-            <div className="projets-create-form">
+            <div className="dossiers-create-form">
                 <input
                     type="text"
-                    placeholder="Nom du projet *"
+                    placeholder="Nom du dossier *"
                     value={nom}
                     onChange={e => setNom(e.target.value)}
                 />
-                <textarea
-                    placeholder="Description (optionnel)"
-                    value={description}
-                    onChange={e => setDescription(e.target.value)}
-                />
+                {/* Bascule PUBLIC ↔ PRIVÉ après coup — déplacée ici depuis la barre
+                    d'outils (revu le 09/2026) : n'a de sens qu'en modification,
+                    jamais à la création (voir le picker Public/Privé juste en
+                    dessous, dédié à la création). "Voir qui a accès" (gestion des
+                    membres d'un dossier déjà privé) reste, lui, dans la barre. */}
+                {modalMode === 'edit' && dossierActif?.peutModifierAcces && (
+                    <div className="dossiers-types-picker">
+                        <p>Accès au dossier :</p>
+                        <ChangerAccesPanel
+                            accesActuel={dossierActif.access as 'PUBLIC' | 'PRIVE'}
+                            uoId={dossierActif.uoId}
+                            saving={savingAcces}
+                            onRendrePrive={handleRendreDossierPrive}
+                            onRendrePublic={handleRendreDossierPublic}
+                        />
+                    </div>
+                )}
 
                 {/* Accès (Public/Privé) — fixé à la création, non modifiable ici
-                    (voir "Voir qui a accès" dans la vue du projet pour gérer les
-                    membres d'un projet déjà privé). */}
-                {modalMode === 'create' && (
-                    <div className="projets-access-picker">
-                        <label className="projets-access-radio">
+                    (voir "Voir qui a accès" dans la vue du dossier pour gérer les
+                    membres d'un dossier déjà privé). Masqué sous un parent privé :
+                    l'invariant (un enfant ne peut jamais être plus ouvert que son
+                    parent, voir Javadoc backend) force alors PRIVÉ, sans choix. */}
+                {modalMode === 'create' && creationParentPrive && (
+                    <p className="dossiers-detail-meta">
+                        <i className="fa-solid fa-lock" /> Ce sous-dossier sera automatiquement privé (dossier
+                        parent privé) — vous pouvez ajouter des membres en plus de ceux déjà présents dans le parent.
+                    </p>
+                )}
+                {modalMode === 'create' && !creationParentPrive && (
+                    <div className="dossiers-access-picker">
+                        <label className="dossiers-access-radio">
                             <input
                                 type="radio"
-                                name="projet-access"
+                                name="dossier-access"
                                 checked={accessCreation === 'PUBLIC'}
                                 onChange={() => setAccessCreation('PUBLIC')}
                             />
                             <span>Public</span>
                         </label>
-                        <label className="projets-access-radio">
+                        <label className="dossiers-access-radio">
                             <input
                                 type="radio"
-                                name="projet-access"
+                                name="dossier-access"
                                 checked={accessCreation === 'PRIVE'}
                                 onChange={() => setAccessCreation('PRIVE')}
                             />
@@ -587,17 +986,21 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
                 )}
 
                 {modalMode === 'create' && accessCreation === 'PRIVE' && usersUO.length > 0 && (
-                    <div className="projets-types-picker">
-                        <p>Membres du groupe d'accès (vous serez ajouté automatiquement) :</p>
+                    <div className="dossiers-types-picker">
+                        <p>
+                            {creationParentPrive
+                                ? "Membres SUPPLÉMENTAIRES (en plus de ceux déjà présents dans le dossier parent, hérités automatiquement) :"
+                                : "Membres du groupe d'accès (vous serez ajouté automatiquement) :"}
+                        </p>
                         <input
                             type="text"
-                            className="projets-type-search"
+                            className="dossiers-type-search"
                             placeholder="Rechercher (nom, email, téléphone)"
                             aria-label="Rechercher un utilisateur"
                             value={filtreMembreModal}
                             onChange={e => setFiltreMembreModal(e.target.value)}
                         />
-                        <div className="projets-types-list">
+                        <div className="dossiers-types-list">
                             {usersUO
                                 .filter(u => {
                                     const q = filtreMembreModal.trim().toLowerCase();
@@ -607,7 +1010,7 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
                                         || (u.telephone ?? '').toLowerCase().includes(q);
                                 })
                                 .map(u => (
-                                    <label key={u.id} className="projets-type-checkbox">
+                                    <label key={u.id} className="dossiers-type-checkbox">
                                         <input
                                             type="checkbox"
                                             checked={selectedMembreIds.includes(u.id)}
@@ -621,32 +1024,32 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
                 )}
 
                 {typesUO.length > 0 && (
-                    <div className="projets-types-picker">
+                    <div className="dossiers-types-picker">
                         <p>Types de documents attendus :</p>
                         <input
                             type="text"
-                            className="projets-type-search"
+                            className="dossiers-type-search"
                             placeholder="Rechercher un type de document..."
                             value={filtreTypeModal}
                             onChange={e => setFiltreTypeModal(e.target.value)}
                         />
-                        <div className="projets-types-list-vertical">
+                        <div className="dossiers-types-list-vertical">
                             {(() => {
                                 const typesAffiches = typesUO.filter(t =>
                                     t.nom.toLowerCase().includes(filtreTypeModal.trim().toLowerCase())
                                 );
                                 if (typesAffiches.length === 0) {
-                                    return <p className="projets-types-list-empty">Aucun type ne correspond.</p>;
+                                    return <p className="dossiers-types-list-empty">Aucun type ne correspond.</p>;
                                 }
                                 return typesAffiches.map(t => {
                                     // En modification, un type qui a déjà des documents DANS
-                                    // CE PROJET ne peut pas être décoché — le serveur le
+                                    // CE DOSSIER ne peut pas être décoché — le serveur le
                                     // refuserait de toute façon (voir handleEnregistrer).
-                                    const nonRetirable = modalMode === 'edit' && projetActif
-                                        ? projetActif.typesAttendus.some(a => a.typeDocumentId === t.id && a.fourni)
+                                    const nonRetirable = modalMode === 'edit' && dossierActif
+                                        ? dossierActif.typesAttendus.some(a => a.typeDocumentId === t.id && a.fourni)
                                         : false;
                                     return (
-                                        <label key={t.id} className="projets-type-row">
+                                        <label key={t.id} className="dossiers-type-row">
                                             <input
                                                 type="checkbox"
                                                 checked={selectedTypeIds.includes(t.id!)}
@@ -662,7 +1065,7 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
                     </div>
                 )}
 
-                <div className="projets-create-actions">
+                <div className="dossiers-create-actions">
                     <button
                         className="sidebar-btn"
                         disabled={!nom.trim() || formSaving}
@@ -672,16 +1075,57 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
                             ? (modalMode === 'edit' ? 'Enregistrement…' : 'Création…')
                             : (modalMode === 'edit' ? 'Enregistrer' : 'Créer')}
                     </button>
-                    <button className="projets-cancel-btn" onClick={fermerModal}>
+                    <button className="dossiers-cancel-btn" onClick={fermerModal}>
                         Annuler
                     </button>
+                    {/* Suppression — déplacée ici depuis la barre d'outils (revu le
+                        09/2026), uniquement en modification, poussée à l'extrémité
+                        droite (voir .dossiers-delete-btn). Gardée par peutGererTypes,
+                        PAS peutGererAcces : ce dernier n'est vrai que pour un dossier
+                        déjà PRIVÉ (gestion du groupe), alors que supprimerDossier
+                        côté serveur utilise la même autorité que peutGererTypes
+                        (verifierPeutGererDossier) — refusé de toute façon si le
+                        dossier contient des documents ou des sous-dossiers, voir
+                        handleSupprimer. */}
+                    {modalMode === 'edit' && dossierActif?.peutGererTypes && (
+                        <button
+                            type="button"
+                            className="dossiers-delete-btn"
+                            onClick={() => handleSupprimer(dossierActif.id, dossierActif.nom)}
+                        >
+                            <i className="fa-solid fa-trash" /> Supprimer
+                        </button>
+                    )}
                 </div>
             </div>
         </Modal>
     );
 
+    // ── Menu contextuel (clic droit sur une carte dossier) — voir
+    // handleContextMenuDossier/handleSupprimerSelection. Overlay plein écran
+    // transparent pour fermer au clic/clic-droit ailleurs, comme un menu
+    // contextuel natif. ──────────────────────────────────────────────────
+    const contextMenuJsx = contextMenu && (
+        <div
+            className="dossier-context-menu-overlay"
+            onClick={() => setContextMenu(null)}
+            onContextMenu={e => { e.preventDefault(); setContextMenu(null); }}
+        >
+            <div
+                className="dossier-context-menu"
+                style={{ top: contextMenu.y, left: contextMenu.x }}
+                onClick={e => e.stopPropagation()}
+            >
+                <button type="button" onClick={handleSupprimerSelection}>
+                    <i className="fa-solid fa-trash" />
+                    Supprimer{selectedDossierIds.size > 1 ? ` (${selectedDossierIds.size})` : ''}
+                </button>
+            </div>
+        </div>
+    );
+
     if (!uoId) {
-        return <div className="projets-panel-empty">Sélectionnez une unité organisationnelle.</div>;
+        return <div className="dossiers-panel-empty">Sélectionnez une unité organisationnelle.</div>;
     }
 
     // ── Lecture d'un document — intégrée à la page, pas un modal ──────────
@@ -711,13 +1155,13 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
         );
     }
 
-    // ── Vue "documents" : documents d'un type, à l'intérieur d'un projet ──
-    if (panelView === 'documents' && projetActif && typeActif) {
+    // ── Vue "documents" : documents d'un type, à l'intérieur d'un dossier ──
+    if (panelView === 'documents' && dossierActif && typeActif) {
         return (
             <div className="mes-docs-wrapper">
                 <div className="docs-breadcrumb">
                     <button className="breadcrumb-back" onClick={retourAuxTypes}>
-                        <i className="fa-solid fa-arrow-left" /> {projetActif.nom}
+                        <i className="fa-solid fa-arrow-left" /> {dossierActif.nom}
                     </button>
                     <i className="fa-solid fa-chevron-right breadcrumb-sep" />
                     <span
@@ -757,7 +1201,7 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
                     </div>
                 ) : documents.length === 0 ? (
                     <div className="td-empty">
-                        <p>Aucun document de ce type dans ce projet pour l'instant.</p>
+                        <p>Aucun document de ce type dans ce dossier pour l'instant.</p>
                     </div>
                 ) : docsViewMode === 'grid' ? (
                     <>
@@ -942,69 +1386,146 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
         );
     }
 
-    // ── Vue "types" : dossiers des types de documents attendus d'un projet ──
-    if (panelView === 'types' && (projetActif || projetActifLoading)) {
+    // ── Vue "types" : dossiers des types de documents attendus d'un dossier ──
+    if (panelView === 'types' && (dossierActif || dossierActifLoading)) {
         return (
             <div className="mes-docs-wrapper">
                 <div className="docs-breadcrumb">
-                    <button className="breadcrumb-back" onClick={retourAuxProjets}>
-                        <i className="fa-solid fa-arrow-left" /> Projets
+                    <button
+                        className={`breadcrumb-back ${dragOverParentCible ? 'dossier-drag-over' : ''}`}
+                        onClick={retourAuNiveauParent}
+                        onDragOver={handleDragOverParentCible}
+                        onDragLeave={() => setDragOverParentCible(false)}
+                        onDrop={handleDropVersParentCible}
+                    >
+                        <i className="fa-solid fa-arrow-left" /> {dossierActif?.parentNom ?? 'Dossiers'}
                     </button>
                     <i className="fa-solid fa-chevron-right breadcrumb-sep" />
-                    <span className="breadcrumb-current">{projetActif?.nom}</span>
-                    {projetActif?.access === 'PRIVE' && (
+                    {dossierActif?.peutGererTypes && (
+                        <button
+                            className="breadcrumb-edit-btn"
+                            onClick={ouvrirEdition}
+                            aria-label="Modifier le dossier"
+                            title="Modifier"
+                        >
+                            <i className="fa-solid fa-pen" />
+                        </button>
+                    )}
+                    <span className="breadcrumb-current">{dossierActif?.nom}</span>
+                    {dossierActif?.access === 'PRIVE' && (
                         <span className="doc-access-tag prive">Privé</span>
                     )}
 
-                    {projetActif?.access === 'PRIVE' && (
-                        <button className="breadcrumb-add-btn" onClick={() => setIsGroupeOpen(true)}>
-                            <i className="fa-solid fa-user-group" /> Accès
-                        </button>
-                    )}
-                    {projetActif?.peutModifierAcces && (
-                        <ChangerAccesPanel
-                            accesActuel={projetActif.access as 'PUBLIC' | 'PRIVE'}
-                            uoId={projetActif.uoId}
-                            saving={savingAcces}
-                            onRendrePrive={handleRendreProjetPrive}
-                            onRendrePublic={handleRendreProjetPublic}
-                        />
-                    )}
-                    {projetActif?.peutGererTypes && (
-                        <button className="breadcrumb-add-btn" onClick={ouvrirEdition}>
-                            <i className="fa-solid fa-pen" /> Modifier
-                        </button>
-                    )}
-                    {projetActif?.peutGererAcces && (
-                        <button
-                            className="breadcrumb-add-btn"
-                            style={{ background: 'var(--error)' }}
-                            onClick={() => handleSupprimer(projetActif.id, projetActif.nom)}
-                        >
-                            <i className="fa-solid fa-trash" /> Supprimer
-                        </button>
-                    )}
+                    {/* Un seul conteneur poussé à droite (margin-left:auto) pour TOUT
+                        ce groupe — chaque bouton pris individuellement avec sa propre
+                        margin-left:auto (hérité de .breadcrumb-add-btn) se répartissait
+                        l'espace libre restant EN PARTS ÉGALES entre eux (comportement
+                        flexbox avec plusieurs marges "auto"), les écartant au lieu de
+                        les coller ensemble à droite. */}
+                    <div className="docs-breadcrumb-actions">
+                        {dossierActif?.access === 'PRIVE' && (
+                            <button className="breadcrumb-add-btn" onClick={() => setIsGroupeOpen(true)}>
+                                <i className="fa-solid fa-user-group" /> Accès
+                            </button>
+                        )}
+                        {dossierActif?.peutGererTypes && (
+                            <button
+                                className="breadcrumb-add-btn breadcrumb-add-btn-icon-only breadcrumb-archive-btn"
+                                onClick={e => ouvrirUpload(null, e)}
+                                aria-label="Archiver dans ce dossier"
+                                title="Archiver dans ce dossier"
+                            >
+                                <i className="fa-solid fa-box-archive" />
+                            </button>
+                        )}
+                        {dossierActif?.peutGererTypes && (
+                            <button
+                                className="breadcrumb-add-btn breadcrumb-add-btn-icon-only"
+                                onClick={() => ouvrirCreation(dossierActif.id, dossierActif.access === 'PRIVE')}
+                                aria-label="Créer un sous-dossier"
+                                title="Sous-dossier"
+                            >
+                                <i className="fa-solid fa-plus" />
+                            </button>
+                        )}
+                    </div>
                 </div>
 
-                {projetActif && (
-                    <p className="projets-detail-meta" style={{ marginBottom: '0.75rem' }}>
-                        {projetActif.description && <>{projetActif.description} — </>}
-                        Créé par {projetActif.creePar} le {formatDate(projetActif.createAt)}
+                {dossierActif && (
+                    <p className="dossiers-detail-meta" style={{ marginBottom: '0.75rem' }}>
+                        Créé par {dossierActif.creePar} le {formatDate(dossierActif.createAt)}
                     </p>
                 )}
 
-                {projetActifLoading ? (
+                {/* Contenu de ce dossier — sous-dossiers (voir DossierCard) ET types
+                    de documents attendus MÉLANGÉS dans la même grille, plus
+                    séparés en deux sections (un dossier peut désormais contenir
+                    d'autres dossiers, voir recap). "Vide" seulement si aucun des
+                    deux ; sinon la grille n'affiche que ce qui existe réellement,
+                    jamais de message "aucun type attendu" tant qu'il y a au moins
+                    un sous-dossier (ou inversement). Filtre nom (ci-dessous)
+                    appliqué aux DEUX à la fois, purement client. */}
+                {!dossierActifLoading && !sousDossiersLoading && dossierActif
+                    && (sousDossiers.length > 0 || dossierActif.typesAttendus.length > 0) && (
+                    <div className="filtres-panel" style={{ marginBottom: '1rem' }}>
+                        <div className="filtres-grid">
+                            <div className="filtre-field filtre-field-titre">
+                                <input
+                                    type="text"
+                                    className="filter-input"
+                                    placeholder="Filtrer les sous-dossiers et types de documents"
+                                    aria-label="Filtrer le contenu de ce dossier"
+                                    value={filtreContenuDossier}
+                                    onChange={e => setFiltreContenuDossier(e.target.value)}
+                                />
+                            </div>
+                        </div>
+                        <div className="filtres-actions">
+                            <button
+                                type="button"
+                                className="filtres-reset-btn"
+                                onClick={() => setFiltreContenuDossier('')}
+                                title="Réinitialiser le filtre"
+                                aria-label="Réinitialiser le filtre"
+                                disabled={!filtreContenuDossier.trim()}
+                            >
+                                <i className="fa-solid fa-rotate-left" />
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {dossierActifLoading || sousDossiersLoading ? (
                     <div className="td-loading">
                         <i className="fa-solid fa-spinner fa-spin" /> Chargement...
                     </div>
-                ) : !projetActif || projetActif.typesAttendus.length === 0 ? (
+                ) : !dossierActif || (sousDossiers.length === 0 && dossierActif.typesAttendus.length === 0) ? (
                     <div className="td-empty">
                         <i className="fa-solid fa-folder-open" style={{ fontSize: '2.5rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }} />
-                        <p>Aucun type de document attendu déclaré pour l'instant.</p>
+                        <p>Vide</p>
                     </div>
+                ) : sousDossiersFiltres.length === 0 && typesAttendusFiltres.length === 0 ? (
+                    <p className="dossiers-panel-empty">Aucun résultat ne correspond à ce filtre.</p>
                 ) : (
                     <div className="folders-grid">
-                        {projetActif.typesAttendus.map(t => (
+                        {sousDossiersFiltres.map(sd => (
+                            <DossierCard
+                                key={sd.id}
+                                dossier={sd}
+                                onClick={e => handleClickDossierCard(e, sd.id)}
+                                onContextMenuCarte={e => handleContextMenuDossier(e, sd.id)}
+                                isSelected={selectedDossierIds.has(sd.id)}
+                                draggable={canCreate}
+                                isDragging={idsEnCoursDeDeplacement().includes(sd.id)}
+                                isDragOver={dragOverDossierId === sd.id}
+                                onDragStartCarte={e => handleDragStartDossier(e, sd.id)}
+                                onDragEndCarte={handleDragEndDossier}
+                                onDragOverCarte={e => handleDragOverCarte(e, sd.id)}
+                                onDragLeaveCarte={() => handleDragLeaveCarte(sd.id)}
+                                onDropCarte={e => handleDropSurCarte(e, sd.id)}
+                            />
+                        ))}
+                        {typesAttendusFiltres.map(t => (
                             <div
                                 key={t.typeDocumentId}
                                 className="folder-card"
@@ -1015,9 +1536,9 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
                                 aria-label={`Ouvrir le dossier ${t.nom}`}
                             >
                                 {/* Retrait rapide — uniquement si ce type n'a encore aucun
-                                    document dans ce projet et si l'utilisateur peut gérer les
-                                    types de ce projet. Pas besoin de passer par "Modifier". */}
-                                {projetActif?.peutGererTypes && !t.fourni && (
+                                    document dans ce dossier et si l'utilisateur peut gérer les
+                                    types de ce dossier. Pas besoin de passer par "Modifier". */}
+                                {dossierActif?.peutGererTypes && !t.fourni && (
                                     <button
                                         className="folder-add-btn"
                                         style={{ background: 'var(--error)' }}
@@ -1028,7 +1549,6 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
                                         <i className="fa-solid fa-xmark" />
                                     </button>
                                 )}
-
                                 <div className="folder-icon-wrap">
                                     <div className="folder-tab" />
                                     <div className="folder-back" />
@@ -1038,6 +1558,21 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
                                         <div className="doc-line" />
                                     </div>
                                     <div className="glass-pocket" />
+
+                                    {/* Archiver directement dans ce type — dossier ET type déjà
+                                        pré-remplis (voir ouvrirUpload/ImportDocuments), en
+                                        bas-droite pour ne jamais chevaucher le retrait rapide
+                                        (haut-gauche) ni le compteur (haut-droite). */}
+                                    {dossierActif?.peutGererTypes && (
+                                        <button
+                                            className="folder-quick-add-btn"
+                                            onClick={e => ouvrirUpload(t.typeDocumentId, e)}
+                                            aria-label={`Archiver un document de type ${t.nom} dans ce dossier`}
+                                            title="Archiver ici"
+                                        >
+                                            <i className="fa-solid fa-plus" />
+                                        </button>
+                                    )}
 
                                     <span className="folder-count">
                                         {t.nombreDocuments}
@@ -1060,50 +1595,71 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
                 )}
 
 
-                {/* ── Modal groupe d'accès du projet ── */}
+                {/* ── Modal groupe d'accès du dossier ── */}
                 <Modal
                     isOpen={isGroupeOpen}
                     onClose={() => setIsGroupeOpen(false)}
-                    title="Accès au projet"
+                    title="Accès au dossier"
                 >
-                    {projetActif && (
-                        <GestionGroupeProjet
-                            projetId={projetActif.id}
-                            projetNom={projetActif.nom}
+                    {dossierActif && (
+                        <GestionGroupeDossier
+                            dossierId={dossierActif.id}
+                            dossierNom={dossierActif.nom}
                             onClose={() => setIsGroupeOpen(false)}
                         />
                     )}
                 </Modal>
 
+                {/* ── Modal archivage — dossier ET (si ouvert via une carte type)
+                    type déjà pré-remplis, voir ouvrirUpload/ImportDocuments. Même
+                    composant que "Archiver" dans la barre latérale, pour une
+                    interface identique partout. ── */}
+                <Modal
+                    isOpen={isUploadOpen}
+                    onClose={fermerUpload}
+                    title="Archiver des documents"
+                    size="large"
+                >
+                    {dossierActif && (
+                        <ImportDocuments
+                            onsuccess={handleUploadSuccess}
+                            preselectedDossierId={dossierActif.id}
+                            preselectedTypeId={uploadTypeId}
+                        />
+                    )}
+                </Modal>
+
                 {/* Le bouton "Modifier" est ICI, dans cette vue — le modal doit donc
-                    y être monté aussi, pas seulement dans la vue "projets". */}
+                    y être monté aussi, pas seulement dans la vue "dossiers". */}
                 {modalCreationEdition}
+                {contextMenuJsx}
             </div>
         );
     }
 
-    // ── Vue "projets" : liste des projets de l'UO ──────────────────────────
+    // ── Vue "dossiers" : liste des dossiers de l'UO ──────────────────────────
     return (
-        <div className="projets-panel">
+        <div className="dossiers-panel">
             {canCreate && (
-                <div className="projets-panel-header">
-                    <button className="sidebar-btn" onClick={ouvrirCreation}>
-                        <i className="fa-solid fa-folder-plus" /> Créer un projet
+                <div className="dossiers-panel-header">
+                    <button className="sidebar-btn" onClick={() => ouvrirCreation()}>
+                        <i className="fa-solid fa-folder-plus" /> Créer un dossier
                     </button>
                 </div>
             )}
 
             {modalCreationEdition}
+            {contextMenuJsx}
 
-            {projets.length > 0 && (
+            {dossiers.length > 0 && (
                 <div className="filtres-panel">
                     <div className="filtres-grid">
                         <div className="filtre-field filtre-field-titre">
                             <input
                                 type="text"
                                 className="filter-input"
-                                placeholder="Nom du projet"
-                                aria-label="Filtrer par nom du projet"
+                                placeholder="Nom du dossier"
+                                aria-label="Filtrer par nom du dossier"
                                 value={filtreNom}
                                 onChange={e => setFiltreNom(e.target.value)}
                             />
@@ -1155,10 +1711,10 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
                         <button
                             type="button"
                             className="filtres-reset-btn"
-                            onClick={reinitialiserFiltresProjets}
+                            onClick={reinitialiserFiltresDossiers}
                             title="Réinitialiser les filtres"
                             aria-label="Réinitialiser les filtres"
-                            disabled={nbFiltresProjetsActifs === 0}
+                            disabled={nbFiltresDossiersActifs === 0}
                         >
                             <i className="fa-solid fa-rotate-left" />
                         </button>
@@ -1168,40 +1724,28 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
 
             {loading ? (
                 <p>Chargement…</p>
-            ) : projets.length === 0 ? (
-                <p className="projets-panel-empty">Aucun projet pour cette unité organisationnelle.</p>
-            ) : projetsFiltres.length === 0 ? (
-                <p className="projets-panel-empty">Aucun projet ne correspond à ces filtres.</p>
+            ) : dossiers.length === 0 ? (
+                <p className="dossiers-panel-empty">Aucun dossier pour cette unité organisationnelle.</p>
+            ) : dossiersFiltres.length === 0 ? (
+                <p className="dossiers-panel-empty">Aucun dossier ne correspond à ces filtres.</p>
             ) : (
                 <div className="folders-grid">
-                    {projetsFiltres.map(p => (
-                        <div
+                    {dossiersFiltres.map(p => (
+                        <DossierCard
                             key={p.id}
-                            className="folder-card"
-                            onClick={() => ouvrirProjet(p.id)}
-                            role="button"
-                            tabIndex={0}
-                            onKeyDown={e => e.key === 'Enter' && ouvrirProjet(p.id)}
-                            aria-label={`Ouvrir le projet ${p.nom}`}
-                        >
-                            <div className="folder-icon-wrap">
-                                <div className="folder-tab" />
-                                <div className="folder-back" />
-                                <div className="document-sheet">
-                                    <div className="doc-line short" />
-                                    <div className="doc-line" />
-                                    <div className="doc-line" />
-                                </div>
-                                <div className="glass-pocket">
-                                    <i className="fa-solid fa-bars-progress folder-type-watermark" />
-                                </div>
-                            </div>
-
-                            <span className="folder-name">{p.nom}</span>
-                            <span className="folder-meta">
-                                {p.creePar?.prenom} {p.creePar?.nom} · {new Date(p.createAt).toLocaleDateString('fr-FR')}
-                            </span>
-                        </div>
+                            dossier={p}
+                            onClick={e => handleClickDossierCard(e, p.id)}
+                            onContextMenuCarte={e => handleContextMenuDossier(e, p.id)}
+                            isSelected={selectedDossierIds.has(p.id)}
+                            draggable={canCreate}
+                            isDragging={idsEnCoursDeDeplacement().includes(p.id)}
+                            isDragOver={dragOverDossierId === p.id}
+                            onDragStartCarte={e => handleDragStartDossier(e, p.id)}
+                            onDragEndCarte={handleDragEndDossier}
+                            onDragOverCarte={e => handleDragOverCarte(e, p.id)}
+                            onDragLeaveCarte={() => handleDragLeaveCarte(p.id)}
+                            onDropCarte={e => handleDropSurCarte(e, p.id)}
+                        />
                     ))}
                 </div>
             )}
@@ -1210,8 +1754,75 @@ function ProjetsPanel({ uoId, canCreate = true }: ProjetsPanelProps) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Sous-composant : carte DOSSIER — réutilisée à la fois pour la liste racine
+// et pour les sous-dossiers (un dossier peut désormais contenir d'autres
+// dossiers, voir recap), une seule fois plutôt que dupliquée à chaque niveau.
+// Réutilise TELLE QUELLE l'icône des cartes "type de document" (onglet +
+// corps chocolat + pochette de verre dépoli, voir .folder-icon-wrap/
+// .folder-tab/.folder-back/.glass-pocket dans Editor.css) — seule différence :
+// pas de .document-sheet (la feuille blanche), et une petite étiquette
+// "Dossier" en bas-droite (voir .folder-type-badge) plutôt que la pastille de
+// comptage en haut-droite d'un type. Un dossier peut désormais contenir
+// d'autres dossiers (voir DossierCard), "un seul fichier dedans" n'avait
+// plus de sens pour cette carte.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface DossierCardProps {
+    dossier: DossierDto;
+    /** Clic normal = ouvrir ; Cmd/Ctrl+clic = bascule la sélection (voir DossiersPanel.handleClickDossierCard). */
+    onClick: (e: React.MouseEvent) => void;
+    onContextMenuCarte?: (e: React.MouseEvent) => void;
+    /** true = glisser-déposer activé (réservé à l'éditeur, voir DossiersPanel.canCreate). */
+    draggable?: boolean;
+    isDragging?: boolean;
+    isDragOver?: boolean;
+    /** true = fait partie de la sélection multiple courante (Cmd/Ctrl+clic). */
+    isSelected?: boolean;
+    onDragStartCarte?: (e: React.DragEvent) => void;
+    onDragEndCarte?: () => void;
+    onDragOverCarte?: (e: React.DragEvent) => void;
+    onDragLeaveCarte?: () => void;
+    onDropCarte?: (e: React.DragEvent) => void;
+}
+
+function DossierCard({
+    dossier, onClick, onContextMenuCarte, draggable = false, isDragging = false, isDragOver = false, isSelected = false,
+    onDragStartCarte, onDragEndCarte, onDragOverCarte, onDragLeaveCarte, onDropCarte,
+}: DossierCardProps) {
+    return (
+        <div
+            className={`folder-card ${isDragging ? 'dossier-dragging' : ''} ${isDragOver ? 'dossier-drag-over' : ''} ${isSelected ? 'dossier-selected' : ''}`}
+            onClick={onClick}
+            onContextMenu={onContextMenuCarte}
+            role="button"
+            tabIndex={0}
+            onKeyDown={e => e.key === 'Enter' && onClick(e as unknown as React.MouseEvent)}
+            aria-label={`Ouvrir le dossier ${dossier.nom}`}
+            draggable={draggable}
+            onDragStart={onDragStartCarte}
+            onDragEnd={onDragEndCarte}
+            onDragOver={onDragOverCarte}
+            onDragLeave={onDragLeaveCarte}
+            onDrop={onDropCarte}
+        >
+            <div className="folder-icon-wrap">
+                <div className="folder-tab" />
+                <div className="folder-back" />
+                <div className="glass-pocket" />
+                <span className="folder-type-badge">Dossier</span>
+            </div>
+
+            <span className="folder-name">{dossier.nom}</span>
+            <span className="folder-meta">
+                {dossier.creePar?.prenom} {dossier.creePar?.nom} · {formatDate(dossier.createAt)}
+            </span>
+        </div>
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Sous-composant : détail document en LECTURE SEULE (pas d'édition depuis les
-// projets — emplacement physique, métadonnées, versions... se gèrent depuis
+// dossiers — emplacement physique, métadonnées, versions... se gèrent depuis
 // "Mes documents"/"Documents accessibles").
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1263,4 +1874,4 @@ function DocumentDetailLectureSeule({ detail }: { detail: DocumentDetailDto }) {
     );
 }
 
-export default ProjetsPanel;
+export default DossiersPanel;

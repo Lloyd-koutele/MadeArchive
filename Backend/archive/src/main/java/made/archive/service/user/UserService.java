@@ -181,9 +181,9 @@ public class UserService
 
     /**
      * Utilisateurs proposables comme membres d'un groupe d'accès (document ou
-     * projet privé) À LA CRÉATION — avant qu'aucun document/projet/groupe
+     * dossier privé) À LA CRÉATION — avant qu'aucun document/dossier/groupe
      * n'existe encore, donc sans "déjà membre" à exclure (contrairement à
-     * GroupeAccessService/ProjetService.getUtilisateursDisponibles*, qui
+     * GroupeAccessService/DossierService.getUtilisateursDisponibles*, qui
      * appliquent la même règle APRÈS coup, une fois le groupe créé). Voir
      * UniteOrganisationnelleService.getCandidatsGroupeAcces pour la règle
      * elle-même (collègues de l'UO + tous les ADMIN globaux), partagée entre
@@ -399,7 +399,7 @@ public class UserService
             // qui peut référencer ce compte à ce stade est son adhésion UO — créée
             // à la création du compte par l'admin (pas une action de la cible
             // elle-même, voir createUser) — on la retire d'abord pour ne pas
-            // violer la contrainte de clé étrangère. Si un document/projet/export
+            // violer la contrainte de clé étrangère. Si un document/dossier/export
             // existe malgré tout (ne devrait jamais arriver sans connexion
             // préalable), le DELETE échoue sur une violation de contrainte plutôt
             // que de risquer une perte silencieuse de données réelles.
@@ -521,7 +521,7 @@ public class UserService
 
             // Suppression logique : le compte a déjà servi. On coupe tout ce qui
             // permettrait de s'en servir à nouveau, mais on garde nom/prénom/email/id
-            // intacts — ils restent affichés sur les documents/projets/exports déjà
+            // intacts — ils restent affichés sur les documents/dossiers/exports déjà
             // réalisés par ce compte, et dans le journal d'audit (voir la Javadoc de
             // JournalAudit : un snapshot texte y survit de toute façon, mais l'attente
             // ici est de garder aussi l'affichage "live" — ex. sur un document).

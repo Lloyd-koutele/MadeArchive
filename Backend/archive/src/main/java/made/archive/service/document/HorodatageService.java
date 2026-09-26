@@ -3,10 +3,14 @@ package made.archive.service.document;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import made.archive.config.HorodatageProperties;
+import made.archive.config.RedisCacheConfig;
 import made.archive.entite.Document;
 import made.archive.entite.DocumentStatus;
 import made.archive.entite.NotificationType;
+import made.archive.entite.Role_Name;
+import made.archive.entite.User;
 import made.archive.repository.DocumentRepository;
+import made.archive.repository.UserRepository;
 import made.archive.service.notification.NotificationService;
 import org.bouncycastle.asn1.cmp.PKIStatus;
 import org.bouncycastle.tsp.TSPAlgorithms;
@@ -14,6 +18,8 @@ import org.bouncycastle.tsp.TimeStampRequest;
 import org.bouncycastle.tsp.TimeStampRequestGenerator;
 import org.bouncycastle.tsp.TimeStampResponse;
 import org.bouncycastle.tsp.TimeStampToken;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.http.MediaType;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -29,7 +35,11 @@ import java.util.UUID;
 
 /**
  * Horodatage RFC 3161 (TSA) du hash PDF/A d'un document — voir
- * HorodatageProperties pour l'autorité utilisée (FreeTSA.org par défaut).
+ * HorodatageProperties pour l'autorité utilisée (gratuit FreeTSA.org par
+ * défaut, payant optionnel et prioritaire si configuré — jamais de repli
+ * silencieux de l'un vers l'autre, voir sa Javadoc) et
+ * alerterAdminHorodatageInvalide pour l'alerte admin (avec cooldown) en cas
+ * de panne persistante du TSA configuré (ex. abonnement payant coupé).
  *
  * Complète pkiSignature (DocumentUploadeService, HSM) sans s'y substituer :
  * la signature PKI prouve QUI a archivé et QUE le contenu n'a pas changé
@@ -55,12 +65,18 @@ public class HorodatageService
     private final WebClient.Builder webClientBuilder;
     private final DocumentRepository documentRepository;
     private final NotificationService notificationService;
+    private final UserRepository userRepository;
+    private final CacheManager cacheManager;
 
     private static final List<DocumentStatus> STATUTS_EXCLUS =
         List.of(DocumentStatus.DELETED, DocumentStatus.CORBEILLE);
 
     /** Le TSA doit répondre vite ou pas du tout — jamais retarder autre chose derrière lui. */
     private static final Duration TIMEOUT = Duration.ofSeconds(5);
+
+    /** Clé fixe unique dans CACHE_HORODATAGE_INVALIDE_COOLDOWN — le cooldown est
+     *  GLOBAL, pas par document (voir alerterAdminHorodatageInvalide). */
+    private static final String CLE_COOLDOWN_HORODATAGE_INVALIDE = "horodatage-invalide";
 
     public record HorodatageResult(byte[] token, Instant date) {}
 
@@ -83,9 +99,16 @@ public class HorodatageService
             TimeStampRequest tsRequest = requestGenerator.generate(TSPAlgorithms.SHA256, digest, nonce);
 
             byte[] requestBytes = tsRequest.getEncoded();
+            String urlActive = properties.urlActive();
             byte[] responseBytes = webClientBuilder.build()
                 .post()
-                .uri(properties.getTsaUrl())
+                .uri(urlActive)
+                .headers(h -> {
+                    if (properties.authentificationConfiguree())
+                    {
+                        h.setBasicAuth(properties.getUsername(), properties.getPassword());
+                    }
+                })
                 .contentType(MediaType.valueOf("application/timestamp-query"))
                 .bodyValue(requestBytes)
                 .retrieve()
@@ -98,7 +121,11 @@ public class HorodatageService
 
             if (tsResponse.getStatus() != PKIStatus.GRANTED && tsResponse.getStatus() != PKIStatus.GRANTED_WITH_MODS)
             {
-                log.warn("[Horodatage] TSA a refusé la requête : {}", tsResponse.getStatusString());
+                // Rejet explicite du TSA (pas une panne réseau) — couvre notamment un
+                // abonnement payant coupé (impayé, quota dépassé) quand le fournisseur
+                // répond quand même, plutôt que de simplement devenir injoignable.
+                log.warn("[Horodatage] TSA a refusé la requête ({}) : {}", urlActive, tsResponse.getStatusString());
+                alerterAdminHorodatageInvalide(urlActive, tsResponse.getStatusString());
                 return null;
             }
 
@@ -112,9 +139,52 @@ public class HorodatageService
         {
             // best-effort par nature — voir le javadoc de la classe. Ne
             // jamais faire remonter cette exception à l'appelant. Couvre
-            // aussi le dépassement du timeout ci-dessus (TimeoutException).
+            // aussi le dépassement du timeout ci-dessus (TimeoutException),
+            // ainsi qu'une source coupée par le fournisseur (abonnement payant
+            // impayé, ex. connexion refusée ou 401/403).
             log.warn("[Horodatage] Échec de l'horodatage RFC 3161 (non bloquant) : {}", e.getMessage());
+            alerterAdminHorodatageInvalide(properties.urlActive(), e.getMessage());
             return null;
+        }
+    }
+
+    /**
+     * Alerte best-effort à tous les ADMIN globaux — jamais plus d'une fois par
+     * cooldown (voir RedisCacheConfig.CACHE_HORODATAGE_INVALIDE_COOLDOWN, 8h),
+     * même si plusieurs documents échouent dans la même fenêtre. Couvre
+     * notamment le scénario d'un abonnement payant coupé par le fournisseur
+     * (impayé, quota dépassé...) : un seul message suffit, l'admin n'a pas
+     * besoin d'un par document pour comprendre que c'est LE LIEN vers le TSA
+     * qui est cassé, pas tel ou tel document.
+     */
+    private void alerterAdminHorodatageInvalide(String urlActive, String raison)
+    {
+        try
+        {
+            Cache cache = cacheManager.getCache(RedisCacheConfig.CACHE_HORODATAGE_INVALIDE_COOLDOWN);
+            if (cache != null && cache.get(CLE_COOLDOWN_HORODATAGE_INVALIDE) != null)
+            {
+                return;
+            }
+
+            List<User> admins = userRepository.findByRoleName(Role_Name.ADMIN);
+            notificationService.notifier(admins, NotificationType.HORODATAGE_INDISPONIBLE,
+                "L'horodatage automatique des documents (RFC 3161) est actuellement indisponible : "
+                    + urlActive + " n'est pas joignable ou a refusé la connexion"
+                    + (raison != null ? " (" + raison + ")" : "") + ". "
+                    + "Aucun document n'est bloqué — l'horodatage sera retenté automatiquement — "
+                    + "mais vérifiez la configuration TSA (et un éventuel abonnement payant impayé) dans le fichier .env du serveur.");
+
+            if (cache != null)
+            {
+                cache.put(CLE_COOLDOWN_HORODATAGE_INVALIDE, Instant.now());
+            }
+        }
+        catch (Exception e)
+        {
+            // Best-effort — une alerte manquée ne doit jamais faire échouer
+            // l'horodatage lui-même, déjà en cours d'échec pour une tout autre raison.
+            log.warn("[Horodatage] Échec de la notification d'indisponibilité (best-effort) : {}", e.getMessage());
         }
     }
 

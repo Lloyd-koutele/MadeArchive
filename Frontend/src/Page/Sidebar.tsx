@@ -7,6 +7,12 @@ import NotificationBell from './NotificationBell';
 interface SidebarProps {
     title: string;
     children: React.ReactNode;
+    /** Optionnel — rend l'en-tête (logo + libellé du panneau) cliquable,
+     *  pour un retour rapide à la vue principale quand la sidebar n'a plus
+     *  de bouton dédié pour ça (voir EditorDasboard, qui n'a que "Mon
+     *  Profil" comme autre destination). Pas d'effet si omis (autres
+     *  consommateurs de Sidebar inchangés). */
+    onTitleClick?: () => void;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -45,7 +51,7 @@ const PANEL_INITIALES: Record<string, string> = {
 // désynchroniser.
 const MOBILE_BREAKPOINT = '(max-width: 768px)';
 
-function Sidebar({ title, children }: SidebarProps) {
+function Sidebar({ title, children, onTitleClick }: SidebarProps) {
     // Fermée par défaut sur petit écran (comme le menu burger de la page
     // d'accueil), ouverte par défaut ailleurs — évalué au premier rendu, pas
     // après coup, pour ne jamais afficher la sidebar grande ouverte une
@@ -149,7 +155,12 @@ function Sidebar({ title, children }: SidebarProps) {
             </div>
 
             {open && title && (
-                <div className='sidebar-profile-header'>
+                <div
+                    className={`sidebar-profile-header${onTitleClick ? ' sidebar-profile-header-clickable' : ''}`}
+                    onClick={onTitleClick}
+                    role={onTitleClick ? 'button' : undefined}
+                    tabIndex={onTitleClick ? 0 : undefined}
+                >
                     <div className='sidebar-logo-mark' aria-hidden='true'>{initiale}</div>
                     <div className='sidebar-identity'>
                         <h2 className='sidebar-panel-title'>{panelLabel}</h2>

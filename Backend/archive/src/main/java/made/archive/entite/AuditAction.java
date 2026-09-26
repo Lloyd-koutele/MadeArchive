@@ -70,18 +70,22 @@ public enum AuditAction
     TYPE_DOCUMENT_REGEX_MODIFIEE,
     TYPE_DOCUMENT_SUPPRIME,
 
-    // ── Projets ───────────────────────────────────────────────────────────────
-    PROJET_CREE,
-    PROJET_MODIFIE,
-    PROJET_TYPES_AJOUTES,
-    PROJET_TYPE_RETIRE,
-    PROJET_SUPPRIME,
-    /** Bascule PUBLIC ↔ PRIVÉ après coup — voir ProjetService.modifierAcces. */
-    PROJET_ACCES_MODIFIE,
+    // ── Dossiers ───────────────────────────────────────────────────────────────
+    DOSSIER_CREE,
+    DOSSIER_MODIFIE,
+    DOSSIER_TYPES_AJOUTES,
+    DOSSIER_TYPE_RETIRE,
+    DOSSIER_SUPPRIME,
+    /** Bascule PUBLIC ↔ PRIVÉ après coup — voir DossierService.modifierAcces. */
+    DOSSIER_ACCES_MODIFIE,
+    /** Glisser-déposer vers un nouveau parent — voir DossierService.deplacerDossier. */
+    DOSSIER_DEPLACE,
 
     // ── Attestations d'archivage ─────────────────────────────────────────────
     ATTESTATION_GENEREE,
     ATTESTATION_CONSULTEE_PUBLIQUEMENT,
+    /** Supprimée par expiration (2 jours) ou passage PUBLIC → PRIVÉ du document — voir AttestationService/DocumentService.modifierAcces. */
+    ATTESTATION_PURGEE,
 
     // ── Localisation physique ─────────────────────────────────────────────────
     LOCATION_CREEE,
@@ -93,7 +97,7 @@ public enum AuditAction
     LOCATION_DEPLACEE,
     DOCUMENT_EMPLACEMENT_MODIFIE,
     DOCUMENT_METADATA_MODIFIEE,
-    DOCUMENT_PROJET_MODIFIE,
+    DOCUMENT_DOSSIER_MODIFIE,
     /** Bascule PUBLIC ↔ PRIVÉ après coup — voir DocumentService.modifierAcces. */
     DOCUMENT_ACCES_MODIFIE,
 

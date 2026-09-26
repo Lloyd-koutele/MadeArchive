@@ -3,7 +3,7 @@ import api from '../api';
 export type NotificationType =
     | 'DOCUMENT_CORROMPU'
     | 'DOCUMENT_AJOUTE'
-    | 'PROJET_CREE'
+    | 'DOSSIER_CREE'
     | 'UO_CREEE'
     | 'DOCUMENT_HORODATAGE_ECHEC'
     | 'DOCUMENT_HORODATAGE_REUSSI'

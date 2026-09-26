@@ -243,7 +243,7 @@
     border-color: var(--error);
 }
 
-/* ─── Onglets de contenu UO (Utilisateurs / Documents / Projets) ─── */
+/* ─── Onglets de contenu UO (Utilisateurs / Documents / Dossiers) ─── */
 /* Tailles fluides (clamp) plutôt qu'un seul palier fixe : avant, un unique
    @media à 1150px réduisait le padding/la police UNE fois, puis plus rien —
    sous 1150px, les 7 onglets ("Journal d'audit" compris) débordaient hors du
@@ -318,8 +318,8 @@
         inset 0 1px 0 rgba(253, 248, 243, 0.18);
 }
 
-/* ─── Stub "Projets" (fonctionnalité à venir) ─── */
-.uo-projets-stub {
+/* ─── Stub "Dossiers" (fonctionnalité à venir) ─── */
+.uo-dossiers-stub {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -360,7 +360,7 @@
     background: var(--accent);
     color: var(--dark-choc);
 }
-/* ─── Boutons d'action dans le contenu (Créer un utilisateur / type de doc / projet) ───
+/* ─── Boutons d'action dans le contenu (Créer un utilisateur / type de doc / dossier) ───
    .sidebar-btn est pensé pour la sidebar sombre (texte clair) : illisible sur le
    fond crème. On le redéfinit uniquement à l'intérieur de .main-content. */
 .main-content .main-header {
@@ -411,9 +411,9 @@
         inset 0 1px 0 rgba(253, 248, 243, 0.18);
 }
 
-/* Le header du panneau Projets aligne son bouton à droite : on le ramène à gauche
+/* Le header du panneau Dossiers aligne son bouton à droite : on le ramène à gauche
    pour rester cohérent avec les autres onglets. */
-.main-content .projets-panel-header {
+.main-content .dossiers-panel-header {
     justify-content: flex-start;
     margin-bottom: 0.9rem;
 }

@@ -11,7 +11,7 @@ import '../Style/Page/NotificationBell.css';
 const TYPE_ICONS: Record<string, string> = {
     DOCUMENT_CORROMPU: 'fa-solid fa-triangle-exclamation notif-icon-corrompu',
     DOCUMENT_AJOUTE:   'fa-solid fa-file-circle-plus notif-icon-ajoute',
-    PROJET_CREE:       'fa-solid fa-folder-plus notif-icon-projet',
+    DOSSIER_CREE:       'fa-solid fa-folder-plus notif-icon-dossier',
 };
 
 const POLL_INTERVAL_MS = 60_000;

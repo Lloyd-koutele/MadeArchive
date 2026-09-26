@@ -5,7 +5,7 @@ import '../Style/Editor/Editor.css';
 
 interface ChangerAccesPanelProps {
     accesActuel: 'PUBLIC' | 'PRIVE';
-    /** UO du document/projet — sert à charger les candidats au groupe (collègues + ADMIN globaux). */
+    /** UO du document/dossier — sert à charger les candidats au groupe (collègues + ADMIN globaux). */
     uoId: number | null;
     saving?: boolean;
     /** PUBLIC → PRIVÉ : membres initiaux choisis, en plus de l'auteur (ajouté automatiquement côté serveur). */
@@ -18,14 +18,14 @@ interface ChangerAccesPanelProps {
 /**
  * Bascule PUBLIC ↔ PRIVÉ après coup — partagé entre documents
  * (document/DocumentsAccessible.tsx, Editor/MesDocumentsEditor.tsx) et
- * projets (organisation/ProjetsPanel.tsx), pour ne pas dupliquer trois fois
+ * dossiers (organisation/DossiersPanel.tsx), pour ne pas dupliquer trois fois
  * le sélecteur de membres.
  *
  * PUBLIC → PRIVÉ ouvre un sélecteur de membres initiaux, même endpoint et
  * même filtre (nom/email/téléphone) qu'à la création (voir
- * ImportDocuments.tsx/UploadSimple.tsx/ProjetsPanel.tsx — getCandidatsGroupe
- * : collègues de l'UO + tous les ADMIN globaux). PRIVÉ → PUBLIC est un
- * simple bouton : la confirmation ("ce document/projet redeviendra visible
+ * ImportDocuments.tsx/DossiersPanel.tsx — getCandidatsGroupe : collègues de
+ * l'UO + tous les ADMIN globaux). PRIVÉ → PUBLIC est un
+ * simple bouton : la confirmation ("ce document/dossier redeviendra visible
  * par tous...") est à la charge de l'appelant, avant d'appeler
  * onRendrePublic, pas de ce composant.
  */
@@ -64,7 +64,7 @@ function ChangerAccesPanel({ accesActuel, uoId, saving = false, onRendrePrive, o
                 className="acces-toggle-btn"
                 onClick={onRendrePublic}
                 disabled={saving}
-                title="Rendre ce document/projet visible par tous les membres de l'UO"
+                title="Rendre ce document/dossier visible par tous les membres de l'UO"
             >
                 <i className="fa-solid fa-lock-open" /> Rendre public
             </button>

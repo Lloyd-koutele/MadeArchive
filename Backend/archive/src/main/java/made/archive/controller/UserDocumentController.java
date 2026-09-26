@@ -57,10 +57,12 @@ import java.util.UUID;
  *        → télécharge le PDF/A (Content-Disposition: attachment)
  *
  *   POST /api/user/docs/{id}/attestation       (ROLE_USER)
- *        → génère/récupère l'attestation d'archivage (jeton public, voir
- *          AttestationService) — mêmes règles d'accès que le view/download
- *          ci-dessus, le PDF public lui-même est servi sans authentification
- *          par AttestationPublicController (/api/public/attestation/**)
+ *        → génère une NOUVELLE attestation d'archivage (jeton public
+ *          indépendant, voir AttestationService.genererNouvelle — un
+ *          document peut en avoir plusieurs actives simultanément) — mêmes
+ *          règles d'accès que le view/download ci-dessus, le PDF public
+ *          lui-même est servi sans authentification par
+ *          AttestationPublicController (/api/public/attestation/**)
  *
  * Les trois premiers endpoints restent réservés à ROLE_EDITOR et scopés à MES
  * propres documents (gestion de mes uploads) — les trois derniers sont ouverts
@@ -421,11 +423,14 @@ public class UserDocumentController
     /**
      * POST /api/user/docs/{id}/attestation
      *
-     * Génère (ou récupère, si déjà générée — idempotent) l'attestation
-     * d'archivage d'un document : un jeton public donnant accès en lecture
-     * seule + téléchargement au PDF/A, sans jamais changer son statut
-     * d'accès. Réservé à qui a normalement accès au document (mêmes règles
-     * que consulter/télécharger, voir DocumentService.resolveDocument).
+     * Génère une NOUVELLE attestation d'archivage d'un document : un jeton
+     * public donnant accès en lecture seule + téléchargement au PDF/A, sans
+     * jamais changer son statut d'accès. Chaque appel crée un jeton distinct
+     * et indépendant (pas de réutilisation — un document peut avoir
+     * plusieurs attestations actives à la fois, voir
+     * AttestationService.genererNouvelle). Réservé à qui a normalement accès
+     * au document (mêmes règles que consulter/télécharger, voir
+     * DocumentService.resolveDocument).
      */
     @Secured("ROLE_USER")
     @PostMapping("/docs/{id}/attestation")
@@ -435,13 +440,19 @@ public class UserDocumentController
     {
         try
         {
-            AttestationDto dto = attestationService.genererOuRecuperer(id, userDetails);
+            AttestationDto dto = attestationService.genererNouvelle(id, userDetails);
             return ResponseEntity.ok(dto);
         }
         catch (BusinessException e)
         {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(buildError("BUSINESS_ERROR", e.getMessage()));
+        }
+        catch (Exception e)
+        {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(buildError("INTERNAL_ERROR",
+                    "Erreur lors de la génération de l'attestation : " + e.getMessage()));
         }
     }
 
@@ -481,8 +492,8 @@ public class UserDocumentController
      *
      * Bascule PUBLIC ↔ PRIVÉ après coup — réservé à l'éditeur ayant accès au
      * document (voir DocumentService.modifierAcces). Refusé si le document
-     * hérite de la confidentialité d'un projet PRIVÉ (modifiez l'accès du
-     * projet à la place). groupeMembresIds n'a d'effet que si access passe
+     * hérite de la confidentialité d'un dossier PRIVÉ (modifiez l'accès du
+     * dossier à la place). groupeMembresIds n'a d'effet que si access passe
      * à PRIVE (nouveaux membres du groupe créé, en plus de l'auteur).
      */
     @Secured("ROLE_USER")
@@ -534,35 +545,35 @@ public class UserDocumentController
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // Projet — rattacher, migrer ou détacher un document après coup
+    // Dossier — rattacher, migrer ou détacher un document après coup
     // ═══════════════════════════════════════════════════════════════════
 
     /**
-     * PUT /api/user/docs/{id}/projet?projetId=...&fusionnerGroupes=...
+     * PUT /api/user/docs/{id}/dossier?dossierId=...&fusionnerGroupes=...
      *
-     * Change le projet d'un document — omettre projetId le détache de son
-     * projet actuel ("le faire sortir du projet") ; le fournir le migre
-     * vers ce projet (qu'il en ait déjà un ou non). Réservé à l'éditeur
-     * ayant accès au document, et borné à un projet de la même UO (voir
-     * DocumentService.modifierProjetDocument pour le détail des règles).
+     * Change le dossier d'un document — omettre dossierId le détache de son
+     * dossier actuel ("le faire sortir du dossier") ; le fournir le migre
+     * vers ce dossier (qu'il en ait déjà un ou non). Réservé à l'éditeur
+     * ayant accès au document, et borné à un dossier de la même UO (voir
+     * DocumentService.modifierDossierDocument pour le détail des règles).
      *
      * fusionnerGroupes : à ne passer à true qu'après que le client a appelé
      * GET .../verifier-fusion-groupe et obtenu la confirmation de l'éditeur —
-     * voir DocumentService.modifierProjetDocument, qui refuse sinon de
+     * voir DocumentService.modifierDossierDocument, qui refuse sinon de
      * fusionner silencieusement deux groupes différents.
      */
     @Secured("ROLE_USER")
-    @PutMapping("/docs/{id}/projet")
-    public ResponseEntity<?> modifierProjetDocument(
+    @PutMapping("/docs/{id}/dossier")
+    public ResponseEntity<?> modifierDossierDocument(
         @PathVariable UUID id,
-        @RequestParam(required = false) Long projetId,
+        @RequestParam(required = false) Long dossierId,
         @RequestParam(defaultValue = "false") boolean fusionnerGroupes,
         @AuthenticationPrincipal UserDetails userDetails)
     {
         try
         {
             return ResponseEntity.ok(
-                documentService.modifierProjetDocument(id, projetId, fusionnerGroupes, userDetails));
+                documentService.modifierDossierDocument(id, dossierId, fusionnerGroupes, userDetails));
         }
         catch (BusinessException e)
         {
@@ -572,23 +583,23 @@ public class UserDocumentController
     }
 
     /**
-     * GET /api/user/docs/{id}/projet/{projetId}/verifier-fusion-groupe
+     * GET /api/user/docs/{id}/dossier/{dossierId}/verifier-fusion-groupe
      *
-     * À appeler AVANT modifierProjetDocument quand le document et le projet
+     * À appeler AVANT modifierDossierDocument quand le document et le dossier
      * cible sont tous les deux privés, pour savoir s'il faut avertir
      * l'éditeur qu'une fusion de groupes aura lieu (voir
      * DocumentService.verifierFusionGroupe). Lecture seule.
      */
     @Secured("ROLE_USER")
-    @GetMapping("/docs/{id}/projet/{projetId}/verifier-fusion-groupe")
+    @GetMapping("/docs/{id}/dossier/{dossierId}/verifier-fusion-groupe")
     public ResponseEntity<?> verifierFusionGroupe(
         @PathVariable UUID id,
-        @PathVariable Long projetId,
+        @PathVariable Long dossierId,
         @AuthenticationPrincipal UserDetails userDetails)
     {
         try
         {
-            return ResponseEntity.ok(documentService.verifierFusionGroupe(id, projetId, userDetails));
+            return ResponseEntity.ok(documentService.verifierFusionGroupe(id, dossierId, userDetails));
         }
         catch (BusinessException e)
         {
@@ -740,8 +751,8 @@ public class UserDocumentController
      *   ?uoId=      → restreint à une UO précise (navigation Admin/Admin_UO dans
      *                 l'arbre) — reste borné au périmètre déjà autorisé, ne
      *                 permet jamais d'en sortir (voir DocumentAccessService)
-     *   ?projetId=  → restreint aux documents rattachés à un projet précis
-     *                 (onglet "Types de documents" d'un projet, une fois un
+     *   ?dossierId=  → restreint aux documents rattachés à un dossier précis
+     *                 (onglet "Types de documents" d'un dossier, une fois un
      *                 type ouvert) — se combine avec typeId, jamais un
      *                 contournement de la visibilité PUBLIC/PRIVÉ
      *   ?page=      → numéro de page (défaut : 1)
@@ -753,7 +764,7 @@ public class UserDocumentController
      *   GET /api/user/docs/accessibles?titre=contrat&dateDebut=2024-01-01&dateFin=2024-12-31
      *   GET /api/user/docs/accessibles?typeId=3&access=PRIVE
      *   GET /api/user/docs/accessibles?uoId=7
-     *   GET /api/user/docs/accessibles?projetId=12&typeId=3
+     *   GET /api/user/docs/accessibles?dossierId=12&typeId=3
      */
     @Secured("ROLE_USER")
     @GetMapping("/docs/accessibles")
@@ -765,7 +776,7 @@ public class UserDocumentController
         @RequestParam(required = false) String    dateFin,
         @RequestParam(required = false) String    statut,
         @RequestParam(required = false) Long      uoId,
-        @RequestParam(required = false) Long      projetId,
+        @RequestParam(required = false) Long      dossierId,
         @RequestParam(defaultValue = "1")  int   page,
         @RequestParam(defaultValue = "10") int   size,
         @AuthenticationPrincipal UserDetails userDetails)
@@ -779,7 +790,7 @@ public class UserDocumentController
             filter.setAccess(access);
             filter.setStatut(statut);
             filter.setUoId(uoId);
-            filter.setProjetId(projetId);
+            filter.setDossierId(dossierId);
             filter.setPage(page);
             filter.setSize(size);
     

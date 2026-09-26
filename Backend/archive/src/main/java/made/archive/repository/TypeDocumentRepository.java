@@ -19,6 +19,10 @@ public interface TypeDocumentRepository extends JpaRepository<TypeDocument, Long
     List<TypeDocument> findByTypeDocumentCreateByUserId(@Param("userId") UUID userId);
 
     boolean existsByDocumentsNotEmptyAndId(Long id);
+
+    /** Types dont la regex n'a jamais abouti — voir RegexGenerationService.retenterEchecs
+     *  (reprise différée, LLM injoignable ou pas encore configuré au moment du premier essai). */
+    List<TypeDocument> findByRegexGeneratedFalse();
     
     @Query("SELECT DISTINCT t FROM TypeDocument t " +
            "JOIN FETCH t.retention " +
@@ -30,11 +34,6 @@ public interface TypeDocumentRepository extends JpaRepository<TypeDocument, Long
     Optional<TypeDocument> findByIdWithMetaData(@Param("id") Long id);
 
     List<TypeDocument> findByUniteOrganisationnelleId(Long uniteOrganisationnelleId);
-
-    // IgnoreCase : "Contrat"/"CONTRAT" doivent être détectés comme le même nom dans la
-    // même UO — aucune contrainte d'unicité n'existe côté base sur cette colonne, tout
-    // repose sur cette vérification applicative (voir TypeDocumentService).
-    Optional<TypeDocument> findByNomIgnoreCaseAndUniteOrganisationnelleId(String nom, Long uoId);
 
     @Query("SELECT DISTINCT t FROM TypeDocument t " +
            "LEFT JOIN FETCH t.retention " +

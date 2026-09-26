@@ -63,17 +63,20 @@ public class DocumentDetailDto
     /** UO du document — nécessaire côté client pour lister les emplacements physiques disponibles. */
     private Long uniteOrganisationnelleId;
 
-    /** Projet auquel ce document est rattaché, s'il y en a un — voir Document.projet. Null sinon. */
-    private Long   projetId;
-    private String projetNom;
+    /** Dossier auquel ce document est rattaché, s'il y en a un — voir Document.dossier. Null sinon. */
+    private Long   dossierId;
+    private String dossierNom;
+    /** Fil d'Ariane complet jusqu'à ce dossier, ex. "DGE / M1" — racine en
+     *  premier (voir DossierService.construireChemin). Null si pas de dossier. */
+    private String dossierCheminComplet;
 
     /** true si l'utilisateur consultant peut rattacher/migrer/détacher ce document
-     *  d'un projet (même règle que peutModifierEmplacement : éditeur + accès normal au document). */
-    private boolean peutModifierProjet;
+     *  d'un dossier (même règle que peutModifierEmplacement : éditeur + accès normal au document). */
+    private boolean peutModifierDossier;
 
     /** true si l'utilisateur consultant peut basculer PUBLIC ↔ PRIVÉ sur ce document
      *  (même règle que peutModifierEmplacement, ET jamais true si le document hérite
-     *  de la confidentialité d'un projet PRIVÉ — voir DocumentService.modifierAcces). */
+     *  de la confidentialité d'un dossier PRIVÉ — voir DocumentService.modifierAcces). */
     private boolean peutModifierAcces;
 
     @Data

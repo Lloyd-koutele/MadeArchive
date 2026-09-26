@@ -30,7 +30,7 @@ export interface ExportApercuDocumentDto {
     titre: string;
     uoNom: string | null;
     typeDocumentNom: string | null;
-    projetNom: string | null;
+    dossierNom: string | null;
     access: 'PUBLIC' | 'PRIVE';
     /** Faux si ce document n'apparaît ici que grâce à includePriveNonMembre. */
     accesNormal: boolean;

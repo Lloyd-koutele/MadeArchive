@@ -80,6 +80,17 @@ public interface DocumentRepository extends JpaRepository<Document, UUID>, JpaSp
     boolean existsByOriginalSha256AndUniteOrganisationnelle_Id(String originalSha256, Long uoId);
 
     /**
+     * Détection d'un document SIMILAIRE (pas forcément identique) — même texte
+     * OCR normalisé, scopée par UO, voir Document.texteNormaliseSha256 pour
+     * pourquoi ce n'est PAS une contrainte unique comme originalSha256 ci-dessus
+     * (juste un avertissement, jamais un blocage). List (pas exists/boolean) :
+     * l'appelant (DocumentOcrService) a besoin du/des document(s) lui-même
+     * pour résoudre sa visibilité pour l'utilisateur courant avant d'afficher
+     * quoi que ce soit.
+     */
+    List<Document> findByTexteNormaliseSha256AndUniteOrganisationnelle_Id(String texteNormaliseSha256, Long uoId);
+
+    /**
      * Vérification défensive — PDF/A identique.
      * Utilisé en Phase 2 uniquement.
      */
@@ -168,30 +179,30 @@ public interface DocumentRepository extends JpaRepository<Document, UUID>, JpaSp
         @Param("statutsExclus") List<DocumentStatus> statutsExclus);
 
     /**
-     * Compte les documents d'un projet par type — sert à calculer la checklist
-     * "types de documents attendus" (voir Projet.typesDocumentsAttendus).
+     * Compte les documents d'un dossier par type — sert à calculer la checklist
+     * "types de documents attendus" (voir Dossier.typesDocumentsAttendus).
      * Retourne [typeDocumentId, count].
      */
     @Query("SELECT d.typeDocument.id, COUNT(d) " +
            "FROM Document d " +
-           "WHERE d.projet.id = :projetId AND d.status != 'DELETED' " +
+           "WHERE d.dossier.id = :dossierId AND d.status != 'DELETED' " +
            "GROUP BY d.typeDocument.id")
-    List<Object[]> countDocumentsByTypeForProjet(@Param("projetId") Long projetId);
+    List<Object[]> countDocumentsByTypeForDossier(@Param("dossierId") Long dossierId);
 
     /**
-     * Un projet est "vide" (donc supprimable) s'il n'a AUCUN document
+     * Un dossier est "vide" (donc supprimable) s'il n'a AUCUN document
      * rattaché — même s'il a des types de documents attendus déclarés sans
      * document fourni, ça compte comme vide.
      */
-    boolean existsByProjetId(Long projetId);
+    boolean existsByDossierId(Long dossierId);
 
     /**
-     * Tous les documents (vivants ou non) d'un projet — utilisé par
-     * ProjetService.modifierAcces pour faire suivre PUBLIC↔PRIVÉ aux
-     * documents qui partagent encore le GroupeAccess du projet (jamais ceux
+     * Tous les documents (vivants ou non) d'un dossier — utilisé par
+     * DossierService.modifierAcces pour faire suivre PUBLIC↔PRIVÉ aux
+     * documents qui partagent encore le GroupeAccess du dossier (jamais ceux
      * qui ont leur propre confidentialité indépendante, voir sa Javadoc).
      */
-    List<Document> findByProjetId(Long projetId);
+    List<Document> findByDossierId(Long dossierId);
 
     /**
      * Un emplacement physique est "vide" (donc supprimable, ou son type
@@ -253,13 +264,13 @@ public interface DocumentRepository extends JpaRepository<Document, UUID>, JpaSp
            "d.id, d.titre, d.storageKey, d.access, d.status, d.createAt, " +
            "d.uniteOrganisationnelle.id, d.uniteOrganisationnelle.nom, " +
            "d.typeDocument.nom, p.nom) " +
-           // LEFT JOIN explicite sur projet (nullable) : une navigation par
-           // point (d.projet.nom) génère un INNER JOIN implicite en JPQL,
-           // qui aurait exclu silencieusement tout document sans projet —
+           // LEFT JOIN explicite sur dossier (nullable) : une navigation par
+           // point (d.dossier.nom) génère un INNER JOIN implicite en JPQL,
+           // qui aurait exclu silencieusement tout document sans dossier —
            // constaté en conditions réelles (export d'1 document sans
-           // projet revenant vide). uniteOrganisationnelle/typeDocument
+           // dossier revenant vide). uniteOrganisationnelle/typeDocument
            // sont non-nullables (nullable=false sur Document), la navigation
            // par point y reste sans risque.
-           "FROM Document d LEFT JOIN d.projet p WHERE d.id IN :ids")
+           "FROM Document d LEFT JOIN d.dossier p WHERE d.id IN :ids")
     List<made.archive.dto.DocumentExportRow> findAllByIdPourExport(@Param("ids") Collection<UUID> ids);
 }

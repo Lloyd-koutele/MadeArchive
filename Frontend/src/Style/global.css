@@ -25,7 +25,7 @@
 /* ─────────────────────────────────────────
    CONVENTION — Seuils de rupture (breakpoints)
    Une variable CSS native n'est PAS utilisable à l'intérieur d'un
-   @media (limite du langage, pas de ce projet) — cette échelle est donc
+   @media (limite du langage, pas de ce dossier) — cette échelle est donc
    documentée ici pour référence et à recopier en dur dans chaque nouveau
    @media, plutôt que d'inventer une valeur au cas par cas :
      480px  — petit téléphone (formulaires, cartes empilées)

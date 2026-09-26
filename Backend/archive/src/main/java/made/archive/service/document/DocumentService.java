@@ -13,6 +13,7 @@ import made.archive.dto.DocumentPageDto;
 import made.archive.dto.DocumentVersionDto;
 import made.archive.dto.DataTypeDto;
 import made.archive.dto.FusionGroupeCheckDto;
+import made.archive.entite.Attestation;
 import made.archive.entite.GroupeAccess;
 import made.archive.entite.AuditAction;
 import made.archive.entite.AuditCible;
@@ -21,7 +22,7 @@ import made.archive.entite.Document;
 import made.archive.entite.DocumentStatus;
 import made.archive.entite.FixityCheckResult;
 import made.archive.entite.MetaData;
-import made.archive.entite.Projet;
+import made.archive.entite.Dossier;
 import made.archive.entite.Role_Name;
 import made.archive.entite.TypeAccess;
 import made.archive.entite.TypeDocument;
@@ -29,7 +30,7 @@ import made.archive.entite.User;
 import made.archive.exception.BusinessException;
 import made.archive.repository.DocumentRepository;
 import made.archive.repository.FixityCheckResultRepository;
-import made.archive.repository.ProjetRepository;
+import made.archive.repository.DossierRepository;
 import made.archive.repository.UserRepository;
 import made.archive.security.DocumentEncryptionService;
 import made.archive.service.audit.AuditLogService;
@@ -85,11 +86,13 @@ public class DocumentService
     private final UniteOrganisationnelleService uniteOrganisationnelleService;
     private final FixityCheckResultRepository fixityCheckResultRepository;
     private final made.archive.service.organisation.PhysicalLocationService physicalLocationService;
+    private final made.archive.service.organisation.DossierService          dossierService;
     private final made.archive.repository.DataTypeRepository dataTypeRepository;
     private final TypeDocumentService typeDocumentService;
-    private final ProjetRepository projetRepository;
+    private final DossierRepository dossierRepository;
     private final made.archive.repository.GroupeAccessRepository groupeAccessRepository;
     private final MeilisearchService meilisearchService;
+    private final made.archive.repository.AttestationRepository attestationRepository;
 
     private static final String INDEX_NAME        = "documents";
 
@@ -339,13 +342,15 @@ public class DocumentService
                 .anyMatch(u -> u.getId().equals(user.getId())))
             .uniteOrganisationnelleId(doc.getUniteOrganisationnelle() != null
                 ? doc.getUniteOrganisationnelle().getId() : null)
-            .projetId(doc.getProjet() != null ? doc.getProjet().getId() : null)
-            .projetNom(doc.getProjet() != null ? doc.getProjet().getNom() : null)
-            .peutModifierProjet(estEditeur(user) && getUtilisateursAyantAcces(doc).stream()
+            .dossierId(doc.getDossier() != null ? doc.getDossier().getId() : null)
+            .dossierNom(doc.getDossier() != null ? doc.getDossier().getNom() : null)
+            .dossierCheminComplet(doc.getDossier() != null
+                ? dossierService.construireChemin(doc.getDossier()) : null)
+            .peutModifierDossier(estEditeur(user) && getUtilisateursAyantAcces(doc).stream()
                 .anyMatch(u -> u.getId().equals(user.getId())))
             .peutModifierAcces(estEditeur(user) && getUtilisateursAyantAcces(doc).stream()
                 .anyMatch(u -> u.getId().equals(user.getId()))
-                && !(doc.getProjet() != null && doc.getProjet().getAccess() == TypeAccess.PRIVE))
+                && !(doc.getDossier() != null && doc.getDossier().getAccess() == TypeAccess.PRIVE))
             .build();
     }
 
@@ -525,6 +530,45 @@ public class DocumentService
         return resolveDocument(documentId, user);
     }
 
+    /**
+     * Bytes du PDF/A archivé, pour AttestationPublicController
+     * (/{token}/document/view) — le document a déjà été résolu via un jeton
+     * d'attestation valide (voir AttestationService.resolveDocumentPourToken),
+     * AUCUNE vérification de confidentialité ici contrairement à
+     * downloadPdfA/streamPdfAForView : décision produit assumée, le QR
+     * imprimé sur l'attestation donne accès au fichier original même pour un
+     * document PRIVÉ. Consultation UNIQUEMENT (pas de pendant "download" —
+     * revu le 09/2026, jamais de téléchargement du fichier depuis cette
+     * source publique).
+     */
+    @Transactional(readOnly = true)
+    public byte[] lireBytesPdfAViaAttestation(Document doc)
+    {
+        return downloadFromStorage(doc.getStorageKey(), doc.getId(), "PDF/A via attestation publique");
+    }
+
+    /**
+     * Comme resolveDocument, mais ne lève JAMAIS — Optional.empty() si
+     * introuvable OU si l'utilisateur n'y a pas accès, plutôt qu'une
+     * BusinessException. Pour une vérification "best-effort" où l'absence de
+     * visibilité ne doit jamais être signalée comme une erreur — voir
+     * DocumentOcrService (avertissement de document similaire) : silence
+     * total si l'appelant n'a pas accès, jamais le moindre indice qu'un
+     * document existe.
+     */
+    @Transactional(readOnly = true)
+    public Optional<Document> resolveDocumentSiVisible(UUID documentId, User user)
+    {
+        try
+        {
+            return Optional.of(resolveDocument(documentId, user));
+        }
+        catch (BusinessException e)
+        {
+            return Optional.empty();
+        }
+    }
+
     // ═══════════════════════════════════════════════════════════════════
     // 7. CORBEILLE — suppression volontaire (3 jours de grâce, restaurable)
     // ═══════════════════════════════════════════════════════════════════
@@ -538,7 +582,7 @@ public class DocumentService
      * dont l'uploadeur a quitté l'UO ne doit pas rester bloqué indéfiniment
      * si d'autres éditeurs y ont légitimement accès. Jamais un admin seul,
      * même avec autorité sur l'UO : "seulement côté éditeur", comme pour
-     * modifierMetaData/modifierEmplacementPhysique/modifierProjetDocument.
+     * modifierMetaData/modifierEmplacementPhysique/modifierDossierDocument.
      *
      * Le statut d'origine est conservé dans statutAvantCorbeille (un document
      * CORROMPU envoyé à la corbeille redevient CORROMPU à la restauration,
@@ -685,19 +729,19 @@ public class DocumentService
      * modifierEmplacementPhysique/modifierMetaData (éditeur de la liste
      * d'accès normale du document).
      *
-     * Un document rattaché à un projet PRIVÉ hérite de sa confidentialité
-     * (voir DocumentUploadeService) et PARTAGE le GroupeAccess du projet —
+     * Un document rattaché à un dossier PRIVÉ hérite de sa confidentialité
+     * (voir DocumentUploadeService) et PARTAGE le GroupeAccess du dossier —
      * son accès n'est donc jamais modifiable indépendamment ici, seulement
-     * via l'accès du projet lui-même (ProjetService.modifierAcces).
+     * via l'accès du dossier lui-même (DossierService.modifierAcces).
      *
      * PUBLIC → PRIVÉ : crée un NOUVEAU GroupeAccess (jamais un groupe
-     * partagé, contrairement au cas "hérite d'un projet" ci-dessus), seedé
+     * partagé, contrairement au cas "hérite d'un dossier" ci-dessus), seedé
      * avec l'auteur de la demande + les membres optionnellement fournis —
      * même logique qu'à l'upload direct (DocumentUploadeService).
      *
      * PRIVÉ → PUBLIC : détache le groupe (document.groupe = null) sans le
      * supprimer — aucun endroit de cette appli ne supprime jamais une ligne
-     * GroupeAccess (voir DocumentService.modifierProjetDocument, qui clone
+     * GroupeAccess (voir DocumentService.modifierDossierDocument, qui clone
      * plutôt que de toucher au groupe existant) ; il devient simplement
      * orphelin, conservé pour trace.
      */
@@ -716,11 +760,11 @@ public class DocumentService
                 "Seul un éditeur ayant accès à ce document peut modifier son accès");
         }
 
-        if (doc.getProjet() != null && doc.getProjet().getAccess() == TypeAccess.PRIVE)
+        if (doc.getDossier() != null && doc.getDossier().getAccess() == TypeAccess.PRIVE)
         {
             throw new BusinessException(
-                "Ce document hérite de la confidentialité de son projet (\"" + doc.getProjet().getNom()
-                + "\") — modifiez l'accès du projet plutôt que celui de ce document");
+                "Ce document hérite de la confidentialité de son dossier (\"" + doc.getDossier().getNom()
+                + "\") — modifiez l'accès du dossier plutôt que celui de ce document");
         }
 
         TypeAccess ancienAcces = doc.getAccess();
@@ -764,59 +808,90 @@ public class DocumentService
                 + " à " + dto.getAccess(),
             true);
 
+        // PUBLIC → PRIVÉ : révoque immédiatement le QR/lien public existant plutôt
+        // que d'attendre son expiration naturelle (2 jours — voir AttestationService).
+        // L'inverse (PRIVÉ → PUBLIC) ne touche pas à une attestation existante,
+        // qui continue son propre délai.
+        if (ancienAcces == TypeAccess.PUBLIC && dto.getAccess() == TypeAccess.PRIVE)
+        {
+            purgerAttestationSiExiste(doc, "changement d'accès PUBLIC → PRIVÉ");
+        }
+
         return getDetail(documentId, userDetails);
     }
 
+    /**
+     * Purge immédiate de TOUTES les attestations actives d'un document (il
+     * peut y en avoir plusieurs — voir Javadoc de l'entité Attestation),
+     * hors du cycle normal d'expiration (voir
+     * AttestationService.purgerAttestationsExpirees), avec la même trace
+     * d'audit avant chaque suppression. N'appelle pas AttestationService
+     * pour éviter une dépendance circulaire (celui-ci dépend déjà de
+     * DocumentService) — accès direct au repository.
+     */
+    private void purgerAttestationSiExiste(Document doc, String raisonAudit)
+    {
+        for (Attestation attestation : attestationRepository.findAllByDocumentId(doc.getId()))
+        {
+            auditLogService.log(null, AuditAction.ATTESTATION_PURGEE, AuditCible.DOCUMENT,
+                doc.getId().toString(),
+                doc.getUniteOrganisationnelle() != null ? doc.getUniteOrganisationnelle().getId() : null,
+                "Attestation d'archivage purgée pour \"" + doc.getTitre() + "\" — " + raisonAudit,
+                true);
+            attestationRepository.delete(attestation);
+        }
+    }
+
     // ═══════════════════════════════════════════════════════════════════
-    // 8b. PROJET — rattacher, migrer ou détacher un document après coup
+    // 8b. DOSSIER — rattacher, migrer ou détacher un document après coup
     // ═══════════════════════════════════════════════════════════════════
 
     /**
-     * Change le projet d'un document — même règle d'autorisation que
+     * Change le dossier d'un document — même règle d'autorisation que
      * modifierEmplacementPhysique/modifierMetaData (éditeur de la liste
-     * d'accès normale du document). nouveauProjetId == null détache le
-     * document de son projet actuel ("le faire sortir du projet") ;
-     * une valeur migre le document vers ce projet (que celui-ci en ait
+     * d'accès normale du document). nouveauDossierId == null détache le
+     * document de son dossier actuel ("le faire sortir du dossier") ;
+     * une valeur migre le document vers ce dossier (que celui-ci en ait
      * déjà un ou non).
      *
      * Au détachement, si le document partageait encore le GroupeAccess de
-     * ce projet (fusion antérieure ou héritage direct à l'upload — voir
+     * ce dossier (fusion antérieure ou héritage direct à l'upload — voir
      * DocumentUploadeService), il reçoit sa propre copie indépendante,
      * figée aux membres actuels : sans ça, il resterait exposé pour
-     * toujours à quiconque rejoint le groupe du projet PLUS TARD, alors
+     * toujours à quiconque rejoint le groupe du dossier PLUS TARD, alors
      * qu'il n'en fait plus partie.
      *
-     * Deux gardes supplémentaires, propres au projet CIBLE :
+     * Deux gardes supplémentaires, propres au dossier CIBLE :
      *   - même UO que le document (jamais un document migré hors de son UO) ;
-     *   - si le projet cible est PRIVÉ, l'acteur doit être membre de son
-     *     groupe d'accès — sans quoi la confidentialité du projet serait
+     *   - si le dossier cible est PRIVÉ, l'acteur doit être membre de son
+     *     groupe d'accès — sans quoi la confidentialité du dossier serait
      *     contournable en y rattachant un document depuis l'extérieur.
      *
-     * Aucune validation stricte contre les types attendus du projet cible —
+     * Aucune validation stricte contre les types attendus du dossier cible —
      * un document d'un type hors-liste peut toujours être rattaché. En
      * revanche, si son type n'y figure pas encore, il est ajouté
-     * automatiquement à Projet.typesDocumentsAttendus (jamais retiré
+     * automatiquement à Dossier.typesDocumentsAttendus (jamais retiré
      * automatiquement au détachement — voir retirerTypeAttendu pour le
      * retrait volontaire) : un document rattaché doit toujours être
-     * trouvable en parcourant son projet, jamais orphelin de la navigation
-     * par types (voir ProjetsPanel côté client, qui ne liste les documents
+     * trouvable en parcourant son dossier, jamais orphelin de la navigation
+     * par types (voir DossiersPanel côté client, qui ne liste les documents
      * que via ces dossiers de type).
      *
-     * Document PRIVÉ rattaché à un projet PRIVÉ dont le groupe diffère : le
+     * Document PRIVÉ rattaché à un dossier PRIVÉ dont le groupe diffère : le
      * document.groupe ne change JAMAIS tout seul silencieusement — voir
      * verifierFusionGroupe, appelée par le client AVANT cette méthode pour
      * savoir s'il faut avertir l'éditeur. fusionnerGroupes doit valoir true
      * pour que la fusion ait lieu ; sinon, un écart entre les deux groupes
      * fait échouer l'appel plutôt que de fusionner sans confirmation. La
      * fusion elle-même : les membres du groupe du document manquants dans
-     * celui du projet y sont ajoutés (union), puis document.groupe pointe
-     * ensuite vers CE MÊME GroupeAccess que le projet — un lien permanent,
+     * celui du dossier y sont ajoutés (union), puis document.groupe pointe
+     * ensuite vers CE MÊME GroupeAccess que le dossier — un lien permanent,
      * pas un instantané, exactement comme DocumentUploadeService le fait
-     * déjà pour un document uploadé directement dans un projet privé.
+     * déjà pour un document uploadé directement dans un dossier privé.
      */
     @Transactional
-    public DocumentDetailDto modifierProjetDocument(
-        UUID documentId, Long nouveauProjetId, boolean fusionnerGroupes, UserDetails userDetails)
+    public DocumentDetailDto modifierDossierDocument(
+        UUID documentId, Long nouveauDossierId, boolean fusionnerGroupes, UserDetails userDetails)
     {
         User user    = resolveUser(userDetails);
         Document doc = resolveDocument(documentId, user);
@@ -826,25 +901,25 @@ public class DocumentService
         if (!autorise)
         {
             throw new BusinessException(
-                "Seul un éditeur ayant accès à ce document peut le rattacher ou le détacher d'un projet");
+                "Seul un éditeur ayant accès à ce document peut le rattacher ou le détacher d'un dossier");
         }
 
-        Projet ancien = doc.getProjet();
+        Dossier ancien = doc.getDossier();
 
-        if (nouveauProjetId == null)
+        if (nouveauDossierId == null)
         {
-            // Si ce document partage encore le GroupeAccess de son projet
+            // Si ce document partage encore le GroupeAccess de son dossier
             // actuel (fusion antérieure, ou héritage direct à l'upload — voir
             // DocumentUploadeService), le détachement doit rompre ce lien
             // permanent : sans ça, le document resterait indéfiniment
-            // exposé à quiconque rejoint PLUS TARD le groupe du projet,
+            // exposé à quiconque rejoint PLUS TARD le groupe du dossier,
             // alors qu'il n'en fait plus partie. On lui donne donc sa PROPRE
             // copie indépendante — figée aux membres actuels, jamais plus
-            // suivie par le projet ensuite. Le document reste privé, avec
+            // suivie par le dossier ensuite. Le document reste privé, avec
             // exactement les mêmes personnes qui y avaient accès juste avant.
             // Détail resté silencieux dans le journal — l'entrée
-            // DOCUMENT_PROJET_MODIFIE plus bas couvre déjà "détaché du
-            // projet X" ; ce dédoublement de groupe n'est qu'un détail de
+            // DOCUMENT_DOSSIER_MODIFIE plus bas couvre déjà "détaché du
+            // dossier X" ; ce dédoublement de groupe n'est qu'un détail de
             // mise en œuvre protégeant l'accès, pas un événement à part.
             if (ancien != null && ancien.getGroupe() != null && doc.getGroupe() != null
                 && doc.getGroupe().getId().equals(ancien.getGroupe().getId()))
@@ -856,37 +931,37 @@ public class DocumentService
                 doc.setGroupe(copie);
             }
 
-            doc.setProjet(null);
+            doc.setDossier(null);
         }
         else
         {
-            Projet nouveau = projetRepository.findById(nouveauProjetId)
-                .orElseThrow(() -> new BusinessException("Projet introuvable : " + nouveauProjetId));
+            Dossier nouveau = dossierRepository.findById(nouveauDossierId)
+                .orElseThrow(() -> new BusinessException("Dossier introuvable : " + nouveauDossierId));
 
             if (doc.getUniteOrganisationnelle() == null || nouveau.getUniteOrganisationnelle() == null
                 || !nouveau.getUniteOrganisationnelle().getId().equals(doc.getUniteOrganisationnelle().getId()))
             {
                 throw new BusinessException(
-                    "Ce projet n'appartient pas à la même unité organisationnelle que le document");
+                    "Ce dossier n'appartient pas à la même unité organisationnelle que le document");
             }
 
             if (nouveau.getAccess() == TypeAccess.PRIVE)
             {
-                boolean estMembreDuProjet = nouveau.getGroupe() != null
+                boolean estMembreDuDossier = nouveau.getGroupe() != null
                     && nouveau.getGroupe().getMembres().stream()
                         .anyMatch(m -> m.getId().equals(user.getId()));
-                if (!estMembreDuProjet)
+                if (!estMembreDuDossier)
                 {
                     throw new BusinessException(
-                        "Ce projet est privé — seul un membre de son groupe d'accès peut y rattacher un document");
+                        "Ce dossier est privé — seul un membre de son groupe d'accès peut y rattacher un document");
                 }
             }
 
-            // Import automatique du type dans les types attendus du projet
+            // Import automatique du type dans les types attendus du dossier
             // CIBLE, si absent — sans quoi le document rattaché n'aurait
             // aucun dossier sous lequel apparaître en le parcourant (voir
-            // le javadoc ci-dessus). Ne s'applique qu'au projet cible : un
-            // simple changement de projet n'a pas à modifier l'ancien.
+            // le javadoc ci-dessus). Ne s'applique qu'au dossier cible : un
+            // simple changement de dossier n'a pas à modifier l'ancien.
             TypeDocument type = doc.getTypeDocument();
             List<TypeDocument> typesAttendus = nouveau.getTypesDocumentsAttendus();
             boolean dejaPresent = typesAttendus != null
@@ -903,17 +978,17 @@ public class DocumentService
                 }
                 typesAttendus.add(type);
                 nouveau.setTypesDocumentsAttendus(typesAttendus);
-                projetRepository.save(nouveau);
+                dossierRepository.save(nouveau);
 
-                auditLogService.log(user, AuditAction.PROJET_TYPES_AJOUTES, AuditCible.PROJET,
+                auditLogService.log(user, AuditAction.DOSSIER_TYPES_AJOUTES, AuditCible.DOSSIER,
                     nouveau.getId().toString(),
                     nouveau.getUniteOrganisationnelle() != null ? nouveau.getUniteOrganisationnelle().getId() : null,
-                    "Type \"" + type.getNom() + "\" ajouté automatiquement au projet " + nouveau.getNom()
+                    "Type \"" + type.getNom() + "\" ajouté automatiquement au dossier " + nouveau.getNom()
                         + " (document \"" + doc.getTitre() + "\" rattaché)",
                     true);
             }
 
-            // Document privé rattaché à un projet privé : deux groupes
+            // Document privé rattaché à un dossier privé : deux groupes
             // potentiellement différents (voir le javadoc ci-dessus). On ne
             // fusionne jamais sans confirmation explicite du client.
             if (doc.getAccess() == TypeAccess.PRIVE && doc.getGroupe() != null
@@ -926,70 +1001,70 @@ public class DocumentService
                     if (!fusionnerGroupes)
                     {
                         throw new BusinessException(
-                            "Le groupe du document et celui du projet n'ont pas les mêmes membres — "
+                            "Le groupe du document et celui du dossier n'ont pas les mêmes membres — "
                             + "confirmation requise avant de les fusionner (voir verifierFusionGroupe)");
                     }
 
-                    GroupeAccess groupeProjet = nouveau.getGroupe();
-                    List<User> membresFusionnes = new ArrayList<>(groupeProjet.getMembres());
+                    GroupeAccess groupeDossier = nouveau.getGroupe();
+                    List<User> membresFusionnes = new ArrayList<>(groupeDossier.getMembres());
                     membresFusionnes.addAll(manquants);
-                    groupeProjet.setMembres(membresFusionnes);
-                    groupeAccessRepository.save(groupeProjet);
+                    groupeDossier.setMembres(membresFusionnes);
+                    groupeAccessRepository.save(groupeDossier);
 
                     auditLogService.log(user, AuditAction.GROUPE_MEMBRE_AJOUTE, AuditCible.DOCUMENT,
                         doc.getId().toString(),
                         doc.getUniteOrganisationnelle() != null ? doc.getUniteOrganisationnelle().getId() : null,
                         manquants.size() + " membre(s) du groupe du document \"" + doc.getTitre()
-                            + "\" fusionné(s) dans le groupe du projet " + nouveau.getNom()
+                            + "\" fusionné(s) dans le groupe du dossier " + nouveau.getNom()
                             + " (rattachement confirmé par l'éditeur)",
                         true);
                 }
                 // Lien permanent — pas une copie : le document partage désormais
-                // le même GroupeAccess que le projet, comme à l'upload direct
-                // dans un projet privé (voir DocumentUploadeService).
+                // le même GroupeAccess que le dossier, comme à l'upload direct
+                // dans un dossier privé (voir DocumentUploadeService).
                 doc.setGroupe(nouveau.getGroupe());
             }
 
-            doc.setProjet(nouveau);
+            doc.setDossier(nouveau);
         }
 
         documentRepository.save(doc);
 
-        auditLogService.log(user, AuditAction.DOCUMENT_PROJET_MODIFIE, AuditCible.DOCUMENT,
+        auditLogService.log(user, AuditAction.DOCUMENT_DOSSIER_MODIFIE, AuditCible.DOCUMENT,
             doc.getId().toString(),
             doc.getUniteOrganisationnelle() != null ? doc.getUniteOrganisationnelle().getId() : null,
-            "Projet du document \"" + doc.getTitre() + "\" changé de "
+            "Dossier du document \"" + doc.getTitre() + "\" changé de "
                 + (ancien != null ? "\"" + ancien.getNom() + "\"" : "aucun") + " vers "
-                + (doc.getProjet() != null ? "\"" + doc.getProjet().getNom() + "\"" : "aucun"),
+                + (doc.getDossier() != null ? "\"" + doc.getDossier().getNom() + "\"" : "aucun"),
             true);
 
         return getDetail(documentId, userDetails);
     }
 
     /**
-     * Appelée par le client AVANT modifierProjetDocument, pour savoir s'il
+     * Appelée par le client AVANT modifierDossierDocument, pour savoir s'il
      * faut avertir l'éditeur qu'une fusion de groupes aura lieu — voir le
-     * javadoc de modifierProjetDocument. Lecture seule, aucun effet de bord.
+     * javadoc de modifierDossierDocument. Lecture seule, aucun effet de bord.
      * groupesDifferents reste false (aucun avertissement) si le document
-     * n'est pas privé, si le projet cible ne l'est pas, ou si les deux
+     * n'est pas privé, si le dossier cible ne l'est pas, ou si les deux
      * groupes ont déjà exactement les mêmes membres.
      */
     @Transactional(readOnly = true)
-    public FusionGroupeCheckDto verifierFusionGroupe(UUID documentId, Long projetId, UserDetails userDetails)
+    public FusionGroupeCheckDto verifierFusionGroupe(UUID documentId, Long dossierId, UserDetails userDetails)
     {
         User user    = resolveUser(userDetails);
         Document doc = resolveDocument(documentId, user);
-        Projet projet = projetRepository.findById(projetId)
-            .orElseThrow(() -> new BusinessException("Projet introuvable : " + projetId));
+        Dossier dossier = dossierRepository.findById(dossierId)
+            .orElseThrow(() -> new BusinessException("Dossier introuvable : " + dossierId));
 
         if (doc.getAccess() != TypeAccess.PRIVE || doc.getGroupe() == null
-            || projet.getAccess() != TypeAccess.PRIVE || projet.getGroupe() == null
-            || doc.getGroupe().getId().equals(projet.getGroupe().getId()))
+            || dossier.getAccess() != TypeAccess.PRIVE || dossier.getGroupe() == null
+            || doc.getGroupe().getId().equals(dossier.getGroupe().getId()))
         {
             return FusionGroupeCheckDto.builder().groupesDifferents(false).build();
         }
 
-        List<User> manquants = membresManquants(doc.getGroupe(), projet.getGroupe());
+        List<User> manquants = membresManquants(doc.getGroupe(), dossier.getGroupe());
         return FusionGroupeCheckDto.builder()
             .groupesDifferents(!manquants.isEmpty())
             .membresQuiSerontAjoutes(manquants.stream()
@@ -1337,7 +1412,7 @@ public class DocumentService
     /**
      * Utilisateurs ayant accès à ce document — PUBLIC : tous les membres de
      * son UO ; PRIVÉ : les membres de son GroupeAccess, que ce groupe soit
-     * propre au document ou hérité de son projet privé (voir
+     * propre au document ou hérité de son dossier privé (voir
      * DocumentUploadeService — aucune différence de traitement nécessaire ici,
      * document.access/document.groupe reflètent déjà correctement l'héritage).
      * Utilisé pour la suppression d'un document corrompu, sa notification de

@@ -1,17 +1,17 @@
-/* ─── Panneau Projets ─── */
-.projets-panel {
+/* ─── Panneau Dossiers ─── */
+.dossiers-panel {
     display: flex;
     flex-direction: column;
     gap: 1rem;
 }
 
-.projets-panel-empty {
+.dossiers-panel-empty {
     color: rgba(44, 26, 14, 0.55);
     font-size: 0.9rem;
     padding: 1rem 0;
 }
 
-.projets-panel-error {
+.dossiers-panel-error {
     background: rgba(155, 58, 58, 0.1);
     color: var(--error);
     border-radius: var(--radius-sm);
@@ -19,13 +19,13 @@
     font-size: 0.85rem;
 }
 
-.projets-panel-header {
+.dossiers-panel-header {
     display: flex;
     justify-content: flex-end;
 }
 
 /* Formulaire de création */
-.projets-create-form {
+.dossiers-create-form {
     display: flex;
     flex-direction: column;
     gap: 0.6rem;
@@ -34,8 +34,8 @@
     padding: 1rem;
 }
 
-.projets-create-form input[type="text"],
-.projets-create-form textarea {
+.dossiers-create-form input[type="text"],
+.dossiers-create-form textarea {
     width: 100%;
     padding: 0.5rem 0.7rem;
     border: 1px solid rgba(44, 26, 14, 0.15);
@@ -44,24 +44,24 @@
     font-size: 0.9rem;
 }
 
-.projets-create-form textarea {
+.dossiers-create-form textarea {
     min-height: 60px;
     resize: vertical;
 }
 
-.projets-types-picker p {
+.dossiers-types-picker p {
     margin: 0 0 0.4rem;
     font-size: 0.82rem;
     color: rgba(44, 26, 14, 0.7);
 }
 
-.projets-types-list {
+.dossiers-types-list {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
 }
 
-.projets-type-checkbox {
+.dossiers-type-checkbox {
     display: flex;
     align-items: center;
     gap: 0.3rem;
@@ -76,7 +76,7 @@
 /* ── Sélecteur de types de documents (modal création/modification) ──
    Liste verticale filtrable plutôt que des pastilles en vrac — plus lisible
    dès qu'une UO a plus de quelques types de document. */
-.projets-type-search {
+.dossiers-type-search {
     width: 100%;
     padding: 0.45rem 0.7rem;
     margin-bottom: 0.4rem;
@@ -86,7 +86,7 @@
     font-size: 0.82rem;
 }
 
-.projets-types-list-vertical {
+.dossiers-types-list-vertical {
     display: flex;
     flex-direction: column;
     gap: 0.15rem;
@@ -97,7 +97,7 @@
     padding: 0.35rem;
 }
 
-.projets-type-row {
+.dossiers-type-row {
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -108,13 +108,13 @@
     transition: background var(--transition);
 }
 
-.projets-type-row:hover { background: rgba(139, 94, 60, 0.06); }
+.dossiers-type-row:hover { background: rgba(139, 94, 60, 0.06); }
 
-.projets-type-row input[type="checkbox"]:disabled {
+.dossiers-type-row input[type="checkbox"]:disabled {
     cursor: not-allowed;
 }
 
-.projets-types-list-empty {
+.dossiers-types-list-empty {
     margin: 0;
     padding: 0.5rem;
     font-size: 0.8rem;
@@ -122,35 +122,65 @@
     text-align: center;
 }
 
-.projets-create-actions {
+.dossiers-create-actions {
     display: flex;
-    gap: 0.6rem;
+    align-items: center;
+    gap: 0.5rem;
 }
 
-.projets-cancel-btn {
+/* Boutons plus compacts que le format standard .sidebar-btn (voir
+   AdminDashboard.css .main-content .sidebar-btn) — cette rangée d'actions de
+   modale n'a pas besoin de boutons aussi larges que "Créer un dossier". */
+.dossiers-create-actions .sidebar-btn {
+    padding: 0.4rem 1rem;
+    font-size: 0.8rem;
+}
+
+.dossiers-cancel-btn {
     background: none;
     border: 1px solid rgba(44, 26, 14, 0.2);
     border-radius: var(--radius-sm);
-    padding: 0.5rem 1rem;
+    padding: 0.4rem 0.8rem;
     cursor: pointer;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
+}
+
+/* Suppression du dossier — modale "Modifier" (voir DossiersPanel.tsx). Dernier
+   de la rangée, poussé à l'extrémité droite par margin-left:auto. */
+.dossiers-delete-btn {
+    background: none;
+    border: 1px solid var(--error);
+    color: var(--error);
+    border-radius: var(--radius-sm);
+    padding: 0.4rem 0.75rem;
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-left: auto;
+}
+
+.dossiers-delete-btn:hover {
+    background: rgba(155, 58, 58, 0.08);
 }
 
 /* Métadonnée sous le fil d'ariane (vue "types") — description + créateur/date. */
-.projets-detail-meta {
+.dossiers-detail-meta {
     font-size: 0.78rem;
     color: rgba(44, 26, 14, 0.55);
 }
 
 /* ─── Confidentialité ─── */
-.projets-access-picker {
+.dossiers-access-picker {
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
     margin: 0.25rem 0;
 }
 
-.projets-access-radio {
+.dossiers-access-radio {
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -158,13 +188,13 @@
     cursor: pointer;
 }
 
-.projets-access-badge {
+.dossiers-access-badge {
     margin-left: 0.6rem;
     vertical-align: middle;
 }
 
 /* Repris ici en autonome (ne dépend pas de User.css/Editor.css) pour que le
-   badge s'affiche correctement quel que soit le contexte où ProjetsPanel est
+   badge s'affiche correctement quel que soit le contexte où DossiersPanel est
    monté. */
 .doc-access-tag {
     display: inline-block;

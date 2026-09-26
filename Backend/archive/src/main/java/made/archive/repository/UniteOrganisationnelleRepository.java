@@ -20,7 +20,7 @@ public interface UniteOrganisationnelleRepository extends JpaRepository<UniteOrg
 
     List<UniteOrganisationnelle> findByParentIsNull();
 
-    @Query("SELECT u.id, u.parent.id FROM UniteOrganisationnelle u")
+    @Query("SELECT u.id AS id, u.parent.id AS parentId FROM UniteOrganisationnelle u")
     List<UOParentProjection> findAllIdsEtParents();
 
     List<UniteOrganisationnelle> findByParentId(Long parentId);
@@ -31,12 +31,11 @@ public interface UniteOrganisationnelleRepository extends JpaRepository<UniteOrg
     @Query("SELECT COUNT(u) > 0 FROM UniteOrganisationnelle u WHERE u.parent.id = :id")
     boolean hasChildren(@Param("id") Long id);
 
-    // IgnoreCase : "Esp"/"eSp"/"ESP" doivent être détectées comme le même nom au même
-    // niveau — aucune contrainte d'unicité n'existe côté base sur cette colonne, tout
-    // repose sur ces vérifications applicatives (voir UniteOrganisationnelleService).
-    boolean existsByNomIgnoreCaseAndParentId(String nom, Long parentId);
-
-    boolean existsByNomIgnoreCaseAndParentIsNull(String nom);
+    // Doublon détecté via NormalisationNoms (casse/accents/espaces), pas une simple
+    // IgnoreCase SQL — voir UniteOrganisationnelleService.verifierNomUnique/
+    // verifierNomUniqueExclut, qui comparent en mémoire après avoir chargé la fratrie
+    // via findByParentId/findByParentIsNull ci-dessous. Aucune contrainte d'unicité
+    // côté base sur cette colonne, tout repose sur ces vérifications applicatives.
 
     // Calcule le chemin complet de TOUTES les UO en une seule requête (pour les listes)
     @Query(value = """

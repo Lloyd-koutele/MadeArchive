@@ -21,13 +21,25 @@ function MetaDataField({
 }: MetaDataFieldProps) {
     const id = `meta-${nom.replace(/\s+/g, '-').toLowerCase()}`;
 
-    // Le libellé vit dans le placeholder.
-    const placeholderText = obligatoire ? `${nom} *` : nom;
+    // Label flottant, commun à tous les types texte ci-dessous : placeholder=" "
+    // (un espace, jamais vide) est nécessaire pour que :placeholder-shown
+    // distingue correctement un champ vide d'un champ rempli — un placeholder
+    // réellement vide ne déclenche pas :placeholder-shown de façon fiable.
+    const floatingLabel = (
+        <label htmlFor={id} className="meta-floating-label">
+            {nom}
+            {obligatoire && <span className="required-star"> *</span>}
+        </label>
+    );
 
     // ── BOOLEAN ───────────────────────────────────────────────────────────
     if (type === 'BOOLEAN') {
         return (
-            <div className="form-field">
+            <div className="form-field meta-field-static-label">
+                <label htmlFor={id} className="meta-static-label">
+                    {nom}
+                    {obligatoire && <span className="required-star"> *</span>}
+                </label>
                 <select
                     id={id}
                     className="form-field-input up-select"
@@ -37,7 +49,7 @@ function MetaDataField({
                     disabled={disabled}
                     aria-label={nom}
                 >
-                    <option value="">{placeholderText}</option>
+                    <option value="" disabled hidden />
                     <option value="true">Oui</option>
                     <option value="false">Non</option>
                 </select>
@@ -48,11 +60,11 @@ function MetaDataField({
     // ── TEXT (textarea) ────────────────────────────────────────────────────
     if (type === 'TEXT') {
         return (
-            <div className="form-field meta-field-textarea">
+            <div className="form-field meta-field-textarea meta-field-floating">
                 <textarea
                     id={id}
                     className="form-field-input meta-textarea"
-                    placeholder={placeholderText}
+                    placeholder=" "
                     value={value}
                     onChange={e => onChange(e.target.value)}
                     required={obligatoire}
@@ -60,6 +72,7 @@ function MetaDataField({
                     rows={3}
                     aria-label={nom}
                 />
+                {floatingLabel}
             </div>
         );
     }
@@ -68,6 +81,13 @@ function MetaDataField({
     if (type === 'DATE') {
         return (
             <div className="form-field meta-field-date">
+                <label htmlFor={id} className="meta-static-label">
+                    {nom}
+                    {obligatoire && <span className="required-star"> *</span>}
+                    {prefilled && value && (
+                        <span className="meta-prefilled"> (pré-rempli par OCR)</span>
+                    )}
+                </label>
                 <input
                     id={id}
                     type="date"
@@ -78,13 +98,6 @@ function MetaDataField({
                     disabled={disabled}
                     aria-label={nom}
                 />
-                <label htmlFor={id} className="meta-date-label">
-                    {nom}
-                    {obligatoire && <span className="required-star"> *</span>}
-                    {prefilled && value && (
-                        <span className="meta-prefilled"> (pré-rempli par OCR)</span>
-                    )}
-                </label>
             </div>
         );
     }
@@ -92,19 +105,20 @@ function MetaDataField({
     // ── INTEGER ────────────────────────────────────────────────────────────
     if (type === 'INTEGER') {
         return (
-            <div className="form-field">
+            <div className="form-field meta-field-floating">
                 <input
                     id={id}
                     type="number"
                     step="1"
                     className="form-field-input"
-                    placeholder={placeholderText}
+                    placeholder=" "
                     value={value}
                     onChange={e => onChange(e.target.value)}
                     required={obligatoire}
                     disabled={disabled}
                     aria-label={nom}
                 />
+                {floatingLabel}
             </div>
         );
     }
@@ -112,19 +126,20 @@ function MetaDataField({
     // ── FLOAT / DOUBLE ─────────────────────────────────────────────────────
     if (type === 'FLOAT' || type === 'DOUBLE') {
         return (
-            <div className="form-field">
+            <div className="form-field meta-field-floating">
                 <input
                     id={id}
                     type="number"
                     step="any"
                     className="form-field-input"
-                    placeholder={placeholderText}
+                    placeholder=" "
                     value={value}
                     onChange={e => onChange(e.target.value)}
                     required={obligatoire}
                     disabled={disabled}
                     aria-label={nom}
                 />
+                {floatingLabel}
             </div>
         );
     }
@@ -132,37 +147,39 @@ function MetaDataField({
     // ── CHAR ────────────────────────────────────────────────────────────────
     if (type === 'CHAR') {
         return (
-            <div className="form-field">
+            <div className="form-field meta-field-floating">
                 <input
                     id={id}
                     type="text"
                     maxLength={1}
                     className="form-field-input meta-char-input"
-                    placeholder={placeholderText}
+                    placeholder=" "
                     value={value}
                     onChange={e => onChange(e.target.value.slice(0, 1))}
                     required={obligatoire}
                     disabled={disabled}
                     aria-label={nom}
                 />
+                {floatingLabel}
             </div>
         );
     }
 
     // ── STRING (défaut) ─────────────────────────────────────────────────────
     return (
-        <div className="form-field">
+        <div className="form-field meta-field-floating">
             <input
                 id={id}
                 type="text"
                 className="form-field-input"
-                placeholder={placeholderText}
+                placeholder=" "
                 value={value}
                 onChange={e => onChange(e.target.value)}
                 required={obligatoire}
                 disabled={disabled}
                 aria-label={nom}
             />
+            {floatingLabel}
         </div>
     );
 }

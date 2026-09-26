@@ -19,8 +19,8 @@ public class DocumentUploadDto
     // Optionnel — l'uploadeur est toujours ajouté automatiquement
     private List<UUID> groupeMembresIds;
 
-    // Optionnel — rattache le document à un projet (dossier/affaire) existant
-    private Long projetId;
+    // Optionnel — rattache le document à un dossier (dossier/affaire) existant
+    private Long dossierId;
 
     // Optionnel — ce document devient la version suivante de ce document
     // existant (doit être la version actuelle de sa chaîne, même UO, même type)
