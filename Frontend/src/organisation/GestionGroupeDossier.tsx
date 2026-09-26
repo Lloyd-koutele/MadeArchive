@@ -1,25 +1,25 @@
 import { useState, useEffect } from 'react';
 import {
-    getMembresProjet, getDisponiblesProjet, ajouterMembreProjet, retirerMembreProjet
-} from '../services/organisation/ProjetGroupeService';
+    getMembresDossier, getDisponiblesDossier, ajouterMembreDossier, retirerMembreDossier
+} from '../services/organisation/DossierGroupeService';
 import type { MembreDto } from '../services/document/GroupeService';
 import { useNotify } from '../notifications/NotificationProvider';
 import { useConfirm } from '../notifications/ConfirmProvider';
 import '../Style/Editor/Editor.css';
 
-interface GestionGroupeProjetProps {
-    projetId: number;
-    projetNom: string;
+interface GestionGroupeDossierProps {
+    dossierId: number;
+    dossierNom: string;
     onClose?: () => void;
 }
 
 /**
- * Gestion des membres du groupe d'accès d'un projet privé — même comportement
+ * Gestion des membres du groupe d'accès d'un dossier privé — même comportement
  * que document/GestionGroupe.tsx : tout membre voit la liste, seul le
  * créateur (peutGerer) voit les contrôles d'ajout/retrait, et le créateur
  * lui-même n'apparaît jamais avec un bouton "Retirer".
  */
-function GestionGroupeProjet({ projetId, projetNom, onClose }: GestionGroupeProjetProps) {
+function GestionGroupeDossier({ dossierId, dossierNom, onClose }: GestionGroupeDossierProps) {
     const notify = useNotify();
     const confirm = useConfirm();
     const [membres, setMembres] = useState<MembreDto[]>([]);
@@ -43,18 +43,18 @@ function GestionGroupeProjet({ projetId, projetNom, onClose }: GestionGroupeProj
     useEffect(() => {
         loadAll();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [projetId]);
+    }, [dossierId]);
 
     const loadAll = async () => {
         setIsLoading(true);
         try {
-            const reponse = await getMembresProjet(projetId);
+            const reponse = await getMembresDossier(dossierId);
             setMembres(reponse.membres);
             setCreateurId(reponse.uploadeurId);
             setPeutGerer(reponse.peutGerer);
 
             if (reponse.peutGerer) {
-                const d = await getDisponiblesProjet(projetId);
+                const d = await getDisponiblesDossier(dossierId);
                 setDisponibles(d);
             } else {
                 setDisponibles([]);
@@ -69,7 +69,7 @@ function GestionGroupeProjet({ projetId, projetNom, onClose }: GestionGroupeProj
     const handleAjouter = async () => {
         if (!selectedToAdd) return;
         try {
-            await ajouterMembreProjet(projetId, selectedToAdd);
+            await ajouterMembreDossier(dossierId, selectedToAdd);
             notify.success("Membre ajouté avec succès");
             setSelectedToAdd('');
             await loadAll();
@@ -81,7 +81,7 @@ function GestionGroupeProjet({ projetId, projetNom, onClose }: GestionGroupeProj
     const handleRetirer = async (membre: MembreDto) => {
         if (!(await confirm(`Retirer ${membre.prenom} ${membre.nom} du groupe ?`))) return;
         try {
-            await retirerMembreProjet(projetId, membre.id);
+            await retirerMembreDossier(dossierId, membre.id);
             notify.success(`${membre.prenom} ${membre.nom} retiré du groupe`);
             await loadAll();
         } catch (err: any) {
@@ -94,12 +94,12 @@ function GestionGroupeProjet({ projetId, projetNom, onClose }: GestionGroupeProj
     return (
         <div className="groupe-wrapper">
             <p className="groupe-doc-titre">
-                <i className="fa-solid fa-folder-open"></i> {projetNom}
+                <i className="fa-solid fa-folder-open"></i> {dossierNom}
             </p>
 
             {!peutGerer && (
                 <p className="groupe-readonly-hint">
-                    Seul le créateur de ce projet peut ajouter ou retirer des membres.
+                    Seul le créateur de ce dossier peut ajouter ou retirer des membres.
                 </p>
             )}
 
@@ -184,4 +184,4 @@ function GestionGroupeProjet({ projetId, projetNom, onClose }: GestionGroupeProj
     );
 }
 
-export default GestionGroupeProjet;
+export default GestionGroupeDossier;

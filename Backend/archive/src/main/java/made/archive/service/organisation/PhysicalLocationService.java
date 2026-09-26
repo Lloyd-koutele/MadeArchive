@@ -15,9 +15,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import made.archive.dto.PhysicalLocationArborescenceRequestDto;
 import made.archive.dto.PhysicalLocationCreateDto;
 import made.archive.dto.PhysicalLocationDto;
 import made.archive.dto.PhysicalLocationNodeDto;
+import made.archive.dto.PhysicalLocationTreeNodeDto;
 import made.archive.dto.PhysicalLocationUpdateDto;
 import made.archive.entite.AuditAction;
 import made.archive.entite.AuditCible;
@@ -25,6 +27,7 @@ import made.archive.entite.Document;
 import made.archive.entite.DocumentStatus;
 import made.archive.entite.LocationStatus;
 import made.archive.entite.PhysicalLocation;
+import made.archive.entite.Role_Name;
 import made.archive.entite.UniteOrganisationnelle;
 import made.archive.entite.User;
 import made.archive.exception.AccessDeniedException;
@@ -33,16 +36,26 @@ import made.archive.repository.DocumentRepository;
 import made.archive.repository.PhysicalLocationRepository;
 import made.archive.repository.UniteOrganisationnelleRepository;
 import made.archive.service.audit.AuditLogService;
+import made.archive.util.NormalisationNoms;
 
 /**
  * Localisation physique des originaux papier — voir PhysicalLocation.
  *
  * Arbre entièrement libre par UO (pas de LocationType en enum, chaque UO
- * construit sa propre arborescence). Gestion (créer/modifier/changer le
- * type/désactiver/réactiver/supprimer) réservée à ADMIN (partout) et
- * ADMIN_UO (seulement sur leur UO et ses UO descendantes — voir
- * UniteOrganisationnelleService.aAutoriteSur, même condition que pour la
- * gestion des UO elles-mêmes).
+ * construit sa propre arborescence).
+ *
+ * ENTIÈREMENT piloté par l'éditeur (revu le 09/2026 — géré par ADMIN/ADMIN_UO
+ * à l'origine, puis seule la création leur avait été retirée dans un premier
+ * temps, avant ce passage complet) : créer/modifier/déplacer/convertir/
+ * désactiver/réactiver/supprimer, TOUJOURS dans sa PROPRE UO uniquement (voir
+ * estEditeurDeUO — même condition que DossierService.estEditeurDeUO). Même
+ * modèle que les Dossiers, entièrement pilotés par l'éditeur.
+ *
+ * ADMIN et ADMIN_UO n'ont plus AUCUN droit d'écriture ici — uniquement un
+ * droit de LECTURE (voir PhysicalLocationLectureController), comme pour les
+ * Dossiers : l'éditeur est celui qui alimente concrètement l'arborescence
+ * physique au quotidien, l'administration n'a pas à en défaire ce qu'il met
+ * en place.
  *
  * Règles structurelles (voir Javadoc de PhysicalLocation) :
  *   - storagePoint=true (point de stockage) : peut recevoir des documents,
@@ -85,10 +98,15 @@ public class PhysicalLocationService
             throw new BusinessException("Le nom est obligatoire");
         }
 
-        if (!uoService.aAutoriteSur(dto.getUniteOrganisationnelleId(), currentUser))
+        // EXCLUSIVEMENT l'éditeur de cette UO (retiré le 09/2026 pour ADMIN/ADMIN_UO,
+        // qui gardent les autres actions — voir Javadoc de classe et de
+        // PhysicalLocationController). Pas d'appel à aAutoriteSur ici : même un
+        // ADMIN global ne doit plus passer cette porte, contrairement aux autres
+        // méthodes de cette classe (modifier/deplacer/desactiver/...).
+        if (!estEditeurDeUO(dto.getUniteOrganisationnelleId(), currentUser))
         {
             throw new AccessDeniedException(
-                "Vous devez être ADMIN, ou ADMIN_UO ayant autorité sur cette UO, pour y créer un emplacement");
+                "Seul un éditeur de cette unité organisationnelle peut y créer un emplacement");
         }
 
         UniteOrganisationnelle uo = uoRepository.findById(dto.getUniteOrganisationnelleId())
@@ -117,6 +135,8 @@ public class PhysicalLocationService
             }
         }
 
+        verifierNomUnique(dto.getName(), uo.getId(), parent, null);
+
         PhysicalLocation loc = new PhysicalLocation();
         loc.setName(dto.getName());
         loc.setDescription(dto.getDescription());
@@ -137,6 +157,280 @@ public class PhysicalLocationService
             true);
 
         return toDto(saved);
+    }
+
+    /**
+     * Crée UN emplacement et sa descendance en un seul appel — le client
+     * construit tout le brouillon localement (une racine + ses enfants
+     * imbriqués, à toute profondeur) puis l'envoie d'un coup ; chaque nœud
+     * est créé ici en réutilisant EXACTEMENT les mêmes règles que creer()
+     * (nom obligatoire, storagePoint sans enfant, unicité du nom entre
+     * frères/sœurs), dans l'ordre d'un parcours en profondeur, le tout dans
+     * UNE SEULE transaction : la moindre violation sur n'importe quel nœud
+     * fait tout annuler, jamais d'arborescence à moitié créée.
+     *
+     * TOUJOURS une seule racine par appel (jamais plusieurs racines
+     * indépendantes) — pour plusieurs emplacements racine, on répète
+     * l'action bouton par bouton, une racine + sa descendance à la fois.
+     *
+     * parentId ne désigne QUE le point d'accroche de la racine envoyée (null
+     * = racine de l'UO) — mêmes vérifications que le parent de creer() :
+     * doit être un nœud chemin actif de la même UO.
+     *
+     * Un seul log d'audit récapitulatif est émis pour tout l'appel (pas un
+     * par nœud créé), pour ne pas noyer le journal sous des dizaines
+     * d'entrées identiques lors d'une construction en masse.
+     */
+    @Transactional
+    public PhysicalLocationNodeDto creerArborescence(PhysicalLocationArborescenceRequestDto dto, User currentUser)
+    {
+        if (dto.getUniteOrganisationnelleId() == null)
+        {
+            throw new BusinessException("L'unité organisationnelle est obligatoire");
+        }
+        if (dto.getNode() == null)
+        {
+            throw new BusinessException("La racine de l'arborescence est obligatoire");
+        }
+        if (!estEditeurDeUO(dto.getUniteOrganisationnelleId(), currentUser))
+        {
+            throw new AccessDeniedException(
+                "Seul un éditeur de cette unité organisationnelle peut y créer un emplacement");
+        }
+
+        UniteOrganisationnelle uo = uoRepository.findById(dto.getUniteOrganisationnelleId())
+            .orElseThrow(() -> new BusinessException("UO introuvable : " + dto.getUniteOrganisationnelleId()));
+
+        PhysicalLocation parent = null;
+        if (dto.getParentId() != null)
+        {
+            parent = locationRepository.findById(dto.getParentId())
+                .orElseThrow(() -> new BusinessException("Emplacement parent introuvable"));
+
+            if (parent.isStoragePoint())
+            {
+                throw new BusinessException(
+                    "Impossible : \"" + parent.getName() + "\" est un point de stockage, il ne peut pas avoir d'enfant");
+            }
+            if (parent.getStatus() != LocationStatus.ACTIVE)
+            {
+                throw new BusinessException(
+                    "Impossible : \"" + parent.getName() + "\" est désactivé");
+            }
+            if (!parent.getUniteOrganisationnelle().getId().equals(dto.getUniteOrganisationnelleId()))
+            {
+                throw new BusinessException(
+                    "L'emplacement doit appartenir à la même UO que son parent");
+            }
+        }
+
+        int[] compteur = { 0 };
+        PhysicalLocationNodeDto racine = creerNoeudArborescence(dto.getNode(), uo, parent, currentUser, compteur);
+
+        auditLogService.log(currentUser, AuditAction.LOCATION_CREEE, AuditCible.PHYSICAL_LOCATION,
+            racine.getId().toString(), uo.getId(),
+            "Création de \"" + racine.getName() + "\""
+                + (compteur[0] > 1 ? " et de " + (compteur[0] - 1) + " descendant(s)" : "")
+                + (parent != null ? " sous \"" + parent.getName() + "\"" : " (racine)"),
+            true);
+
+        return racine;
+    }
+
+    /** Crée récursivement un nœud puis ses enfants — voir creerArborescence. */
+    private PhysicalLocationNodeDto creerNoeudArborescence(PhysicalLocationTreeNodeDto node, UniteOrganisationnelle uo,
+                                                             PhysicalLocation parent, User currentUser, int[] compteur)
+    {
+        if (node.getName() == null || node.getName().isBlank())
+        {
+            throw new BusinessException("Le nom est obligatoire pour chaque nœud de l'arborescence");
+        }
+
+        boolean aDesEnfants = node.getChildren() != null && !node.getChildren().isEmpty();
+        if (node.isStoragePoint() && aDesEnfants)
+        {
+            throw new BusinessException(
+                "\"" + node.getName() + "\" est un point de stockage, il ne peut pas avoir d'enfant");
+        }
+
+        verifierNomUnique(node.getName(), uo.getId(), parent, null);
+
+        PhysicalLocation loc = new PhysicalLocation();
+        loc.setName(node.getName());
+        loc.setDescription(node.getDescription());
+        loc.setStoragePoint(node.isStoragePoint());
+        loc.setParent(parent);
+        loc.setUniteOrganisationnelle(uo);
+        loc.setStatus(LocationStatus.ACTIVE);
+        loc.setCreatedBy(currentUser);
+        loc.setCreatedAt(LocalDateTime.now());
+
+        PhysicalLocation saved = locationRepository.save(loc);
+        compteur[0]++;
+
+        List<PhysicalLocationNodeDto> enfants = new ArrayList<>();
+        if (aDesEnfants)
+        {
+            for (PhysicalLocationTreeNodeDto enfant : node.getChildren())
+            {
+                enfants.add(creerNoeudArborescence(enfant, uo, saved, currentUser, compteur));
+            }
+        }
+
+        return PhysicalLocationNodeDto.builder()
+            .id(saved.getId())
+            .name(saved.getName())
+            .status(saved.getStatus().name())
+            .storagePoint(saved.isStoragePoint())
+            .children(enfants)
+            .build();
+    }
+
+    /**
+     * Modifie UN emplacement existant (nom) et sa descendance en un seul
+     * appel — même expérience que creerArborescence, pour un nœud déjà en
+     * base : le client pré-remplit le brouillon avec l'arborescence RÉELLE
+     * actuelle (id inclus sur chaque nœud existant), l'utilisateur peut
+     * renommer n'importe quel nœud existant ET ajouter de nouveaux
+     * descendants n'importe où, puis tout est envoyé d'un coup.
+     *
+     * La SUPPRESSION d'un descendant existant n'est PAS gérée ici, par
+     * design — un nœud absent du brouillon envoyé n'est JAMAIS supprimé,
+     * seulement ignoré (reste tel quel en base). Supprimer reste
+     * exclusivement le fait de supprimer(), avec sa confirmation dédiée :
+     * silencieusement interpréter une absence comme une suppression serait
+     * dangereux si le nœud contient des documents.
+     *
+     * dto.getId() est ignoré à la racine (le nœud modifié est déjà désigné
+     * par rootId) — chaque ENFANT de dto avec un id renomme le nœud existant
+     * correspondant (en vérifiant qu'il est bien un descendant DIRECT du
+     * nœud sous lequel il est placé dans le brouillon — jamais un id
+     * arbitraire d'ailleurs dans l'arbre), chaque enfant SANS id crée un
+     * nouveau nœud (mêmes règles que creerNoeudArborescence).
+     *
+     * La description n'est JAMAIS touchée ici, ni pour la racine ni pour les
+     * descendants — ce constructeur d'arborescence ne l'expose plus du tout
+     * (jugée superflue/encombrante, retirée côté client), donc dto ne la
+     * porte jamais : la conserver telle quelle en base est le seul
+     * comportement sûr (la modifier() dédiée reste le moyen d'éditer une
+     * description au besoin).
+     */
+    @Transactional
+    public PhysicalLocationNodeDto mettreAJourArborescence(UUID rootId, PhysicalLocationTreeNodeDto dto, User currentUser)
+    {
+        PhysicalLocation root = getEtVerifierAutorite(rootId, currentUser);
+
+        if (dto.getName() == null || dto.getName().isBlank())
+        {
+            throw new BusinessException("Le nom est obligatoire");
+        }
+
+        verifierNomUnique(dto.getName(), root.getUniteOrganisationnelle().getId(), root.getParent(), root.getId());
+        root.setName(dto.getName());
+        root.setUpdatedBy(currentUser);
+        root.setUpdatedAt(LocalDateTime.now());
+        locationRepository.save(root);
+
+        int[] compteurNouveaux = { 0 };
+        int[] compteurRenommes = { 0 };
+        List<PhysicalLocationNodeDto> enfants = new ArrayList<>();
+        if (dto.getChildren() != null)
+        {
+            for (PhysicalLocationTreeNodeDto enfant : dto.getChildren())
+            {
+                enfants.add(appliquerNoeudMiseAJour(enfant, root.getUniteOrganisationnelle(), root, currentUser,
+                    compteurNouveaux, compteurRenommes));
+            }
+        }
+
+        auditLogService.log(currentUser, AuditAction.LOCATION_MODIFIEE, AuditCible.PHYSICAL_LOCATION,
+            root.getId().toString(), root.getUniteOrganisationnelle().getId(),
+            "Mise à jour de \"" + root.getName() + "\""
+                + (compteurRenommes[0] > 0 ? " — " + compteurRenommes[0] + " descendant(s) renommé(s)" : "")
+                + (compteurNouveaux[0] > 0 ? ", " + compteurNouveaux[0] + " nouveau(x) descendant(s)" : ""),
+            true);
+
+        return PhysicalLocationNodeDto.builder()
+            .id(root.getId())
+            .name(root.getName())
+            .status(root.getStatus().name())
+            .storagePoint(root.isStoragePoint())
+            .children(enfants)
+            .build();
+    }
+
+    /** Applique récursivement un nœud de brouillon (renommage si existant, création si nouveau) — voir mettreAJourArborescence. */
+    private PhysicalLocationNodeDto appliquerNoeudMiseAJour(PhysicalLocationTreeNodeDto dto, UniteOrganisationnelle uo,
+                                                              PhysicalLocation parentAttendu, User currentUser,
+                                                              int[] compteurNouveaux, int[] compteurRenommes)
+    {
+        if (dto.getName() == null || dto.getName().isBlank())
+        {
+            throw new BusinessException("Le nom est obligatoire pour chaque nœud");
+        }
+
+        boolean aDesEnfants = dto.getChildren() != null && !dto.getChildren().isEmpty();
+        PhysicalLocation loc;
+
+        if (dto.getId() != null)
+        {
+            loc = locationRepository.findById(dto.getId())
+                .orElseThrow(() -> new BusinessException("Emplacement introuvable : " + dto.getId()));
+            if (loc.getParent() == null || !loc.getParent().getId().equals(parentAttendu.getId()))
+            {
+                throw new BusinessException(
+                    "\"" + dto.getName() + "\" n'est pas un descendant direct attendu à cet endroit de l'arborescence");
+            }
+            if (loc.isStoragePoint() && aDesEnfants)
+            {
+                throw new BusinessException(
+                    "\"" + loc.getName() + "\" est un point de stockage, il ne peut pas avoir d'enfant");
+            }
+            verifierNomUnique(dto.getName(), uo.getId(), parentAttendu, loc.getId());
+            loc.setName(dto.getName());
+            loc.setUpdatedBy(currentUser);
+            loc.setUpdatedAt(LocalDateTime.now());
+            loc = locationRepository.save(loc);
+            compteurRenommes[0]++;
+        }
+        else
+        {
+            if (dto.isStoragePoint() && aDesEnfants)
+            {
+                throw new BusinessException(
+                    "\"" + dto.getName() + "\" est un point de stockage, il ne peut pas avoir d'enfant");
+            }
+            verifierNomUnique(dto.getName(), uo.getId(), parentAttendu, null);
+
+            loc = new PhysicalLocation();
+            loc.setName(dto.getName());
+            loc.setDescription(dto.getDescription());
+            loc.setStoragePoint(dto.isStoragePoint());
+            loc.setParent(parentAttendu);
+            loc.setUniteOrganisationnelle(uo);
+            loc.setStatus(LocationStatus.ACTIVE);
+            loc.setCreatedBy(currentUser);
+            loc.setCreatedAt(LocalDateTime.now());
+            loc = locationRepository.save(loc);
+            compteurNouveaux[0]++;
+        }
+
+        List<PhysicalLocationNodeDto> enfants = new ArrayList<>();
+        if (aDesEnfants)
+        {
+            for (PhysicalLocationTreeNodeDto enfant : dto.getChildren())
+            {
+                enfants.add(appliquerNoeudMiseAJour(enfant, uo, loc, currentUser, compteurNouveaux, compteurRenommes));
+            }
+        }
+
+        return PhysicalLocationNodeDto.builder()
+            .id(loc.getId())
+            .name(loc.getName())
+            .status(loc.getStatus().name())
+            .storagePoint(loc.isStoragePoint())
+            .children(enfants)
+            .build();
     }
 
     /**
@@ -199,6 +493,11 @@ public class PhysicalLocationService
             return toDto(loc);
         }
 
+        // Un déplacement peut faire atterrir loc parmi de nouveaux frères/sœurs —
+        // même vérification qu'à la création, sur SA propre UO (le déplacement ne
+        // change jamais d'UO, voir plus haut) et le NOUVEAU parent.
+        verifierNomUnique(loc.getName(), loc.getUniteOrganisationnelle().getId(), nouveauParent, id);
+
         loc.setParent(nouveauParent);
         loc.setUpdatedBy(currentUser);
         loc.setUpdatedAt(LocalDateTime.now());
@@ -220,6 +519,7 @@ public class PhysicalLocationService
 
         if (dto.getName() != null && !dto.getName().isBlank())
         {
+            verifierNomUnique(dto.getName(), loc.getUniteOrganisationnelle().getId(), loc.getParent(), id);
             loc.setName(dto.getName());
         }
         if (dto.getDescription() != null)
@@ -466,16 +766,86 @@ public class PhysicalLocationService
     // Helpers
     // ═══════════════════════════════════════════════════════════════════
 
+    /**
+     * Toutes les actions d'écriture (modifier/déplacer/convertir/désactiver/
+     * réactiver/supprimer) sont désormais EXCLUSIVEMENT réservées à l'éditeur
+     * de l'UO de cet emplacement (retiré à ADMIN/ADMIN_UO le 09/2026 — ils
+     * gardent un droit de LECTURE seulement, voir PhysicalLocationLectureController)
+     * — même modèle que les Dossiers, entièrement pilotés par l'éditeur.
+     */
     private PhysicalLocation getEtVerifierAutorite(UUID id, User currentUser)
     {
         PhysicalLocation loc = locationRepository.findById(id)
             .orElseThrow(() -> new BusinessException("Emplacement introuvable : " + id));
 
-        if (!uoService.aAutoriteSur(loc.getUniteOrganisationnelle().getId(), currentUser))
+        if (!estEditeurDeUO(loc.getUniteOrganisationnelle().getId(), currentUser))
         {
-            throw new AccessDeniedException("Vous n'avez pas l'autorité sur l'UO de cet emplacement");
+            throw new AccessDeniedException("Seul un éditeur de cette unité organisationnelle peut gérer cet emplacement");
         }
         return loc;
+    }
+
+    /**
+     * Deux vérifications de nom, après NORMALISATION (casse, accents,
+     * espacement intégralement retiré — voir NormalisationNoms) :
+     *
+     *   1. Doublon entre FRÈRES/SŒURS — même parent (ou même niveau racine
+     *      si parent==null), DANS LA MÊME UO. NOUVEAU (aucune vérification
+     *      n'existait avant le 09/2026 pour les emplacements physiques :
+     *      deux emplacements strictement identiques pouvaient déjà
+     *      coexister) — même logique que
+     *      UniteOrganisationnelleService.verifierNomUnique.
+     *   2. Même nom que le PARENT DIRECT — interdit, même normalisé
+     *      identique (ex. "Salle" ne peut pas avoir un enfant "Salle") ;
+     *      un nœud RACINE (parent==null) n'a rien à comparer, jamais
+     *      concerné par cette règle.
+     *
+     * Appelée à la création, à la modification (renommage), au déplacement
+     * (un nœud déplacé peut atterrir parmi de nouveaux frères/sœurs ET sous
+     * un nouveau parent) et dans les deux flux d'arborescence. exclutId :
+     * l'emplacement qu'on est en train de renommer/déplacer (null à la
+     * création) — jamais nécessaire pour la comparaison au parent, un nœud
+     * n'est jamais son propre parent.
+     */
+    private void verifierNomUnique(String nom, Long uoId, PhysicalLocation parent, UUID exclutId)
+    {
+        List<PhysicalLocation> fratrie = (parent == null)
+            ? locationRepository.findByParentIsNullAndUniteOrganisationnelleId(uoId)
+            : locationRepository.findByParentId(parent.getId());
+
+        String nomNormalise = NormalisationNoms.normaliser(nom);
+        boolean conflit = fratrie.stream()
+            .anyMatch(l -> NormalisationNoms.normaliser(l.getName()).equals(nomNormalise)
+                && (exclutId == null || !l.getId().equals(exclutId)));
+
+        if (conflit)
+        {
+            throw new BusinessException("Un emplacement avec ce nom existe déjà à cet endroit");
+        }
+
+        if (parent != null && NormalisationNoms.normaliser(parent.getName()).equals(nomNormalise))
+        {
+            throw new BusinessException(
+                "Un emplacement ne peut pas porter le même nom que son parent direct (\"" + parent.getName() + "\")");
+        }
+    }
+
+    /**
+     * true si l'acteur est EDITOR et que cette UO est bien SA propre UO
+     * actuelle — jamais une UO descendante ou une autre branche (contrairement
+     * à aAutoriteSur pour ADMIN_UO) : un éditeur ne gère que son propre
+     * terrain. Même logique que DossierService.estEditeurDeUO.
+     */
+    private boolean estEditeurDeUO(Long uoId, User acteur)
+    {
+        boolean estEditeur = acteur.getRoles().stream().anyMatch(r -> r.getName() == Role_Name.EDITOR);
+        if (!estEditeur)
+        {
+            return false;
+        }
+        return uoService.getUOActuelleUser(acteur.getId())
+            .map(dto -> uoId.equals(dto.getId()))
+            .orElse(false);
     }
 
     /** true si cible == loc, ou si cible est un descendant de loc — détecte un déplacement cyclique. */
@@ -495,7 +865,7 @@ public class PhysicalLocationService
 
     /**
      * Lecture (browsing/fiche) : plus large que la gestion — tout utilisateur
-     * voyant normalement cette UO (même règle que documents/projets, voir
+     * voyant normalement cette UO (même règle que documents/dossiers, voir
      * UniteOrganisationnelleService.getUoIdsVisiblesPourLecture), pas
      * seulement ceux ayant autorité de gestion dessus.
      */

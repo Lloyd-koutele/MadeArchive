@@ -40,6 +40,7 @@ import made.archive.repository.UniteOrganisationnelleRepository;
 import made.archive.repository.UniteOrganisationnelleRepository.UOParentProjection;
 import made.archive.repository.UserRepository;
 import made.archive.service.audit.AuditLogService;
+import made.archive.util.NormalisationNoms;
 import made.archive.service.notification.NotificationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -112,7 +113,7 @@ public class UniteOrganisationnelleService
 
         notifierCreationUO(saved, parent, createBy);
 
-        return toDTOAvecChemin(saved);
+        return toDTOAvecChemin(saved, createBy);
     }
 
     /**
@@ -172,7 +173,7 @@ public class UniteOrganisationnelleService
             uoRepository.save(uo);
         }
 
-        return toDTOAvecChemin(uo);
+        return toDTOAvecChemin(uo, currentUser);
     }
 
     @Transactional
@@ -184,7 +185,7 @@ public class UniteOrganisationnelleService
         UniteOrganisationnelle uo = uoRepository.findById(id)
             .orElseThrow(() -> new UONotFoundException(id));
 
-        return toDTOAvecChemin(uo);
+        return toDTOAvecChemin(uo, currentUser);
     }
 
     @Transactional
@@ -201,7 +202,7 @@ public class UniteOrganisationnelleService
         UniteOrganisationnelle uo = uoRepository.findById(uoId)
             .orElseThrow(() -> new UONotFoundException(uoId));
 
-        return toDTOAvecChemin(uo);
+        return toDTOAvecChemin(uo, currentUser);
     }
 
     @Transactional
@@ -223,10 +224,9 @@ public class UniteOrganisationnelleService
             throw new AccessDeniedException("Vous n'avez pas l'autorité sur cette UO");
 
         List<UniteOrganisationnelle> uos = uoRepository.findByParentId(parentId);
-        Map<Long, String> chemins = chargerCheminComplets();
 
         return uos.stream()
-            .map(uo -> toDto(uo, chemins.get(uo.getId())))
+            .map(uo -> toDTOAvecChemin(uo, currentUser))
             .toList();
     }
 
@@ -250,9 +250,8 @@ public class UniteOrganisationnelleService
             uoRepository.findByParentId(courant.getId()).forEach(aTraiter::push);
         }
 
-        Map<Long, String> chemins = chargerCheminComplets();
         return resultat.stream()
-            .map(uo -> toDto(uo, chemins.get(uo.getId())))
+            .map(uo -> toDTOAvecChemin(uo, currentUser))
             .toList();
     }
 
@@ -357,7 +356,7 @@ public class UniteOrganisationnelleService
                 updated.getId().toString(), updated.getId(), message, true);
         }
 
-        return toDTOAvecChemin(updated);
+        return toDTOAvecChemin(updated, currentUser);
     }
 
     /**
@@ -400,7 +399,7 @@ public class UniteOrganisationnelleService
 
         if (uo.getParent() == null)
         {
-            return toDTOAvecChemin(uo);
+            return toDTOAvecChemin(uo, currentUser);
         }
 
         verifierNomUniqueExclut(uo.getNom(), null, id);
@@ -413,7 +412,7 @@ public class UniteOrganisationnelleService
             updated.getId().toString(), updated.getId(),
             "L'UO " + updated.getNom() + " devient une UO racine", true);
 
-        return toDTOAvecChemin(updated);
+        return toDTOAvecChemin(updated, currentUser);
     }
 
     @Transactional
@@ -564,11 +563,33 @@ public class UniteOrganisationnelleService
         return user.getRoles().stream().anyMatch(r -> r.getName() == Role_Name.ADMIN_UO);
     }
 
+    private boolean isEditor(User user)
+    {
+        if (user == null || user.getRoles() == null)
+        {
+            return false;
+        }
+        return user.getRoles().stream().anyMatch(r -> r.getName() == Role_Name.EDITOR);
+    }
+
+    /**
+     * Doublon détecté après NORMALISATION (casse, accents, espacement — voir
+     * NormalisationNoms), pas une simple comparaison IgnoreCase : "Éducation",
+     * "education" ET "Education Nationale"→"educationnationale" (espaces
+     * intégralement retirés, pas juste réduits) sont considérés comme LE MÊME
+     * nom s'ils normalisent identiquement. Portée : entre frères/sœurs
+     * (même parent, ou même niveau racine si parentId==null) — jamais globale
+     * sur tout l'arbre.
+     */
     private void verifierNomUnique(String nom, Long parentId)
     {
-        boolean existe = (parentId == null)
-            ? uoRepository.existsByNomIgnoreCaseAndParentIsNull(nom)
-            : uoRepository.existsByNomIgnoreCaseAndParentId(nom, parentId);
+        List<UniteOrganisationnelle> fratrie = (parentId == null)
+            ? uoRepository.findByParentIsNull()
+            : uoRepository.findByParentId(parentId);
+
+        String nomNormalise = NormalisationNoms.normaliser(nom);
+        boolean existe = fratrie.stream()
+            .anyMatch(u -> NormalisationNoms.normaliser(u.getNom()).equals(nomNormalise));
 
         if (existe)
         {
@@ -576,14 +597,16 @@ public class UniteOrganisationnelleService
         }
     }
 
+    /** Même vérification que verifierNomUnique, en excluant l'UO qu'on est justement en train de renommer/déplacer. */
     private void verifierNomUniqueExclut(String nom, Long parentId, Long exclutId)
     {
         List<UniteOrganisationnelle> fratrie = (parentId == null)
             ? uoRepository.findByParentIsNull()
             : uoRepository.findByParentId(parentId);
 
+        String nomNormalise = NormalisationNoms.normaliser(nom);
         boolean conflit = fratrie.stream()
-            .anyMatch(u -> u.getNom().equalsIgnoreCase(nom) && !u.getId().equals(exclutId));
+            .anyMatch(u -> NormalisationNoms.normaliser(u.getNom()).equals(nomNormalise) && !u.getId().equals(exclutId));
 
         if (conflit)
         {
@@ -611,11 +634,103 @@ public class UniteOrganisationnelleService
             .collect(Collectors.toMap(UOCheminProjection::getId, UOCheminProjection::getChemin));
     }
 
-    private UniteOrganisationnelleDto toDTOAvecChemin(UniteOrganisationnelle uo)
+    /**
+     * null si l'appelant est ADMIN (aucune troncature nécessaire) ou n'est pas
+     * ADMIN_UO ; sinon l'id de sa propre UO administrée — à résoudre UNE FOIS
+     * à la demande (ex. DocumentExportService.lancerExport, où l'appelant est
+     * un objet pleinement chargé) et à transmettre tel quel à un traitement
+     * différé (ex. génération @Async du ZIP d'export) qui n'a alors plus
+     * besoin de recharger l'appelant, ni de savoir lire son rôle/UO — voir
+     * chargerCheminsPourExport.
+     */
+    public Long getRacineTroncatureId(User appelant)
     {
-        String chemin = uoRepository.findCheminCompletById(uo.getId())
-            .orElse(uo.getNom());
-        return toDto(uo, chemin);
+        if (appelant == null || isAdmin(appelant) || !isAdminUO(appelant))
+        {
+            return null;
+        }
+        return getUOActuelleId(appelant.getId()).orElse(null);
+    }
+
+    /**
+     * Chemins complets de TOUTES les UO, tronqués à racineTroncatureId si non
+     * null (voir getRacineTroncatureId) — même garantie que cheminPourAffichage
+     * mais en lot : un ADMIN_UO ne doit jamais voir apparaître le nom d'une UO
+     * au-dessus de son périmètre administré, y compris dans l'arborescence
+     * d'un ZIP d'export (DocumentExportGenerationService). racineTroncatureId
+     * null : aucune troncature, chemin absolu complet (appelant ADMIN).
+     */
+    @Transactional
+    public Map<Long, String> chargerCheminsPourExport(Long racineTroncatureId)
+    {
+        Map<Long, String> chemins = chargerCheminComplets();
+        if (racineTroncatureId == null)
+        {
+            return chemins;
+        }
+
+        String racineChemin = chemins.get(racineTroncatureId);
+        if (racineChemin == null || !racineChemin.contains("/"))
+        {
+            return chemins;
+        }
+
+        String prefixAncetres = racineChemin.substring(0, racineChemin.lastIndexOf('/') + 1);
+
+        Map<Long, String> tronques = new HashMap<>();
+        for (Map.Entry<Long, String> entree : chemins.entrySet())
+        {
+            String chemin = entree.getValue();
+            tronques.put(entree.getKey(),
+                chemin.startsWith(prefixAncetres) ? chemin.substring(prefixAncetres.length()) : chemin);
+        }
+        return tronques;
+    }
+
+    /**
+     * currentUser null : chemin complet jusqu'à la racine absolue (utilisé
+     * uniquement là où ce champ n'est jamais affiché à un utilisateur, voir
+     * getUOActuelleUser — sinon toujours passer l'acteur courant).
+     */
+    private UniteOrganisationnelleDto toDTOAvecChemin(UniteOrganisationnelle uo, User currentUser)
+    {
+        return toDto(uo, cheminPourAffichage(uo, currentUser));
+    }
+
+    /**
+     * Chemin affiché à CET utilisateur : complet jusqu'à la racine absolue
+     * pour un ADMIN (ou currentUser null), mais TRONQUÉ à sa PROPRE UO
+     * administrée pour un ADMIN_UO — ne doit jamais révéler l'existence d'une
+     * UO parente au-dessus de son périmètre d'administration (même principe
+     * de cloisonnement que getUoIdsVisiblesPourLecture pour documents/dossiers
+     * : un ADMIN_UO d'"Esp", enfant d'"Ucad", ne doit jamais voir "Ucad").
+     */
+    private String cheminPourAffichage(UniteOrganisationnelle uo, User currentUser)
+    {
+        if (currentUser == null || isAdmin(currentUser) || !isAdminUO(currentUser))
+        {
+            return uoRepository.findCheminCompletById(uo.getId()).orElse(uo.getNom());
+        }
+
+        Long limiteId = getUOActuelleId(currentUser.getId()).orElse(null);
+        return cheminTronque(uo, limiteId);
+    }
+
+    /** Remonte les parents de uo jusqu'à limiteId (inclus) ou jusqu'à la racine si limiteId est null/jamais atteint. */
+    private String cheminTronque(UniteOrganisationnelle uo, Long limiteId)
+    {
+        Deque<String> segments = new ArrayDeque<>();
+        UniteOrganisationnelle courant = uo;
+        while (courant != null)
+        {
+            segments.addFirst(courant.getNom());
+            if (limiteId != null && courant.getId().equals(limiteId))
+            {
+                break;
+            }
+            courant = courant.getParent();
+        }
+        return String.join("/", segments);
     }
 
     private UniteOrganisationnelleDto toDto(UniteOrganisationnelle uo, String cheminComplet)
@@ -648,6 +763,12 @@ public class UniteOrganisationnelleService
             .map(m -> m.getUniteOrganisationnelle().getId());
     }
 
+    /**
+     * cheminComplet toujours COMPLET ici (jamais tronqué) : réservé à des
+     * vérifications d'autorité internes entre services (ex. estEditeurDeUO,
+     * peutGererDossier — comparaison d'id, jamais affiché à un utilisateur),
+     * pas à un affichage — voir les appelants.
+     */
     @Transactional
     public Optional<UniteOrganisationnelleDto> getUOActuelleUser(UUID userId)
     {
@@ -655,7 +776,7 @@ public class UniteOrganisationnelleService
             UniteOrganisationnelle uo = uoRepository.findById(uoId)
                 .orElseThrow(() -> new UONotFoundException(uoId));
 
-            return toDTOAvecChemin(uo);
+            return toDTOAvecChemin(uo, null);
         });
     }
 
@@ -691,11 +812,40 @@ public class UniteOrganisationnelleService
     }
 
     /**
+     * true si l'acteur est un EDITOR rattaché exactement à cette UO — jamais
+     * ADMIN ni ADMIN_UO ici (voir aAutoriteSur pour ceux-là), et jamais une UO
+     * descendante non plus : contrairement à ADMIN_UO, un EDITOR n'administre
+     * que sa propre UO, pas de sous-arbre. Utilisé pour les types de documents
+     * (TypeDocumentService), gestion désormais réservée aux EDITOR de leur
+     * propre UO — ADMIN/ADMIN_UO n'y ont plus accès du tout.
+     */
+    public boolean estEditeurDeUO(Long uoId, User acteur)
+    {
+        if (uoId == null || !isEditor(acteur))
+        {
+            return false;
+        }
+        return getUOActuelleId(acteur.getId()).map(uoId::equals).orElse(false);
+    }
+
+    /** Équivalent de getUOEntiteAvecAutorite, mais pour un EDITOR de sa propre UO
+     *  (voir estEditeurDeUO) — jamais ADMIN/ADMIN_UO. */
+    public UniteOrganisationnelle getUOEntiteSiEditeur(Long uoId, User currentUser)
+    {
+        if (!estEditeurDeUO(uoId, currentUser))
+        {
+            throw new AccessDeniedException("Vous n'avez pas l'autorité sur cette UO");
+        }
+        return uoRepository.findById(uoId)
+            .orElseThrow(() -> new UONotFoundException(uoId));
+    }
+
+    /**
      * Tous les ADMIN_UO ayant autorité sur cette UO — leur propre UO est
      * cette UO elle-même ou un de ses ancêtres (même logique que aAutoriteSur,
      * mais dans l'autre sens : de la cible vers les responsables).
      * Utilisé pour résoudre les destinataires de notification (document
-     * corrompu, projet créé...). N'inclut PAS les ADMIN globaux — à ajouter
+     * corrompu, dossier créé...). N'inclut PAS les ADMIN globaux — à ajouter
      * séparément si besoin (ils ne sont rattachés à aucune UO).
      */
     @Transactional
@@ -855,15 +1005,15 @@ public class UniteOrganisationnelleService
 
     /**
      * Utilisateurs "légitimes" comme membres d'un groupe d'accès (document ou
-     * projet privé) pour une UO donnée : ses membres actifs (voir
+     * dossier privé) pour une UO donnée : ses membres actifs (voir
      * getUtilisateursDeUO ci-dessus), plus tous les ADMIN globaux — rattachés
-     * à aucune UO, mais légitimes sur tout document/projet par leur rôle.
+     * à aucune UO, mais légitimes sur tout document/dossier par leur rôle.
      * uoId nullable : un demandeur sans UO active (cas d'un ADMIN global, voir
      * changerUOUtilisateur) n'a alors que les ADMIN comme candidats.
      *
      * Règle PARTAGÉE entre trois appelants : GroupeAccessService et
-     * ProjetService.getUtilisateursDisponibles* (APRÈS la création d'un
-     * document/projet, qui filtrent ensuite les déjà-membres) et
+     * DossierService.getUtilisateursDisponibles* (APRÈS la création d'un
+     * document/dossier, qui filtrent ensuite les déjà-membres) et
      * UserService.getCandidatsGroupeAccesPourUO (À LA création, avant
      * qu'aucun groupe n'existe encore, donc sans ce filtre) — un seul endroit
      * décide qui est "légitime", plutôt que trois copies de la même logique
@@ -1053,7 +1203,7 @@ public class UniteOrganisationnelleService
         {
             // EDITOR / USER : uniquement leur propre UO, jamais les UO enfants
             // (à la différence d'ADMIN_UO ci-dessous) — voir la règle établie
-            // pour AdminUoDashboard/UOLectureController plus tôt dans ce projet.
+            // pour AdminUoDashboard/UOLectureController plus tôt dans ce dossier.
             return Set.of(racineId);
         }
 

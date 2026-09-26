@@ -1,20 +1,26 @@
 // document/TypedocumentList.tsx
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { getAllTypeDocuments, getTypeDocumentsByUO, deleteTypeDocument, deleteTypeDocumentList } from '../services/document/TypedocumentService';
+import { getTypeDocumentsByUOEditor, deleteTypeDocument, deleteTypeDocumentList } from '../services/document/TypedocumentService';
 import type { TypeDocumentDto } from '../services/document/TypedocumentService';
 import TypeDocumentDetail from './Typedocumentdetail';
 import UpdateTypeDocument from './Updatetypedocument';
 import Modal from '../Page/Modal';
-import { TYPE_DOCUMENT_DRAG_MIME } from '../hooks/dragTypes';
 import { useNotify } from '../notifications/NotificationProvider';
 import { useConfirm } from '../notifications/ConfirmProvider';
 import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus';
 import '../Style/document/Typedocument.css';
+// .dossier-context-menu(-overlay) — même menu contextuel (clic droit) que
+// organisation/DossiersPanel.tsx, réutilisé tel quel plutôt que dupliqué
+// (voir contextMenuJsx plus bas).
+import '../Style/Editor/Editor.css';
 
 interface TypeDocumentListProps {
     refreshTrigger?: number;
-    uoId: number | null;
+    /** Toujours la propre UO de l'éditeur — ce composant est désormais
+     *  exclusivement utilisé dans l'espace éditeur (gestion des types de
+     *  documents réservée aux EDITOR, voir DocumentController backend). */
+    uoId: number;
 }
 
 type ViewMode = 'list' | 'grid';
@@ -28,16 +34,13 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
     const notify = useNotify();
     const confirm = useConfirm();
     const [typeDocuments, setTypeDocuments] = useState<TypeDocumentDto[]>([]);
+    // Sélection — Cmd/Ctrl+clic bascule, clic droit ouvre un menu contextuel
+    // ("Supprimer"), même mécanique que organisation/DossiersPanel.tsx
+    // (handleClickDossierCard/handleContextMenuDossier) : pas de case à
+    // cocher, pas de "mode" à activer/désactiver, pas de glisser-déposer.
     const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
     const [isLoading, setIsLoading] = useState(true);
-
-    // Cases à cocher masquées par défaut (vue liste) — n'apparaissent qu'en
-    // mode sélection, activé par un clic droit ou un appui prolongé sur une
-    // ligne (même mécanique que document/DocumentsAccessible.tsx et
-    // Editor/MesDocumentsEditor.tsx pour les documents).
-    const [selectionModeActive, setSelectionModeActive] = useState(false);
-    const longPressTimer = useRef<number | null>(null);
-    const LONG_PRESS_MS = 500;
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
     // Vue liste (tableau) / grille (cartes) — même bascule que côté éditeur
     // pour les documents (voir document/DocumentsAccessible.tsx), adaptée ici
@@ -79,9 +82,8 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
     const fetchAll = async () => {
         setIsLoading(true);
         setSelectedIds(new Set());
-        setSelectionModeActive(false);
         try {
-            const data = uoId === null ? await getAllTypeDocuments() : await getTypeDocumentsByUO(uoId);
+            const data = await getTypeDocumentsByUOEditor(uoId);
             setTypeDocuments(data);
         } catch (err: any) {
             notify.error(err.message || "Erreur lors du chargement");
@@ -98,47 +100,34 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
         setSelectedIds(prev => {
             const next = new Set(prev);
             if (next.has(id)) next.delete(id); else next.add(id);
-            // Plus rien coché → on quitte le mode sélection tout seul, pas
-            // besoin de rester avec des cases vides à l'écran.
-            if (next.size === 0) setSelectionModeActive(false);
             return next;
         });
     };
 
-    const toggleSelectAll = () => {
-        const tousLesIds = typeDocumentsFiltres.map(td => td.id!);
-        setSelectedIds(prev => {
-            const toutCoche = tousLesIds.length > 0 && tousLesIds.every(id => prev.has(id));
-            if (toutCoche) setSelectionModeActive(false);
-            return toutCoche ? new Set() : new Set(tousLesIds);
-        });
-    };
-
-    // Active le mode sélection (cases à cocher visibles) — déclenché par un
-    // clic droit ou un appui prolongé sur une ligne, jamais par défaut.
-    const activateSelectionMode = (id: number) => {
-        setSelectionModeActive(true);
-        setSelectedIds(prev => new Set(prev).add(id));
-    };
-
-    const annulerSelection = () => {
-        setSelectedIds(new Set());
-        setSelectionModeActive(false);
-    };
-
-    const handleRowTouchStart = (id: number) => {
-        if (longPressTimer.current) window.clearTimeout(longPressTimer.current);
-        longPressTimer.current = window.setTimeout(() => {
-            activateSelectionMode(id);
-            longPressTimer.current = null;
-        }, LONG_PRESS_MS);
-    };
-
-    const handleRowTouchEnd = () => {
-        if (longPressTimer.current) {
-            window.clearTimeout(longPressTimer.current);
-            longPressTimer.current = null;
+    /** Clic normal = ouvrir (double-clic, voir plus bas) ; Cmd/Ctrl+clic =
+     *  bascule la sélection — même logique que
+     *  DossiersPanel.handleClickDossierCard. */
+    const handleClickCard = (e: React.MouseEvent, id: number) => {
+        if (e.metaKey || e.ctrlKey) {
+            e.preventDefault();
+            toggleSelect(id);
+            return;
         }
+        if (selectedIds.size > 0) {
+            setSelectedIds(new Set());
+        }
+    };
+
+    /** Clic droit — sélectionne SEULEMENT la carte cliquée si elle n'était pas
+     *  déjà dans la sélection courante, puis ouvre le menu contextuel
+     *  ("Supprimer") à la position du curseur — même logique que
+     *  DossiersPanel.handleContextMenuDossier. */
+    const handleContextMenuCard = (e: React.MouseEvent, id: number) => {
+        e.preventDefault();
+        if (!selectedIds.has(id)) {
+            setSelectedIds(new Set([id]));
+        }
+        setContextMenu({ x: e.clientX, y: e.clientY });
     };
 
     const executerSuppression = async (cible: TypeDocumentDto | 'selection') => {
@@ -170,6 +159,12 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
         await executerSuppression('selection');
     };
 
+    /** Bouton "Supprimer" du menu contextuel — voir contextMenuJsx. */
+    const handleContextMenuSupprimer = async () => {
+        setContextMenu(null);
+        await handleBulkDeleteRequest();
+    };
+
     const handleEditSuccess = async () => {
         setIsUpdateModalOpen(false);
         setEditingTd(null);
@@ -182,14 +177,6 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
         setIsUpdateModalOpen(false);
         setViewingTd(null);
         setEditingTd(null);
-    };
-
-    const handleDragStart = (e: React.DragEvent, td: TypeDocumentDto) => {
-        const payload = selectedIds.size > 0 && selectedIds.has(td.id!)
-            ? typeDocuments.filter(t => selectedIds.has(t.id!))
-            : [td];
-        e.dataTransfer.setData(TYPE_DOCUMENT_DRAG_MIME, JSON.stringify(payload));
-        e.dataTransfer.effectAllowed = 'copy';
     };
 
     const closeMenu = () => {
@@ -299,6 +286,30 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
         </div>
     );
 
+    // Menu contextuel (clic droit sur une carte/ligne) — voir
+    // handleContextMenuCard/handleContextMenuSupprimer. Overlay plein écran
+    // transparent pour fermer au clic/clic-droit ailleurs, comme un menu
+    // contextuel natif. Classes réutilisées telles quelles depuis
+    // DossiersPanel (voir import Editor.css plus haut).
+    const contextMenuJsx = contextMenu && (
+        <div
+            className="dossier-context-menu-overlay"
+            onClick={() => setContextMenu(null)}
+            onContextMenu={e => { e.preventDefault(); setContextMenu(null); }}
+        >
+            <div
+                className="dossier-context-menu"
+                style={{ top: contextMenu.y, left: contextMenu.x }}
+                onClick={e => e.stopPropagation()}
+            >
+                <button type="button" onClick={handleContextMenuSupprimer} disabled={deleteInProgress}>
+                    <i className="fa-solid fa-trash" />
+                    Supprimer{selectedIds.size > 1 ? ` (${selectedIds.size})` : ''}
+                </button>
+            </div>
+        </div>
+    );
+
     return (
         <div className="td-list-wrapper">
 
@@ -358,19 +369,6 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
                 </div>
             )}
 
-            {selectedIds.size > 0 && (
-                <div className="td-bulk-bar">
-                    <span>{selectedIds.size} sélectionné(s)</span>
-                    <button className="td-delete-btn" onClick={handleBulkDeleteRequest} disabled={deleteInProgress}>
-                        Supprimer la sélection
-                    </button>
-                    <button className="td-cancel-selection-btn" onClick={annulerSelection} disabled={deleteInProgress}>
-                        Annuler la sélection
-                    </button>
-                    <span className="td-bulk-hint">Glissez la sélection vers une UO pour la dupliquer là-bas</span>
-                </div>
-            )}
-
             {isLoading ? (
                 <div className="td-loading">Chargement...</div>
             ) : typeDocuments.length === 0 ? (
@@ -388,38 +386,18 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
                     {typeDocumentsFiltres.map(td => (
                         <div
                             key={td.id}
-                            draggable
-                            onDragStart={(e) => handleDragStart(e, td)}
                             onDoubleClick={() => { setViewingTd(td); setIsViewModalOpen(true); }}
+                            onClick={e => handleClickCard(e, td.id!)}
+                            onContextMenu={e => handleContextMenuCard(e, td.id!)}
                             className={`td-folder-card ${selectedIds.has(td.id!) ? 'td-row-selected' : ''}`}
                         >
-                            {/* Case à cocher (sélection groupée) — même
-                                emplacement que le "+" du modèle éditeur
-                                (Mes documents), réutilisé pour un usage
-                                différent ici. stopPropagation : la carte
-                                elle-même n'a pas d'action au clic simple (contrairement
-                                au dossier éditeur, qui navigue à l'intérieur),
-                                mais le double-clic, lui, ouvre le détail (voir
-                                onDoubleClick ci-dessus) — la case ne doit donc pas
-                                le déclencher non plus. */}
-                            <input
-                                type="checkbox"
-                                className="td-folder-checkbox"
-                                checked={selectedIds.has(td.id!)}
-                                onChange={() => toggleSelect(td.id!)}
-                                onClick={(e) => e.stopPropagation()}
-                                onDoubleClick={(e) => e.stopPropagation()}
-                            />
-
                             <div className="td-folder-icon-wrap">
-                                <div className="td-folder-tab" />
                                 <div className="td-folder-back" />
                                 <div className="td-folder-sheet">
                                     <div className="td-folder-doc-line short" />
                                     <div className="td-folder-doc-line" />
                                     <div className="td-folder-doc-line" />
                                 </div>
-                                <div className="td-folder-glass" />
                                 {/* Pas de pastille de compteur ici (contrairement
                                     au dossier éditeur, "Mes documents") : elle y
                                     représente un nombre de documents, alors qu'ici
@@ -446,21 +424,6 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
                     <table className="td-table">
                         <thead>
                             <tr>
-                                {selectionModeActive && (
-                                    <th className="td-select-col">
-                                        <input
-                                            type="checkbox"
-                                            checked={
-                                                typeDocumentsFiltres.length > 0
-                                                && typeDocumentsFiltres.every(td => selectedIds.has(td.id!))
-                                            }
-                                            onChange={toggleSelectAll}
-                                            onClick={e => e.stopPropagation()}
-                                            aria-label="Tout sélectionner"
-                                            title="Tout sélectionner"
-                                        />
-                                    </th>
-                                )}
                                 <th>Nom</th>
                                 <th>Rétention (ans)</th>
                                 <th className="td-col-grace">Période de grâce (j)</th>
@@ -472,29 +435,11 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
                             {typeDocumentsFiltres.map(td => (
                                 <tr
                                     key={td.id}
-                                    draggable
-                                    onDragStart={(e) => handleDragStart(e, td)}
                                     onDoubleClick={() => { setViewingTd(td); setIsViewModalOpen(true); }}
-                                    onClick={() => { if (selectionModeActive) toggleSelect(td.id!); }}
-                                    onContextMenu={e => { e.preventDefault(); activateSelectionMode(td.id!); }}
-                                    onTouchStart={() => handleRowTouchStart(td.id!)}
-                                    onTouchEnd={handleRowTouchEnd}
-                                    onTouchMove={handleRowTouchEnd}
-                                    className={[
-                                        selectedIds.has(td.id!) ? 'td-row-selected' : '',
-                                        selectionModeActive ? 'td-row-selectable' : '',
-                                    ].filter(Boolean).join(' ')}
+                                    onClick={e => handleClickCard(e, td.id!)}
+                                    onContextMenu={e => handleContextMenuCard(e, td.id!)}
+                                    className={selectedIds.has(td.id!) ? 'td-row-selected' : ''}
                                 >
-                                    {selectionModeActive && (
-                                        <td className="td-select-col" onClick={e => e.stopPropagation()}>
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedIds.has(td.id!)}
-                                                onChange={() => toggleSelect(td.id!)}
-                                                aria-label={`Sélectionner ${td.nom}`}
-                                            />
-                                        </td>
-                                    )}
                                     <td className="td-nom">{td.nom}</td>
                                     <td>{td.retentionYears ?? 'Indéfinie'}</td>
                                     <td className="td-col-grace">{td.periodGrace ?? '—'}</td>
@@ -551,6 +496,8 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
                     />
                 )}
             </Modal>
+
+            {contextMenuJsx}
         </div>
     );
 }

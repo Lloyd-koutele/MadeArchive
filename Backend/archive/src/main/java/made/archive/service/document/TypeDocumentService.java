@@ -31,6 +31,7 @@ import made.archive.repository.UserRepository;
 import made.archive.service.audit.AuditLogService;
 import made.archive.service.organisation.UniteOrganisationnelleService;
 import made.archive.service.storage.MinioStorageService;
+import made.archive.util.NormalisationNoms;
 
 
 
@@ -139,7 +140,7 @@ public class TypeDocumentService
                 .orElseThrow(() -> new BusinessException(
                     "Impossible de supprimer : le type de document avec l'ID " + id + " n'existe pas."));
     
-            if (!uniteOrganisationnelleService.aAutoriteSur(
+            if (!uniteOrganisationnelleService.estEditeurDeUO(
                     typeDocument.getUniteOrganisationnelle().getId(), currentUser))
             {
                 throw new AccessDeniedException("Vous n'avez pas l'autorisation de supprimer ce type de document");
@@ -192,7 +193,7 @@ public class TypeDocumentService
             .orElseThrow(() -> new BusinessException(
                 "Type de document introuvable : " + id));
 
-        if (!uniteOrganisationnelleService.aAutoriteSur(
+        if (!uniteOrganisationnelleService.estEditeurDeUO(
                 typeDocument.getUniteOrganisationnelle().getId(), currentUser))
         {
             throw new AccessDeniedException(
@@ -256,7 +257,7 @@ public class TypeDocumentService
             .orElseThrow(() -> new BusinessException(
                 "Type de document introuvable : " + id));
 
-        if (!uniteOrganisationnelleService.aAutoriteSur(
+        if (!uniteOrganisationnelleService.estEditeurDeUO(
                 typeDocument.getUniteOrganisationnelle().getId(), currentUser))
         {
             throw new AccessDeniedException(
@@ -398,7 +399,7 @@ public class TypeDocumentService
             }
     
             UniteOrganisationnelle uo = uniteOrganisationnelleService
-                .getUOEntiteAvecAutorite(dto.getUoId(), currentUser);
+                .getUOEntiteSiEditeur(dto.getUoId(), currentUser);
     
             verifierNomTypeDocumentUnique(dto.getNom(), dto.getUoId(), null);
     
@@ -484,7 +485,7 @@ public class TypeDocumentService
             TypeDocument typeDocument = typeDocumentRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("Type de document non trouvé avec l'ID: " + id));
     
-            if (!uniteOrganisationnelleService.aAutoriteSur(typeDocument.getUniteOrganisationnelle().getId(), currentUser))
+            if (!uniteOrganisationnelleService.estEditeurDeUO(typeDocument.getUniteOrganisationnelle().getId(), currentUser))
             {
                 throw new AccessDeniedException("Vous n'avez pas l'autorisation de modifier ce type de document");
             }
@@ -646,7 +647,7 @@ public class TypeDocumentService
         TypeDocument typeDocument = typeDocumentRepository.findById(id)
             .orElseThrow(() -> new BusinessException("Type de document non trouvé avec l'ID: " + id));
     
-        if (!uniteOrganisationnelleService.aAutoriteSur(
+        if (!uniteOrganisationnelleService.estEditeurDeUO(
                 typeDocument.getUniteOrganisationnelle().getId(), currentUser))
         {
             throw new AccessDeniedException("Vous n'avez pas l'autorisation de modifier ce type de document");
@@ -654,11 +655,7 @@ public class TypeDocumentService
     
         if (!typeDocument.getNom().equalsIgnoreCase(nouveauNom))
         {
-            typeDocumentRepository
-                .findByNomIgnoreCaseAndUniteOrganisationnelleId(nouveauNom, typeDocument.getUniteOrganisationnelle().getId())
-                .ifPresent(t -> {
-                    throw new BusinessException("Un type de document avec ce nom existe déjà dans cette UO");
-                });
+            verifierNomTypeDocumentUnique(nouveauNom, typeDocument.getUniteOrganisationnelle().getId(), id);
 
             String ancienNom = typeDocument.getNom();
             typeDocument.setNom(nouveauNom);
@@ -677,12 +674,24 @@ public class TypeDocumentService
         return dto;
     }
 
+    /**
+     * Doublon détecté après NORMALISATION (casse, accents, espacement — voir
+     * NormalisationNoms), même principe que UniteOrganisationnelleService.
+     * verifierNomUnique/verifierNomUniqueExclut : "Facture", "facture" et
+     * "Fàcture" sont considérés comme LE MÊME nom dans une même UO, pas
+     * seulement un doublon casse-insensible comme avant (findByNomIgnoreCase...
+     * laissait passer les accents).
+     */
     private void verifierNomTypeDocumentUnique(String nom, Long uoId, Long exclutId)
     {
-        typeDocumentRepository.findByNomIgnoreCaseAndUniteOrganisationnelleId(nom, uoId)
-            .filter(t -> exclutId == null || !t.getId().equals(exclutId))
-            .ifPresent(t -> {
-                throw new BusinessException("Un type de document avec ce nom existe déjà dans cette UO");
-            });
+        String nomNormalise = NormalisationNoms.normaliser(nom);
+        boolean existe = typeDocumentRepository.findByUniteOrganisationnelleId(uoId).stream()
+            .anyMatch(t -> (exclutId == null || !t.getId().equals(exclutId))
+                && NormalisationNoms.normaliser(t.getNom()).equals(nomNormalise));
+
+        if (existe)
+        {
+            throw new BusinessException("Un type de document avec ce nom existe déjà dans cette UO");
+        }
     }
 }

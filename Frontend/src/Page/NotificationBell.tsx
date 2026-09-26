@@ -12,8 +12,8 @@ import '../Style/Page/NotificationBell.css';
 const TYPE_ICONS: Record<string, string> = {
     DOCUMENT_CORROMPU: 'fa-solid fa-triangle-exclamation notif-icon-corrompu',
     DOCUMENT_AJOUTE:   'fa-solid fa-file-circle-plus notif-icon-ajoute',
-    PROJET_CREE:       'fa-solid fa-folder-plus notif-icon-projet',
-    UO_CREEE:          'fa-solid fa-sitemap notif-icon-projet',
+    DOSSIER_CREE:       'fa-solid fa-folder-plus notif-icon-dossier',
+    UO_CREEE:          'fa-solid fa-sitemap notif-icon-dossier',
     DOCUMENT_HORODATAGE_ECHEC:  'fa-solid fa-clock notif-icon-corrompu',
     DOCUMENT_HORODATAGE_REUSSI: 'fa-solid fa-stamp notif-icon-ajoute',
     GROUPE_MEMBRE_AJOUTE:       'fa-solid fa-user-plus notif-icon-ajoute',

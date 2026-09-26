@@ -125,7 +125,7 @@
 
 .notif-icon-corrompu { color: var(--error); }
 .notif-icon-ajoute   { color: var(--accent); }
-.notif-icon-projet   { color: var(--accent); }
+.notif-icon-dossier   { color: var(--accent); }
 
 .notif-item-body {
     flex: 1;

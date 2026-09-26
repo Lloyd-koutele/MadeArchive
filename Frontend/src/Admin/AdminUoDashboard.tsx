@@ -7,18 +7,13 @@ import CreateUser from "./CreateUser";
 import UpdateUser from "./UpdateUser";
 import Modal from "../Page/Modal";
 import Profile from "../Page/Profil";
-import TypeDocumentList from "../document/TypedocumentList";
-import CreateTypeDocument from "../document/Createtypedocument";
 import AssignUOModal from "./AssignUOModal";
-import QuickCreateTypeDocumentsModal from '../document/QuickCreateTypeDocumentsModal';
 import Corbeille from '../document/Corbeille';
-import ProjetsPanel from '../organisation/ProjetsPanel';
-import PhysicalLocationsPanel from '../organisation/PhysicalLocationsPanel';
+import DossiersPanel from '../organisation/DossiersPanel';
 import ExportPanel from '../organisation/ExportPanel';
 import AuditLogPanel from './AuditLogPanel';
 import FixityCheckPanel from './FixityCheckPanel';
 import DocumentsArchivesPanel from './DocumentsArchivesPanel';
-import type { TypeDocumentDto } from '../services/document/TypedocumentService';
 import { getUsersByUO, updateUserStatus as updateStatus, supprimerUtilisateur, annulerSuppressionUtilisateur } from "../services/admin/AdminService";
 import {
     getMyUO,
@@ -72,15 +67,26 @@ interface UONode {
 }
 
 type MainView = 'profile' | 'contenu';
-type Tab = 'utilisateurs' | 'documents' | 'archives' | 'corbeille' | 'projets' | 'emplacements' | 'journal';
+type Tab = 'utilisateurs' | 'archives' | 'corbeille' | 'dossiers' | 'journal';
 
 const isUserActive = (user: User): boolean => user.actif === true || user.actif === 'true';
 
+// Le message précis du serveur vit dans error.response.data.message (voir
+// UOController.errorResponse côté Java) — jamais dans error.message, qui
+// pour une erreur Axios n'est que le texte générique du code HTTP ("Request
+// failed with status code 400"). Repli sur error.message uniquement pour
+// une erreur réseau (pas de réponse serveur du tout), puis sur le fallback.
 const getErrorMessage = (err: unknown, fallbackMessage: string): string => {
-    if (err instanceof Error) return err.message;
-    if (typeof err === 'object' && err !== null && 'message' in err) {
-        return String((err as { message: unknown }).message);
+    if (typeof err === 'object' && err !== null && 'response' in err) {
+        const response = (err as { response?: { data?: unknown } }).response;
+        const data = response?.data;
+        if (typeof data === 'string' && data.trim()) return data;
+        if (typeof data === 'object' && data !== null && 'message' in data) {
+            const message = (data as { message: unknown }).message;
+            if (typeof message === 'string' && message.trim()) return message;
+        }
     }
+    if (err instanceof Error && err.message) return err.message;
     return fallbackMessage;
 };
 
@@ -106,7 +112,6 @@ function AdminUoDashboard() {
     const [isFixityCheckModalOpen, setIsFixityCheckModalOpen] = useState(false);
     const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
     const [isViewModalOpen, setIsViewModalOpen] = useState(false);
-    const [isCreateTdModalOpen, setIsCreateTdModalOpen] = useState(false);
     const [isCreateUOModalOpen, setIsCreateUOModalOpen] = useState(false);
     const [createUOParentId, setCreateUOParentId] = useState<number | null>(null);
     const [createUONom, setCreateUONom] = useState('');
@@ -115,13 +120,9 @@ function AdminUoDashboard() {
     const [selectedUser, setSelectedUser] = useState<User | null>(null);
     const [viewingUser, setViewingUser] = useState<User | null>(null);
     const [actionInProgress, setActionInProgress] = useState(false);
-    const [tdRefresh, setTdRefresh] = useState(0);
 
     const [assigningUserId, setAssigningUserId] = useState<string | null>(null);
     const [assignMode, setAssignMode] = useState<'assign' | 'transfer'>('assign');
-
-    const [quickCreateTarget, setQuickCreateTarget] = useState<{ id: number; nom: string } | null>(null);
-    const [quickCreateSource, setQuickCreateSource] = useState<TypeDocumentDto[]>([]);
 
     const [filters, setFilters] = useState<UserFilters>({
         nom: '', prenom: '', email: '', telephone: '', roles: []
@@ -234,7 +235,12 @@ function AdminUoDashboard() {
         try {
             await deleteUO(currentUO.id);
             notify.success("UO supprimée avec succès");
-            setCurrentUOId(null);
+            // Retombe sur la racine (toujours valide : un admin_uo est
+            // lui-même membre de sa racine, qui ne peut donc jamais devenir
+            // "vide" et être supprimée) plutôt que null — sinon la zone de
+            // contenu, conditionnée sur "currentUOId" (voir plus bas), reste
+            // vide jusqu'à un rechargement manuel de la page.
+            if (rootUO) setCurrentUOId(rootUO.id);
             await fetchSousArbre();
         } catch (err: unknown) {
             notify.error(getErrorMessage(err, "Erreur lors de la suppression de l'UO"));
@@ -253,20 +259,6 @@ function AdminUoDashboard() {
         } catch (err: unknown) {
             notify.error(getErrorMessage(err, "Erreur lors du déplacement de l'UO"));
         }
-    };
-
-    const handleDropTypeDocuments = (targetUoId: number, payload: TypeDocumentDto[]) => {
-        const targetNode = treeNodes.find(n => n.id === targetUoId);
-        if (!targetNode || payload.length === 0) return;
-        setQuickCreateTarget({ id: targetNode.id, nom: targetNode.nom });
-        setQuickCreateSource(payload);
-    };
-
-    const handleQuickCreated = () => {
-        setQuickCreateTarget(null);
-        setQuickCreateSource([]);
-        setTdRefresh(r => r + 1);
-        notify.success("Type(s) de document créé(s) avec succès");
     };
 
     const handleSelectUO = (id: number) => {
@@ -389,7 +381,6 @@ function AdminUoDashboard() {
         setIsCreateUserModalOpen(false);
         setIsUpdateModalOpen(false);
         setIsViewModalOpen(false);
-        setIsCreateTdModalOpen(false);
         setIsCreateUOModalOpen(false);
         setIsRenameUOModalOpen(false);
         setSelectedUser(null);
@@ -400,12 +391,6 @@ function AdminUoDashboard() {
         if (currentUOId) fetchUsers(currentUOId);
         handleCloseModal();
         notify.success("Opération effectuée avec succès");
-    };
-
-    const handleTdCreated = () => {
-        handleCloseModal();
-        setTdRefresh(r => r + 1);
-        notify.success("Type de document créé avec succès");
     };
 
     const filteredUsers = users.filter(u =>
@@ -454,7 +439,7 @@ function AdminUoDashboard() {
                                     onClick={() => setIsFixityCheckModalOpen(true)}
                                     className="sidebar-btn"
                                 >
-                                    <i className="fa-solid fa-shield-halved"/> Contrôle d'intégrité documentaire
+                                    <i className="fa-solid fa-shield-halved"/> Contrôle d'intégrité
                                 </button>
                             </div>
 
@@ -468,7 +453,6 @@ function AdminUoDashboard() {
                                     canManage
                                     onAddChild={openCreateUOModal}
                                     onMove={handleMoveUO}
-                                    onDropTypeDocuments={handleDropTypeDocuments}
                                 />
                             )}
                         </div>
@@ -512,28 +496,16 @@ function AdminUoDashboard() {
                                     Utilisateurs
                                 </button>
                                 <button
-                                    className={`uo-tab ${tab === 'documents' ? 'active' : ''}`}
-                                    onClick={() => setTab('documents')}
-                                >
-                                    Types de Documents
-                                </button>
-                                <button
                                     className={`uo-tab ${tab === 'archives' ? 'active' : ''}`}
                                     onClick={() => setTab('archives')}
                                 >
                                     Documents archivés
                                 </button>
                                 <button
-                                    className={`uo-tab ${tab === 'projets' ? 'active' : ''}`}
-                                    onClick={() => setTab('projets')}
+                                    className={`uo-tab ${tab === 'dossiers' ? 'active' : ''}`}
+                                    onClick={() => setTab('dossiers')}
                                 >
-                                    Projets
-                                </button>
-                                <button
-                                    className={`uo-tab ${tab === 'emplacements' ? 'active' : ''}`}
-                                    onClick={() => setTab('emplacements')}
-                                >
-                                    Emplacements physiques
+                                    Dossiers
                                 </button>
                                 <button
                                     className={`uo-tab ${tab === 'corbeille' ? 'active' : ''}`}
@@ -587,30 +559,12 @@ function AdminUoDashboard() {
                                 </>
                             )}
 
-                            {tab === 'documents' && (
-                                <>
-                                    <div className="main-header">
-                                        <button
-                                            className="sidebar-btn"
-                                            onClick={() => setIsCreateTdModalOpen(true)}
-                                        >
-                                            Créer un type
-                                        </button>
-                                    </div>
-                                    <TypeDocumentList refreshTrigger={tdRefresh} uoId={currentUOId} />
-                                </>
-                            )}
-
                             {tab === 'archives' && (
                                 <DocumentsArchivesPanel uoId={currentUOId} />
                             )}
 
-                            {tab === 'projets' && (
-                                <ProjetsPanel uoId={currentUOId} canCreate={false} />
-                            )}
-
-                            {tab === 'emplacements' && (
-                                <PhysicalLocationsPanel uoId={currentUOId} />
+                            {tab === 'dossiers' && (
+                                <DossiersPanel uoId={currentUOId} canCreate={false} />
                             )}
 
                             {tab === 'corbeille' && (
@@ -682,10 +636,6 @@ function AdminUoDashboard() {
                     )}
                 </Modal>
 
-                <Modal isOpen={isCreateTdModalOpen} onClose={handleCloseModal} title="Créer un type de document">
-                    {restrictToUO && <CreateTypeDocument onsuccess={handleTdCreated} restrictToUO={restrictToUO} />}
-                </Modal>
-
                 <Modal isOpen={isCreateUOModalOpen} onClose={handleCloseModal} title="Créer une UO enfant">
                     <form onSubmit={handleCreateUO}>
                         <div className="form-field">
@@ -730,14 +680,6 @@ function AdminUoDashboard() {
                     mode={assignMode}
                     onClose={() => setAssigningUserId(null)}
                     onAssigned={handleAssigned}
-                />
-
-                <QuickCreateTypeDocumentsModal
-                    isOpen={quickCreateTarget !== null}
-                    targetUO={quickCreateTarget}
-                    sourceTypeDocuments={quickCreateSource}
-                    onClose={() => setQuickCreateTarget(null)}
-                    onCreated={handleQuickCreated}
                 />
 
             </div>

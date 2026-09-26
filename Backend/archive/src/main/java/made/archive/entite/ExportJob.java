@@ -68,6 +68,19 @@ public class ExportJob
     @Column(name = "uo_ids_json", columnDefinition = "TEXT", nullable = false)
     private String uoIdsJson;
 
+    /**
+     * UO propre du demandeur si ADMIN_UO, résolue une fois à lancerExport() —
+     * voir UniteOrganisationnelleService.getRacineTroncatureId/chargerCheminsPourExport.
+     * Sert à tronquer l'arborescence du ZIP d'export pour qu'elle ne révèle
+     * jamais une UO parente au-dessus de son périmètre administré. Null si le
+     * demandeur est ADMIN (aucune troncature, chemin absolu complet) — jamais
+     * recalculé depuis demandePar lors de la génération @Async : ce champ est
+     * un proxy lazy hors session à ce stade (voir DocumentExportGenerationService),
+     * et son rôle/UO ne doit pas avoir besoin d'être relu pour ça.
+     */
+    @Column(name = "racine_troncature_id")
+    private Long racineTroncatureId;
+
     @Column(name = "document_ids_json", columnDefinition = "TEXT")
     private String documentIdsJson;
 

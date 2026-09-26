@@ -29,7 +29,7 @@ import made.archive.entite.GroupeAccess;
 import made.archive.entite.MetaData;
 import made.archive.entite.NotificationType;
 import made.archive.entite.PkiKeyStatus;
-import made.archive.entite.Projet;
+import made.archive.entite.Dossier;
 import made.archive.entite.Role_Name;
 import made.archive.entite.TypeAccess;
 import made.archive.entite.TypeDocument;
@@ -39,7 +39,7 @@ import made.archive.exception.BusinessException;
 import made.archive.repository.DataTypeRepository;
 import made.archive.repository.DocumentRepository;
 import made.archive.repository.GroupeAccessRepository;
-import made.archive.repository.ProjetRepository;
+import made.archive.repository.DossierRepository;
 import made.archive.repository.TypeDocumentRepository;
 import made.archive.repository.UserRepository;
 import made.archive.security.DocumentEncryptionService;
@@ -79,12 +79,13 @@ public class DocumentUploadeService
     private final HsmKeyStoreService               hsmKeyStoreService;
     private final UniteOrganisationnelleService    uniteOrganisationnelleService;
     private final DocumentEncryptionService        documentEncryptionService;
-    private final ProjetRepository                 projetRepository;
+    private final DossierRepository                 dossierRepository;
     private final NotificationService              notificationService;
     private final PlatformTransactionManager       transactionManager;
     private final AuditLogService                  auditLogService;
     private final DocumentRetentionService         documentRetentionService;
     private final made.archive.service.organisation.PhysicalLocationService physicalLocationService;
+    private final made.archive.service.organisation.DossierService          dossierService;
     private final RegexGenerationService                                    regexGenerationService;
     private final HorodatageService                                        horodatageService;
 
@@ -130,12 +131,22 @@ public class DocumentUploadeService
             UniteOrganisationnelle uo =
                 uniteOrganisationnelleService.getUOActuelleEntite(uploadedBy.getId());
 
-            // ── 1c. Projet (optionnel) — rattachement à un dossier/affaire ─────
-            Long projetId = request.getDocumentUploadDto().getProjetId();
-            final Projet projetDemande = projetId == null
-                ? null
-                : projetRepository.findById(projetId)
-                    .orElseThrow(() -> new BusinessException("Projet introuvable : " + projetId));
+            // ── 1c. Dossier (optionnel) — rattachement à un dossier/affaire ─────
+            // Autorité vérifiée ICI, pas seulement filtrée côté liste (voir
+            // DossierService.getArbreDossiers) : un dossierId arbitraire dans
+            // la requête ne doit pas pouvoir contourner le sélecteur.
+            Long dossierId = request.getDocumentUploadDto().getDossierId();
+            final Dossier dossierDemande;
+            if (dossierId == null)
+            {
+                dossierDemande = null;
+            }
+            else
+            {
+                dossierDemande = dossierRepository.findById(dossierId)
+                    .orElseThrow(() -> new BusinessException("Dossier introuvable : " + dossierId));
+                dossierService.verifierPeutArchiverDans(dossierDemande, uploadedBy);
+            }
 
             // ── 1d. Version précédente (optionnelle) — chaînage v1 → v2 → ... ──
             // Chaîne strictement LINÉAIRE : on ne peut versionner que la version
@@ -178,11 +189,11 @@ public class DocumentUploadeService
                     ? documentPrecedent.getDocumentRacine()
                     : documentPrecedent);
 
-            // Le projet est hérité du prédécesseur si non explicitement
+            // Le dossier est hérité du prédécesseur si non explicitement
             // redéfini pour cette version — garde la continuité du dossier.
-            final Projet projet = projetDemande != null
-                ? projetDemande
-                : (documentPrecedent != null ? documentPrecedent.getProjet() : null);
+            final Dossier dossier = dossierDemande != null
+                ? dossierDemande
+                : (documentPrecedent != null ? documentPrecedent.getDossier() : null);
 
             // ── 2. Unicité basée sur le fichier SOURCE, scopée par UO ──────────
             // Deux UO différentes peuvent archiver le même fichier sans conflit ;
@@ -301,26 +312,26 @@ public class DocumentUploadeService
             try
             {
                 savedDocument = transactionTemplate.execute(status -> {
-                    // Le projet (s'il existe) a été résolu HORS transaction plus haut —
+                    // Le dossier (s'il existe) a été résolu HORS transaction plus haut —
                     // ré-attaché ici pour pouvoir lire en sécurité ses relations LAZY
                     // (access, groupe) dans la session Hibernate active de cette
                     // transaction, sans LazyInitializationException.
-                    Projet projetGere = projet != null
-                        ? projetRepository.findById(projet.getId()).orElse(null)
+                    Dossier dossierGere = dossier != null
+                        ? dossierRepository.findById(dossier.getId()).orElse(null)
                         : null;
 
                     GroupeAccess groupe;
                     TypeAccess accessFinal;
 
-                    if (projetGere != null && projetGere.getAccess() == TypeAccess.PRIVE)
+                    if (dossierGere != null && dossierGere.getAccess() == TypeAccess.PRIVE)
                     {
-                        // Le projet prime sur le choix de l'éditeur : le document
+                        // Le dossier prime sur le choix de l'éditeur : le document
                         // hérite automatiquement de sa confidentialité et PARTAGE le
-                        // même GroupeAccess que le projet — jamais un groupe recréé
-                        // par document (voir ProjetService, où ce groupe n'est créé
-                        // qu'une seule fois, à la création du projet).
+                        // même GroupeAccess que le dossier — jamais un groupe recréé
+                        // par document (voir DossierService, où ce groupe n'est créé
+                        // qu'une seule fois, à la création du dossier).
                         accessFinal = TypeAccess.PRIVE;
-                        groupe = projetGere.getGroupe();
+                        groupe = dossierGere.getGroupe();
                     }
                     else
                     {
@@ -359,6 +370,7 @@ public class DocumentUploadeService
                     document.setAccess(accessFinal);
                     document.setPdfaSha256(sessionData.pdfaSha256);
                     document.setOriginalSha256(sessionData.originalSha256);
+                    document.setTexteNormaliseSha256(sessionData.texteNormaliseSha256);
                     document.setStorageKey(pdfAStorageKey);
                     document.setPkiSignature(signature);
                     // horodatageToken/-Date restent null ici — l'horodatage se
@@ -377,7 +389,29 @@ public class DocumentUploadeService
                     document.setUploadedBy(uploadedBy);
                     document.setGroupe(groupe);
                     document.setUniteOrganisationnelle(uo);
-                    document.setProjet(projet);
+                    document.setDossier(dossier);
+
+                    // Le type archivé devient automatiquement "attendu" dans le
+                    // dossier ciblé s'il ne l'était pas déjà — jamais de doublon
+                    // (voir Dossier.typesDocumentsAttendus, checklist tenue à jour
+                    // au fil des archivages plutôt que seulement via
+                    // DossierService.ajouterTypesAttendus). Si le type y figure
+                    // déjà, ce document vient simplement s'y ajouter, sans rien
+                    // recréer.
+                    if (dossierGere != null)
+                    {
+                        List<TypeDocument> typesAttendus = dossierGere.getTypesDocumentsAttendus();
+                        boolean dejaAttendu = typesAttendus != null && typesAttendus.stream()
+                            .anyMatch(t -> t.getId().equals(typeDocument.getId()));
+                        if (!dejaAttendu)
+                        {
+                            List<TypeDocument> nouveaux = typesAttendus == null
+                                ? new ArrayList<>() : new ArrayList<>(typesAttendus);
+                            nouveaux.add(typeDocument);
+                            dossierGere.setTypesDocumentsAttendus(nouveaux);
+                            dossierRepository.save(dossierGere);
+                        }
+                    }
 
                     UUID physicalLocationId = request.getDocumentUploadDto().getPhysicalLocationId();
                     if (physicalLocationId != null)

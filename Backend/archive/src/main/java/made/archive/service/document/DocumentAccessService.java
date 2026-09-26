@@ -230,13 +230,13 @@ public class DocumentAccessService
                 ));
             }
 
-            // ── 4b. Filtre par projet — ne contourne jamais la visibilité
+            // ── 4b. Filtre par dossier — ne contourne jamais la visibilité
             //       réelle calculée en 2b, seulement une restriction de plus.
-            if (filter.getProjetId() != null)
+            if (filter.getDossierId() != null)
             {
                 predicates.add(cb.equal(
-                    root.get("projet").get("id"),
-                    filter.getProjetId()
+                    root.get("dossier").get("id"),
+                    filter.getDossierId()
                 ));
             }
 

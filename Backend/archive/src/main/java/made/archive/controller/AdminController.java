@@ -225,7 +225,7 @@ public class AdminController
 
     // getUser(id) a été retiré d'ici : @Secured("ROLE_USER") sous /api/admin_uo/** était
     // inatteignable pour un simple USER (la règle d'URL exige ROLE_ADMIN_UO avant même
-    // d'atteindre cette annotation — même défaut qu'on a corrigé pour les projets et l'UO
+    // d'atteindre cette annotation — même défaut qu'on a corrigé pour les dossiers et l'UO
     // courante). Equivalent déjà fonctionnel et correctement exposé : UserController
     // GET /api/user/me/{id} (accepte un ID arbitraire malgré son nom — pas seulement "soi-même").
 

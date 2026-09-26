@@ -1,6 +1,7 @@
 // UserTable.tsx — 3 boutons visibles + menu déroulant
 import { memo, useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import RolesFitCell from './RolesFitCell';
 import '../Style/Admin/UserTable.css';
 
 interface RoleField {
@@ -43,15 +44,6 @@ const UserTable = memo(({ user, onAction, actionInProgress, onRemoveFromUO, onRe
 
     const menuRef = useRef<HTMLDivElement | null>(null);
     const buttonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-
-    // Liste déroulante des rôles — indépendante du menu d'actions ci-dessus
-    // (même mécanique : bouton + portail positionné en fixed, fermeture au clic
-    // extérieur/scroll/resize), affichée dès 2 rôles (voir le rendu de la
-    // colonne "Rôle" plus bas) — avec 0 ou 1 seul rôle, rien à replier.
-    const [openRolesId, setOpenRolesId] = useState<string | null>(null);
-    const [rolesMenuPos, setRolesMenuPos] = useState<MenuPosition | null>(null);
-    const rolesMenuRef = useRef<HTMLDivElement | null>(null);
-    const rolesButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
     // Info-bulle "suppression en attente" — même mécanique encore, déclenchée par
     // le badge poubelle rouge dans la colonne Actions (voir plus bas).
@@ -135,50 +127,6 @@ const UserTable = memo(({ user, onAction, actionInProgress, onRemoveFromUO, onRe
             window.removeEventListener('resize', handleScrollOrResize);
         };
     }, [openMenuId]);
-
-    const closeRolesMenu = () => {
-        setOpenRolesId(null);
-        setRolesMenuPos(null);
-    };
-
-    const toggleRolesMenu = (id: string) => {
-        if (openRolesId === id) {
-            closeRolesMenu();
-            return;
-        }
-        const btn = rolesButtonRefs.current[id];
-        if (btn) {
-            const rect = btn.getBoundingClientRect();
-            setRolesMenuPos({
-                top: rect.bottom + window.scrollY + 4,
-                left: rect.left + window.scrollX, // ancré au bord gauche du bouton
-            });
-        }
-        setOpenRolesId(id);
-    };
-
-    useEffect(() => {
-        if (!openRolesId) return;
-
-        const handleClickOutside = (event: MouseEvent) => {
-            const target = event.target as Node;
-            const clickedToggle = rolesButtonRefs.current[openRolesId]?.contains(target);
-            const clickedMenu = rolesMenuRef.current?.contains(target);
-            if (!clickedToggle && !clickedMenu) closeRolesMenu();
-        };
-
-        const handleScrollOrResize = () => closeRolesMenu();
-
-        document.addEventListener('mousedown', handleClickOutside);
-        window.addEventListener('scroll', handleScrollOrResize, true);
-        window.addEventListener('resize', handleScrollOrResize);
-
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-            window.removeEventListener('scroll', handleScrollOrResize, true);
-            window.removeEventListener('resize', handleScrollOrResize);
-        };
-    }, [openRolesId]);
 
     const closeDeletionMenu = () => {
         setOpenDeletionId(null);
@@ -281,46 +229,11 @@ const UserTable = memo(({ user, onAction, actionInProgress, onRemoveFromUO, onRe
                                 <td className="col-role">
                                     {!singleUser.roles || singleUser.roles.length === 0 ? (
                                         'Aucun rôle'
-                                    ) : singleUser.roles.length < 2 ? (
-                                        singleUser.roles.map(r => getRoleLabel(r.name)).join(', ')
-                                    ) : (() => {
-                                        // 2 rôles ou plus : un seul affiché en titre (le plus élevé
-                                        // dans la hiérarchie), les autres repliés dans la liste
-                                        // déroulante plutôt que d'allonger la ligne indéfiniment.
-                                        const [rolePrincipal, ...autres] = rolesParPriorite(singleUser);
-                                        return (
-                                            <div className="roles-dropdown-wrapper">
-                                                <button
-                                                    ref={(el) => { rolesButtonRefs.current[singleUser.id] = el; }}
-                                                    onClick={() => toggleRolesMenu(singleUser.id)}
-                                                    className="roles-trigger"
-                                                    aria-label={`${getRoleLabel(rolePrincipal.name)}, et ${autres.length} autre(s) rôle(s)`}
-                                                    aria-expanded={openRolesId === singleUser.id}
-                                                >
-                                                    {getRoleLabel(rolePrincipal.name)} <i className="fa-solid fa-chevron-down" />
-                                                </button>
-
-                                                {openRolesId === singleUser.id && rolesMenuPos && createPortal(
-                                                    <div
-                                                        ref={rolesMenuRef}
-                                                        className="action-menu roles-menu"
-                                                        style={{
-                                                            position: 'fixed',
-                                                            top: rolesMenuPos.top,
-                                                            left: rolesMenuPos.left,
-                                                        }}
-                                                    >
-                                                        {autres.map((r, i) => (
-                                                            <div key={i} className="roles-menu-item">
-                                                                {getRoleLabel(r.name)}
-                                                            </div>
-                                                        ))}
-                                                    </div>,
-                                                    document.body
-                                                )}
-                                            </div>
-                                        );
-                                    })()}
+                                    ) : (
+                                        <RolesFitCell
+                                            roles={rolesParPriorite(singleUser).map(r => getRoleLabel(r.name))}
+                                        />
+                                    )}
                                 </td>
                                 <td className="col-telephone">{singleUser.telephone}</td>
                                 <td>

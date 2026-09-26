@@ -9,6 +9,6 @@ public enum AuditCible
     DOCUMENT,
     GROUPE_ACCES,
     TYPE_DOCUMENT,
-    PROJET,
+    DOSSIER,
     PHYSICAL_LOCATION
 }

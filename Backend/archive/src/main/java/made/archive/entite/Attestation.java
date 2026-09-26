@@ -12,7 +12,6 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
-import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -20,14 +19,24 @@ import lombok.NoArgsConstructor;
 
 /**
  * Attestation d'archivage — un jeton PUBLIC (pas l'UUID réel du document) qui
- * donne accès en lecture seule + téléchargement au PDF/A d'un document,
- * sans jamais changer son statut d'accès (PUBLIC/PRIVÉ) ni ses droits
- * normaux. Un seul document produit au plus une seule attestation (jeton
- * stable réutilisé à chaque nouvelle demande de génération — voir
- * AttestationService.genererOuRecuperer) ; le PDF lui-même est reconstruit
- * à la volée à chaque consultation publique, jamais stocké (voir
- * AttestationPdfService), donc rien à régénérer si un jour la présentation
- * change.
+ * donne accès en lecture seule + téléchargement au PDF/A d'un document, sans
+ * jamais changer son statut d'accès (PUBLIC/PRIVÉ) ni ses droits normaux. Un
+ * document peut avoir PLUSIEURS attestations actives simultanément — chaque
+ * demande (voir AttestationService.genererNouvelle) crée un tout nouveau
+ * jeton indépendant, jamais de réutilisation ; utile par exemple pour donner
+ * un lien séparé à chaque destinataire externe, révocable indépendamment des
+ * autres. Le PDF lui-même est reconstruit à la volée à chaque consultation
+ * publique, jamais stocké (voir AttestationPdfService).
+ *
+ * Durée de vie : {@link #expireLe} (2 jours après {@link #genereLe}), propre
+ * à CHAQUE jeton — passé ce délai, le jeton est refusé côté consultation
+ * publique et purgé par une tâche planifiée (voir
+ * AttestationExpirationScheduler), avec trace dans le journal d'audit avant
+ * suppression. Si le document passe de PUBLIC à PRIVÉ (voir
+ * DocumentService.modifierAcces), TOUTES ses attestations actives sont
+ * purgées immédiatement, sans attendre leur expiration — l'inverse (PRIVÉ →
+ * PUBLIC) ne change rien aux attestations existantes, qui continuent chacune
+ * leur propre délai.
  */
 @Data
 @AllArgsConstructor
@@ -45,8 +54,8 @@ public class Attestation
     @Column(nullable = false, unique = true, length = 64)
     private String token;
 
-    @OneToOne
-    @JoinColumn(name = "document_id", nullable = false, unique = true)
+    @ManyToOne
+    @JoinColumn(name = "document_id", nullable = false)
     @JsonIgnore
     private Document document;
 
@@ -57,4 +66,8 @@ public class Attestation
 
     @Column(nullable = false)
     private LocalDateTime genereLe;
+
+    // 2 jours après genereLe — voir Javadoc de la classe.
+    @Column(nullable = false)
+    private LocalDateTime expireLe;
 }

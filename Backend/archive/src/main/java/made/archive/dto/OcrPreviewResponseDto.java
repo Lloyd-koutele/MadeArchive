@@ -34,7 +34,24 @@ public class OcrPreviewResponseDto
 
     private Map<String, String> metaDataSuggestions;
     private String message;
-    
+
+    /**
+     * Absent (null, omis du JSON — voir @JsonInclude) si aucun document
+     * similaire trouvé, OU si l'utilisateur n'y a pas accès (voir
+     * DocumentSimilaireDto). Purement informatif : n'empêche jamais
+     * l'archivage, contrairement à un vrai doublon (originalSha256).
+     */
+    private DocumentSimilaireDto documentSimilaire;
+
+    /**
+     * Absent (null, omis du JSON) si non pertinent (pas un tableur mis à
+     * l'échelle sur une page) ou si la mesure a échoué. Sinon, la plus
+     * petite taille de police (points) trouvée dans le PDF converti — au
+     * client de décider du seuil d'alerte (8pt, voir ImportDocuments.tsx).
+     * Purement informatif : n'empêche jamais l'archivage.
+     */
+    private Double policeMinPt;
+
     // Optionnel : pour debug
     private String extractedTextPreview;
 }

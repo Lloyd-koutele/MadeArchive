@@ -157,7 +157,7 @@ public class AttestationPdfService
         }
 
         texteCentre(cs, POLICE_TEXTE, 9,
-            "Scannez ce code pour consulter et télécharger le document original", qrY - 12);
+            "Scannez ce code pour consulter le document original", qrY - 12);
         texteCentre(cs, POLICE_ITALIQUE, 8, lien, qrY - 26);
 
         texteCentre(cs, POLICE_ITALIQUE, 7,

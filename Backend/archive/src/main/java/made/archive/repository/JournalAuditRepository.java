@@ -19,7 +19,7 @@ public interface JournalAuditRepository
      * Un compte s'est-il DÉJÀ connecté au moins une fois ? Détermine, dans
      * UserService.supprimerUtilisateur, si sa suppression peut être réelle
      * (jamais servi) ou seulement logique (a déjà servi, donc potentiellement
-     * référencé ailleurs — documents, projets, exports...).
+     * référencé ailleurs — documents, dossiers, exports...).
      */
     boolean existsByActeurIdAndAction(UUID acteurId, AuditAction action);
 }

@@ -12,13 +12,13 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * Lecture seule de l'UO courante de l'appelant — séparé de UOController
- * (gestion, sous /api/admin_uo) pour la même raison que ProjetLectureController :
+ * (gestion, sous /api/admin_uo) pour la même raison que DossierLectureController :
  * /api/admin_uo/** est gatée par ROLE_ADMIN_UO au niveau des URLs, donc EDITOR
  * et USER n'y accèdent jamais, même via @Secured. Or EDITOR et USER ont eux
  * aussi une UO unique de rattachement (voir UniteOrganisationnelleService —
  * la règle "une UO active par utilisateur" s'applique à tous les rôles sauf
  * ADMIN) et ont besoin de la connaître (titre de sidebar, scope du panneau
- * Projets...). /api/user/** ne demande que ROLE_USER, hérité par EDITOR,
+ * Dossiers...). /api/user/** ne demande que ROLE_USER, hérité par EDITOR,
  * ADMIN_UO et ADMIN dans la hiérarchie de rôles (SecurityConfig.roleHierarchy).
  */
 @RestController

@@ -9,7 +9,7 @@ import {
 import type { ExportApercuDocumentDto, ExportJobStatutDto } from '../services/document/DocumentExportService';
 import { getSousArbre } from '../services/organisation/UOService';
 import { getTypeDocumentsVisibles } from '../services/document/TypedocumentService';
-import { getProjetsDeUO } from '../services/organisation/ProjetService';
+import { getDossiersDeUO } from '../services/organisation/DossierService';
 import { hasRole } from '../auth/authService';
 import { useNotify } from '../notifications/NotificationProvider';
 import '../Style/organisation/ExportPanel.css';
@@ -38,14 +38,14 @@ const POLL_INTERVAL_MS = 2000;
  * ouverture) plutôt qu'un onglet dédié : l'export est une action ponctuelle,
  * pas une vue qu'on garde affichée.
  *
- * Le type et le projet se choisissent DÈS le départ, à côté de l'UO (options
- * réelles, chargées via getTypeDocumentsVisibles/getProjetsDeUO — pas
+ * Le type et le dossier se choisissent DÈS le départ, à côté de l'UO (options
+ * réelles, chargées via getTypeDocumentsVisibles/getDossiersDeUO — pas
  * dérivées d'un premier chargement complet) — pas seulement comme des
  * filtres qui n'apparaîtraient qu'après avoir tout listé. Le serveur n'a pas
- * de paramètre dédié type/projet pour l'aperçu : le choix filtre la liste
+ * de paramètre dédié type/dossier pour l'aperçu : le choix filtre la liste
  * dès qu'elle arrive, côté client, mais la sélection sous-jacente reste sur
  * tout le périmètre chargé (persiste si on change le filtre ensuite) — ça
- * permet d'exporter "un projet précis" ou "un groupe de documents précis"
+ * permet d'exporter "un dossier précis" ou "un groupe de documents précis"
  * en s'appuyant sur docIds (déjà supporté par l'API), sans aucun paramètre
  * serveur supplémentaire.
  */
@@ -57,11 +57,11 @@ function ExportPanel({ isOpen, onClose, uos, defaultUoId }: ExportPanelProps) {
     const [uoId, setUoId] = useState<number | null>(defaultUoId ?? null);
     const [includeChildren, setIncludeChildren] = useState(true);
 
-    // ── Choix type/projet — dès le départ, options réelles pour cette UO ──
+    // ── Choix type/dossier — dès le départ, options réelles pour cette UO ──
     const [typesOptions, setTypesOptions] = useState<{ nom: string }[]>([]);
-    const [projetsOptions, setProjetsOptions] = useState<{ nom: string }[]>([]);
+    const [dossiersOptions, setDossiersOptions] = useState<{ nom: string }[]>([]);
     const [filterType, setFilterType] = useState('');
-    const [filterProjet, setFilterProjet] = useState('');
+    const [filterDossier, setFilterDossier] = useState('');
     const [filterTexte, setFilterTexte] = useState('');
 
     // ── Options de fond ──────────────────────────────────────────────────
@@ -93,17 +93,17 @@ function ExportPanel({ isOpen, onClose, uos, defaultUoId }: ExportPanelProps) {
         setMotif('');
         setApercu(null);
         setSelectedIds(new Set());
-        setFilterType(''); setFilterProjet(''); setFilterTexte('');
+        setFilterType(''); setFilterDossier(''); setFilterTexte('');
         setJob(null);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen]);
 
-    // Choix réels de type/projet pour l'UO sélectionnée — indépendant du
+    // Choix réels de type/dossier pour l'UO sélectionnée — indépendant du
     // chargement des documents, dispo dès qu'on choisit une UO.
     useEffect(() => {
-        if (!isOpen || uoId == null) { setTypesOptions([]); setProjetsOptions([]); return; }
+        if (!isOpen || uoId == null) { setTypesOptions([]); setDossiersOptions([]); return; }
         getTypeDocumentsVisibles(uoId).then(setTypesOptions).catch(() => setTypesOptions([]));
-        getProjetsDeUO(uoId).then(setProjetsOptions).catch(() => setProjetsOptions([]));
+        getDossiersDeUO(uoId).then(setDossiersOptions).catch(() => setDossiersOptions([]));
     }, [isOpen, uoId]);
 
     // Changer d'UO/de périmètre invalide l'aperçu déjà chargé — on ne veut
@@ -113,7 +113,7 @@ function ExportPanel({ isOpen, onClose, uos, defaultUoId }: ExportPanelProps) {
         setApercu(null);
         setSelectedIds(new Set());
         setJob(null);
-        setFilterType(''); setFilterProjet(''); setFilterTexte('');
+        setFilterType(''); setFilterDossier(''); setFilterTexte('');
         if (pollRef.current) { window.clearInterval(pollRef.current); pollRef.current = null; }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [uoId, includeChildren, excludeCorbeille, includePriveNonMembre]);
@@ -141,7 +141,7 @@ function ExportPanel({ isOpen, onClose, uos, defaultUoId }: ExportPanelProps) {
                 includePriveNonMembre: estAdmin && includePriveNonMembre,
             });
             setApercu(documents);
-            // Tout coché par défaut, y compris ce que le filtre type/projet
+            // Tout coché par défaut, y compris ce que le filtre type/dossier
             // choisi en amont masque déjà — décocher/re-filtrer reste possible.
             setSelectedIds(new Set(documents.map(d => d.id)));
         } catch (err: any) {
@@ -156,10 +156,10 @@ function ExportPanel({ isOpen, onClose, uos, defaultUoId }: ExportPanelProps) {
         const texte = filterTexte.trim().toLowerCase();
         return apercu.filter(d =>
             (!filterType || d.typeDocumentNom === filterType) &&
-            (!filterProjet || d.projetNom === filterProjet) &&
+            (!filterDossier || d.dossierNom === filterDossier) &&
             (!texte || d.titre.toLowerCase().includes(texte))
         );
-    }, [apercu, filterType, filterProjet, filterTexte]);
+    }, [apercu, filterType, filterDossier, filterTexte]);
 
     const toggleSelection = (id: string) => {
         setSelectedIds(prev => {
@@ -218,7 +218,7 @@ function ExportPanel({ isOpen, onClose, uos, defaultUoId }: ExportPanelProps) {
                 });
                 const filtres = documents.filter(d =>
                     (!filterType || d.typeDocumentNom === filterType) &&
-                    (!filterProjet || d.projetNom === filterProjet)
+                    (!filterDossier || d.dossierNom === filterDossier)
                 );
                 if (filtres.length === 0) {
                     notify.error('Aucun document ne correspond à ce périmètre');
@@ -298,10 +298,10 @@ function ExportPanel({ isOpen, onClose, uos, defaultUoId }: ExportPanelProps) {
                         </select>
                     </label>
                     <label className="export-field">
-                        Projet
-                        <select className="filter-input" value={filterProjet} onChange={e => setFilterProjet(e.target.value)}>
-                            <option value="">Tous les projets</option>
-                            {projetsOptions.map(p => <option key={p.nom} value={p.nom}>{p.nom}</option>)}
+                        Dossier
+                        <select className="filter-input" value={filterDossier} onChange={e => setFilterDossier(e.target.value)}>
+                            <option value="">Tous les dossiers</option>
+                            {dossiersOptions.map(p => <option key={p.nom} value={p.nom}>{p.nom}</option>)}
                         </select>
                     </label>
                 </div>
@@ -313,7 +313,7 @@ function ExportPanel({ isOpen, onClose, uos, defaultUoId }: ExportPanelProps) {
                         onChange={e => setSeparateProjects(e.target.checked)}
                         disabled={jobEnCours}
                     />
-                    Séparer par projet dans le ZIP
+                    Séparer par dossier dans le ZIP
                 </label>
                 <label className="export-option">
                     <input
@@ -414,7 +414,7 @@ function ExportPanel({ isOpen, onClose, uos, defaultUoId }: ExportPanelProps) {
                                             <p className="export-doc-title">{doc.titre}</p>
                                             <p className="export-doc-meta">
                                                 {doc.typeDocumentNom ?? '—'}
-                                                {doc.projetNom && <> · {doc.projetNom}</>}
+                                                {doc.dossierNom && <> · {doc.dossierNom}</>}
                                                 {' · '}
                                                 <span className={`doc-access-tag ${doc.access === 'PUBLIC' ? 'public' : 'prive'}`}>
                                                     {doc.access === 'PUBLIC' ? 'Public' : 'Privé'}

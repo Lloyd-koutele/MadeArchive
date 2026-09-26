@@ -49,16 +49,23 @@ services:
       timeout: 20s
       retries: 3
 
+  # Optionnel (voir OllamaService/ExternalLlmProperties — génération automatique de
+  # regex désactivée si absent et si aucune API LLM externe n'est configurée non
+  # plus). Ne démarre PAS avec un simple "docker compose up" : nécessite le profil
+  # "ollama" (COMPOSE_PROFILES=ollama dans .env, ou "docker compose --profile ollama
+  # up -d") — évite de retenir 10 Go de RAM et de télécharger le modèle (9 Go) à
+  # quelqu'un qui préfère une API externe ou pas de LLM du tout.
   ollama:
     image: ollama/ollama:latest
     container_name: ollama
+    profiles: ["ollama"]
     mem_limit: 10g
     cpus: 5
     ports:
       - "127.0.0.1:11434:11434"
     volumes:
       - ollama_data:/root/.ollama
-    entrypoint: ["/bin/sh", "-c", "ollama serve & sleep 10 && ollama pull qwen2.5-coder:14b && wait"]
+    entrypoint: ["/bin/sh", "-c", "ollama serve & sleep 10 && ollama pull ${OLLAMA_MODEL:-qwen2.5-coder:14b} && wait"]
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 60s
@@ -144,14 +151,17 @@ services:
 
     env_file:
       - .env
+    # "ollama" volontairement ABSENT d'ici : il est optionnel (voir plus haut, profil
+    # "ollama") — app ne doit jamais attendre après un service qui peut ne pas exister
+    # du tout dans le déploiement courant. Sans OLLAMA_BASE_URL/LLM_API_URL configurée,
+    # la génération automatique de regex se désactive simplement (voir OllamaService),
+    # aucun impact sur le reste de l'application.
     depends_on:
       postgres:
         condition: service_healthy
       minio:
         condition: service_healthy
       meilisearch:
-        condition: service_healthy
-      ollama:
         condition: service_healthy
       gotenberg:
         condition: service_healthy
@@ -163,7 +173,10 @@ services:
 
       DB_URL: jdbc:postgresql://postgres:5432/madearchive
       TESSERACT_DATA_PATH: /usr/share/tessdata
-      OLLAMA_BASE_URL: http://ollama:11434
+      # Surchargeable depuis .env : vide (OLLAMA_BASE_URL=) pour désactiver
+      # explicitement Ollama même si le conteneur tourne (profil "ollama" actif),
+      # ex. le temps de tester une API externe sans arrêter le conteneur.
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
       CHROMIUM_WS_ENDPOINT: ws://chromium:3000/playwright/chromium?token=${CHROMIUM_TOKEN}
       MINIO_URL: http://minio:9000
       MEILISEARCH_HOST: http://meilisearch:7700

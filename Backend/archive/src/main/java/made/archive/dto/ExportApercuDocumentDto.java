@@ -15,7 +15,7 @@ public class ExportApercuDocumentDto
     private String titre;
     private String uoNom;
     private String typeDocumentNom;
-    private String projetNom;
+    private String dossierNom;
     private TypeAccess access;
 
     /** Faux si ce document n'apparaît dans cet aperçu QUE grâce à

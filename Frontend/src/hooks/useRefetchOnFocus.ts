@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react';
 /**
  * Relance `refetch` chaque fois que l'onglet redevient visible/actif après
  * avoir été en arrière-plan — couvre "une autre interface a modifié une
- * donnée pendant que je regardais autre chose" (UO, projets, emplacements,
+ * donnée pendant que je regardais autre chose" (UO, dossiers, emplacements,
  * types de documents, utilisateurs...) sans infrastructure temps réel
  * (WebSocket) : pas de push serveur, juste un rechargement au retour sur
  * l'écran, ce qui couvre la quasi-totalité des cas réels de désynchronisation

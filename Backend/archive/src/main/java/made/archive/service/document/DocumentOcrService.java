@@ -2,6 +2,8 @@ package made.archive.service.document;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import made.archive.dto.DocumentSimilaireDto;
+import made.archive.entite.Document;
 import made.archive.entite.PkiKeyStatus;
 import made.archive.entite.TypeDocument;
 import made.archive.entite.UniteOrganisationnelle;
@@ -12,9 +14,11 @@ import made.archive.repository.DocumentRepository;
 import made.archive.repository.TypeDocumentRepository;
 import made.archive.repository.UserRepository;
 import made.archive.service.organisation.UniteOrganisationnelleService;
+import made.archive.util.NormalisationNoms;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -35,6 +39,8 @@ public class DocumentOcrService
     private final UniteOrganisationnelleService uniteOrganisationnelleService;
     private final UserRepository               userRepository;
     private final OcrPositionalExtractionService ocrPositionalExtractionService;
+    /** Uniquement pour resolveDocumentSiVisible (avertissement doc. similaire) — voir sa Javadoc. */
+    private final DocumentService              documentService;
 
     /**
      * Point d'entrée historique — upload navigateur (multipart/form-data).
@@ -126,11 +132,25 @@ public class DocumentOcrService
             }
 
             // ── 3. Conversion en PDF via LibreOffice ─────────────────────────
-            byte[] pdfBytes = libreOfficeConversionService.convertToPdf(
-                originalBytes, originalFilename);
+            LibreOfficeConversionService.ConversionResult conversion =
+                libreOfficeConversionService.convertToPdf(originalBytes, originalFilename);
 
             // ── 4. Marquage PDF/A-3b ─────────────────────────────────────────
-            byte[] pdfABytes = pdfAConversionService.convertToPdfA3(pdfBytes);
+            byte[] pdfABytes = pdfAConversionService.convertToPdfA3(conversion.pdfBytes());
+
+            // ── 4b. AVERTISSEMENT (pas un blocage) taille de police — voir
+            //      mesurerPoliceMinimalePt. Seulement pertinent pour un tableur
+            //      passé par singlePageSheets (voir LibreOfficeConversionService) :
+            //      pour tout autre format, la mise en page n'a pas été retouchée
+            //      par nos soins, une petite police y est un choix de l'auteur,
+            //      pas un effet de bord de notre conversion.
+            Double policeMinPt = conversion.singlePageSheetsApplied()
+                ? mesurerPoliceMinimalePt(pdfABytes) : null;
+            if (policeMinPt != null && policeMinPt < 8.0)
+            {
+                log.info("[OCR-Phase1] ⚠️ Police réduite à {}pt après mise à l'échelle sur une page ({})",
+                    policeMinPt, originalFilename);
+            }
 
             // ── 5. SHA-256 du PDF/A-3b ───────────────────────────────────────
             String pdfaSha256 = hashService.calculateFromBytes(pdfABytes);
@@ -148,6 +168,25 @@ public class DocumentOcrService
             String extractedText = extraction.texte();
             log.info("[OCR-Phase1] Texte : {} caractères, {} mot(s) positionné(s)",
                      extractedText != null ? extractedText.length() : 0, extraction.mots().size());
+
+            // ── 7b. Hash du texte normalisé + AVERTISSEMENT (pas un blocage) de
+            //      document similaire — voir Document.texteNormaliseSha256. Repère
+            //      un même contenu archivé sous une autre FORME (ex. .docx uploadé
+            //      une première fois, sa conversion PDF une autre fois) — ce que
+            //      l'anti-doublon originalSha256 ci-dessus (étape 2c) ne peut jamais
+            //      voir, les octets source étant totalement différents.
+            String texteNormaliseSha256 = (extractedText != null && !extractedText.isBlank())
+                ? hashService.calculateFromBytes(
+                    NormalisationNoms.normaliser(extractedText).getBytes(StandardCharsets.UTF_8))
+                : null;
+            DocumentSimilaireDto documentSimilaire = texteNormaliseSha256 != null
+                ? detecterDocumentSimilaire(texteNormaliseSha256, uo.getId(), uploadedByFrais)
+                : null;
+            if (documentSimilaire != null)
+            {
+                log.info("[OCR-Phase1] ⚠️ Document similaire détecté (visible par l'uploadeur) : {}",
+                    documentSimilaire.getDocumentId());
+            }
 
             // ── 8. Suggestions — positionnelles (ce document) + regex (héritées) ─
             // Le positionnel prime quand les deux trouvent quelque chose : ancré
@@ -200,7 +239,10 @@ public class DocumentOcrService
             sessionData.suggestions           = suggestions;
             sessionData.originalSha256        = originalSha256;
             sessionData.pdfaSha256            = pdfaSha256;
+            sessionData.texteNormaliseSha256  = texteNormaliseSha256;
+            sessionData.documentSimilaire     = documentSimilaire;
             sessionData.regexAlreadyGenerated = regexAlreadyGenerated;
+            sessionData.policeMinPt           = policeMinPt;
 
             return sessionData;
         }
@@ -216,7 +258,74 @@ public class DocumentOcrService
         }
     }
 
-    
+    /**
+     * Plus petite taille de police (en points) trouvée dans le PDF, ou null
+     * si la mesure échoue ou si le PDF ne contient aucun texte — jamais une
+     * erreur bloquante, purement informatif (voir appelant). Utilisée pour
+     * avertir l'éditeur quand singlePageSheets (voir
+     * LibreOfficeConversionService) a réduit un tableau large au point de le
+     * rendre difficilement lisible.
+     */
+    private Double mesurerPoliceMinimalePt(byte[] pdfBytes)
+    {
+        try (org.apache.pdfbox.pdmodel.PDDocument document =
+                 org.apache.pdfbox.pdmodel.PDDocument.load(pdfBytes))
+        {
+            double[] min = { Double.MAX_VALUE };
+            org.apache.pdfbox.text.PDFTextStripper stripper =
+                new org.apache.pdfbox.text.PDFTextStripper()
+            {
+                @Override
+                protected void writeString(String text, List<org.apache.pdfbox.text.TextPosition> textPositions)
+                {
+                    for (org.apache.pdfbox.text.TextPosition tp : textPositions)
+                    {
+                        if (tp.getUnicode() != null && !tp.getUnicode().isBlank())
+                        {
+                            min[0] = Math.min(min[0], tp.getFontSizeInPt());
+                        }
+                    }
+                }
+            };
+            stripper.getText(document);
+            return min[0] == Double.MAX_VALUE ? null : min[0];
+        }
+        catch (Exception e)
+        {
+            log.warn("[OCR-Phase1] Mesure de la taille de police impossible : {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Cherche, parmi les documents de cette UO ayant le même texte OCR
+     * normalisé, le premier que l'utilisateur courant peut effectivement voir
+     * — jamais un indice qu'un document existe s'il n'y a pas accès (Option A,
+     * silence total, voir DocumentService.resolveDocumentSiVisible). En
+     * général 0 ou 1 correspondance ; s'il y en a plusieurs, la première
+     * visible suffit — le but est d'avertir, pas d'énumérer.
+     */
+    private DocumentSimilaireDto detecterDocumentSimilaire(String texteNormaliseSha256, Long uoId, User uploadeur)
+    {
+        List<Document> candidats = documentRepository
+            .findByTexteNormaliseSha256AndUniteOrganisationnelle_Id(texteNormaliseSha256, uoId);
+
+        for (Document candidat : candidats)
+        {
+            Optional<Document> visible = documentService.resolveDocumentSiVisible(candidat.getId(), uploadeur);
+            if (visible.isPresent())
+            {
+                Document doc = visible.get();
+                return DocumentSimilaireDto.builder()
+                    .documentId(doc.getId().toString())
+                    .titre(doc.getTitre())
+                    .build();
+            }
+        }
+        return null;
+    }
+
+
     private Map<String, String> calculateSuggestions(
         Map<String, String> regexMap,
         String extractedText)

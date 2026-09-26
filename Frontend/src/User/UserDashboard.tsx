@@ -4,10 +4,10 @@ import Profile from '../Page/Profil';
 import DocumentsAccessibles from '../document/DocumentsAccessible';
 import { getCurrentUserInfo } from '../auth/authService';
 import { getMyUO } from '../services/organisation/UOService';
-import ProjetsPanel from '../organisation/ProjetsPanel';
+import DossiersPanel from '../organisation/DossiersPanel';
 import '../Style/User/User.css';
 
-type UserView = 'documents' | 'projets' | 'profile';
+type UserView = 'documents' | 'dossiers' | 'profile';
 
 // ─── UserDashboard principal ───
 function UserDashboard() {
@@ -15,7 +15,7 @@ function UserDashboard() {
     const [currentView, setCurrentView] = useState<UserView>('documents');
 
     // UO de rattachement — affichée dans le titre du Sidebar, et l'id sert de
-    // scope pour le panneau Projets (lecture seule pour ce rôle).
+    // scope pour le panneau Dossiers (lecture seule pour ce rôle).
     const [uoNom, setUoNom] = useState<string>('');
     const [uoId, setUoId] = useState<number | null>(null);
 
@@ -52,10 +52,10 @@ function UserDashboard() {
                             </div>
                             <div className="main-header">
                                 <button
-                                    onClick={() => setCurrentView('projets')}
-                                    className={`sidebar-btn ${currentView === 'projets' ? 'active-tab' : ''}`}
+                                    onClick={() => setCurrentView('dossiers')}
+                                    className={`sidebar-btn ${currentView === 'dossiers' ? 'active-tab' : ''}`}
                                 >
-                                    Projets
+                                    Dossiers
                                 </button>
                             </div>
                         </div>
@@ -65,7 +65,7 @@ function UserDashboard() {
                 <div className="main-content">
                     {currentView === 'profile' && <Profile userId={userInfo?.id} />}
                     {currentView === 'documents' && <DocumentsAccessibles />}
-                    {currentView === 'projets' && <ProjetsPanel uoId={uoId} canCreate={false} />}
+                    {currentView === 'dossiers' && <DossiersPanel uoId={uoId} canCreate={false} />}
                 </div>
             </div>
         </div>

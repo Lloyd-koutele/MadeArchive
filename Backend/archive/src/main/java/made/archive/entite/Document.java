@@ -79,6 +79,29 @@ public class Document
     @Column(name = "pdfa_sha256", nullable = false, length = 64)
     private String pdfaSha256;
 
+    /**
+     * SHA-256 du texte OCR extrait, normalisé (casse/accents/espaces retirés
+     * — voir NormalisationNoms). Repère un contenu déjà archivé même sous une
+     * autre FORME (ex. un .docx uploadé une première fois, puis sa conversion
+     * PDF une autre fois — originalSha256 ne les verrait JAMAIS comme
+     * identiques, ce sont des octets totalement différents, voir sa Javadoc).
+     *
+     * Nullable (contrairement à originalSha256/pdfaSha256, tous deux
+     * obligatoires) : absent si l'OCR n'a produit aucun texte exploitable
+     * (scan illisible, type de contenu non pris en charge).
+     *
+     * VOLONTAIREMENT PAS de contrainte unique en base, ni de blocage à
+     * l'upload — juste un AVERTISSEMENT (voir DocumentOcrService, méthode de
+     * détection d'un document similaire) : contrairement à originalSha256
+     * (identité byte-à-byte, jamais ambiguë), une correspondance ici reste
+     * probabiliste — l'OCR d'un même contenu peut varier légèrement selon la
+     * source (scan vs. PDF à couche texte). Un blocage dur risquerait un faux
+     * positif empêchant un archivage légitime ; l'utilisateur reste seul
+     * juge, une fois informé.
+     */
+    @Column(name = "texte_normalise_sha256", length = 64)
+    private String texteNormaliseSha256;
+
     @Column(length = 400)
     private String blockChainTxId;
 
@@ -157,8 +180,8 @@ public class Document
     private java.time.Instant horodatageDate;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "projet_id")
-    private Projet projet;
+    @JoinColumn(name = "dossier_id")
+    private Dossier dossier;
 
     
     @ManyToOne(fetch = FetchType.LAZY)

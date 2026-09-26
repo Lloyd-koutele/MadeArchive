@@ -124,6 +124,8 @@ public class BulkUploadSameTypeService
                 .nomFichier(nomFichier)
                 .metaDataSuggestions(sessionData.suggestions)
                 .message(buildPreviewMessage(nomFichier, sessionData))
+                .documentSimilaire(sessionData.documentSimilaire)
+                .policeMinPt(sessionData.policeMinPt)
                 .build();
         }
         catch (PdfAConversionException e)

@@ -138,7 +138,7 @@ public class User
      * une fois suppressionPrevueLe atteint) — null tant qu'elle ne l'est pas.
      * Contrairement au blocage (actif=false seul, réversible), c'est irréversible :
      * nom/prénom/email/id sont volontairement CONSERVÉS (ils restent lisibles sur
-     * les documents/projets/exports déjà réalisés par ce compte, et dans le journal
+     * les documents/dossiers/exports déjà réalisés par ce compte, et dans le journal
      * d'audit), seuls le mot de passe (remplacé par une valeur aléatoire) et la clé
      * PKI (révoquée si active) sont coupés. Un compte jamais connecté est supprimé
      * pour de vrai (DELETE réel) à la place — ce champ ne concerne donc que le cas

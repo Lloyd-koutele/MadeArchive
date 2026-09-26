@@ -66,7 +66,7 @@ public class JournalAudit
     @Column(length = 30)
     private AuditCible cibleType;
 
-    /** Générique (UUID pour Document/Utilisateur, Long pour UO/TypeDocument/Projet). */
+    /** Générique (UUID pour Document/Utilisateur, Long pour UO/TypeDocument/Dossier). */
     @Column(length = 60)
     private String cibleId;
 

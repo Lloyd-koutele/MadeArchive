@@ -1,6 +1,7 @@
 // UOController.java — migration UserDetailsImpl complétée sur tous les endpoints
 package made.archive.controller;
 
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.http.ResponseEntity;
@@ -40,7 +41,7 @@ public class UOController
         }
         catch (Exception e)
         {
-            return ResponseEntity.badRequest().body("Erreur lors de la récupération des UO: " + e.getMessage());
+            return errorResponse("Erreur lors de la récupération des UO: " + e.getMessage());
         }
     }
 
@@ -54,7 +55,7 @@ public class UOController
         }
         catch (Exception e)
         {
-            return ResponseEntity.badRequest().body("Erreur lors de la récupération de votre UO: " + e.getMessage());
+            return errorResponse("Erreur lors de la récupération de votre UO: " + e.getMessage());
         }
     }
 
@@ -68,7 +69,7 @@ public class UOController
         }
         catch (Exception e)
         {
-            return ResponseEntity.badRequest().body("Erreur lors de la récupération de l'UO: " + e.getMessage());
+            return errorResponse("Erreur lors de la récupération de l'UO: " + e.getMessage());
         }
     }
 
@@ -82,7 +83,7 @@ public class UOController
         }
         catch (Exception e)
         {
-            return ResponseEntity.badRequest().body("Erreur lors de la récupération des UO filles: " + e.getMessage());
+            return errorResponse("Erreur lors de la récupération des UO filles: " + e.getMessage());
         }
     }
 
@@ -96,7 +97,7 @@ public class UOController
         }
         catch (Exception e)
         {
-            return ResponseEntity.badRequest().body("Erreur lors de la récupération du sous-arbre: " + e.getMessage());
+            return errorResponse("Erreur lors de la récupération du sous-arbre: " + e.getMessage());
         }
     }
 
@@ -110,7 +111,7 @@ public class UOController
         }
         catch (Exception e)
         {
-            return ResponseEntity.badRequest().body("Erreur lors de la création de l'UO: " + e.getMessage());
+            return errorResponse("Erreur lors de la création de l'UO: " + e.getMessage());
         }
     }
 
@@ -124,7 +125,7 @@ public class UOController
         }
         catch (Exception e)
         {
-            return ResponseEntity.badRequest().body("Erreur lors de la mise à jour de l'UO: " + e.getMessage());
+            return errorResponse("Erreur lors de la mise à jour de l'UO: " + e.getMessage());
         }
     }
 
@@ -138,18 +139,25 @@ public class UOController
         }
         catch (Exception e)
         {
-            return ResponseEntity.badRequest().body("Erreur lors du déplacement vers la racine: " + e.getMessage());
+            return errorResponse("Erreur lors du déplacement vers la racine: " + e.getMessage());
         }
     }
 
     @Secured({"ROLE_ADMIN", "ROLE_ADMIN_UO"})
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteUO(
-            @PathVariable Long id, 
+    public ResponseEntity<?> deleteUO(
+            @PathVariable Long id,
             @AuthenticationPrincipal UserDetailsImpl principal)
     {
-        uoService.supprimer(id, principal.getUser().getId());
-        return ResponseEntity.noContent().build();
+        try
+        {
+            uoService.supprimer(id, principal.getUser().getId());
+            return ResponseEntity.noContent().build();
+        }
+        catch (Exception e)
+        {
+            return errorResponse("Erreur lors de la suppression de l'UO: " + e.getMessage());
+        }
     }
 
     @Secured({"ROLE_ADMIN", "ROLE_ADMIN_UO"})
@@ -162,7 +170,7 @@ public class UOController
         }
         catch (Exception e)
         {
-            return ResponseEntity.badRequest().body("Erreur lors de la récupération des membres: " + e.getMessage());
+            return errorResponse("Erreur lors de la récupération des membres: " + e.getMessage());
         }
     }
 
@@ -177,7 +185,7 @@ public class UOController
         }
         catch (Exception e)
         {
-            return ResponseEntity.badRequest().body("Erreur lors de l'ajout du membre: " + e.getMessage());
+            return errorResponse("Erreur lors de l'ajout du membre: " + e.getMessage());
         }
     }
 
@@ -192,7 +200,7 @@ public class UOController
         }
         catch (Exception e)
         {
-            return ResponseEntity.badRequest().body("Erreur lors du retrait du membre: " + e.getMessage());
+            return errorResponse("Erreur lors du retrait du membre: " + e.getMessage());
         }
     }
 
@@ -207,7 +215,7 @@ public class UOController
         }
         catch (Exception e)
         {
-            return ResponseEntity.badRequest().body("Erreur lors du retrait du membre: " + e.getMessage());
+            return errorResponse("Erreur lors du retrait du membre: " + e.getMessage());
         }
     }
 
@@ -222,7 +230,19 @@ public class UOController
         }
         catch (Exception e)
         {
-            return ResponseEntity.badRequest().body("Erreur lors du transfert: " + e.getMessage());
+            return errorResponse("Erreur lors du transfert: " + e.getMessage());
         }
+    }
+
+    /**
+     * Enveloppe le message dans {"message": ...} plutôt qu'une String brute —
+     * le frontend lit toujours error.response.data.message (voir Login.tsx,
+     * CreateUser.tsx, etc.), jamais le corps brut ; une String brute rend ce
+     * message inaccessible côté client (même défaut déjà corrigé une fois
+     * dans AdminController.errorResponse, reproduit ici pour tout le fichier).
+     */
+    private ResponseEntity<?> errorResponse(String message)
+    {
+        return ResponseEntity.badRequest().body(Map.of("message", message));
     }
 }

@@ -21,13 +21,15 @@ export interface TypeDocumentDto {
 }
 
 /**
- * PUT /api/admin_uo/types-documents/{id}/reset-regex
+ * PUT /api/editor/types-documents/{id}/reset-regex
  * Réinitialise les regex d'extraction OCR d'un type — elles seront
- * régénérées au prochain document de ce type. Réservé à ADMIN/ADMIN_UO.
+ * régénérées au prochain document de ce type. Gestion des types de
+ * documents réservée aux EDITOR de leur propre UO (voir DocumentController,
+ * backend) — ni ADMIN ni ADMIN_UO n'y ont plus accès.
  */
 export const resetTypeDocumentRegex = async (id: number): Promise<void> => {
     try {
-        await api.put(`/admin_uo/types-documents/${id}/reset-regex`);
+        await api.put(`/editor/types-documents/${id}/reset-regex`);
     } catch (error: any) {
         throw error.response?.data?.message
             ? new Error(error.response.data.message)
@@ -36,17 +38,17 @@ export const resetTypeDocumentRegex = async (id: number): Promise<void> => {
 };
 
 /**
- * PUT /api/admin_uo/types-documents/{id}/regex
+ * PUT /api/editor/types-documents/{id}/regex
  * Corrige manuellement les regex d'extraction OCR d'un type — un champ par
- * métadonnée existante. Réservé à ADMIN/ADMIN_UO ; le serveur valide que
- * chaque regex compile avant d'enregistrer.
+ * métadonnée existante ; le serveur valide que chaque regex compile avant
+ * d'enregistrer.
  */
 export const modifierTypeDocumentRegex = async (
     id: number,
     regexParChamp: Record<string, string>
 ): Promise<TypeDocumentDto> => {
     try {
-        const response = await api.put(`/admin_uo/types-documents/${id}/regex`, regexParChamp);
+        const response = await api.put(`/editor/types-documents/${id}/regex`, regexParChamp);
         return response.data;
     } catch (error: any) {
         throw error.response?.data?.message
@@ -55,10 +57,17 @@ export const modifierTypeDocumentRegex = async (
     }
 };
 
-// Réservé ADMIN côté serveur — vue globale non scopée
-export const getAllTypeDocuments = async (): Promise<TypeDocumentDto[]> => {
+/**
+ * GET /api/editor/types-documents/uo/{uoId}
+ * Scopé à la propre UO de l'éditeur (le serveur refuse toute autre UO —
+ * voir UniteOrganisationnelleService.estEditeurDeUO). À NE PAS confondre
+ * avec getTypeDocumentsByUO ci-dessous (endpoint ADMIN/ADMIN_UO différent,
+ * réservé à des besoins de LECTURE sans rapport avec la gestion des types :
+ * FixityCheckPanel, DossiersPanel).
+ */
+export const getTypeDocumentsByUOEditor = async (uoId: number): Promise<TypeDocumentDto[]> => {
     try {
-        const response = await api.get('/admin_uo/types-documents');
+        const response = await api.get(`/editor/types-documents/uo/${uoId}`);
         return response.data;
     } catch (error: any) {
         throw error.response?.data?.message
@@ -67,18 +76,14 @@ export const getAllTypeDocuments = async (): Promise<TypeDocumentDto[]> => {
     }
 };
 
-export const getTypeDocumentById = async (id: number): Promise<TypeDocumentDto> => {
-    try {
-        const response = await api.get(`/admin_uo/types-documents/${id}`);
-        return response.data;
-    } catch (error: any) {
-        throw error.response?.data?.message
-            ? new Error(error.response.data.message)
-            : error;
-    }
-};
-
-// Scopé à une UO précise — utilisé par ADMIN_UO, qui n'a pas accès à getAllTypeDocuments
+/**
+ * GET /api/admin_uo/types-documents/uo/{uoId}
+ * Réservé ADMIN/ADMIN_UO — LECTURE seule, pour des besoins qui n'ont rien à
+ * voir avec la gestion des types de documents elle-même (réservée aux
+ * EDITOR, voir getTypeDocumentsByUOEditor) : regrouper les cibles d'un
+ * contrôle d'intégrité par type d'origine (FixityCheckPanel), lister les
+ * types attendus dans un dossier (DossiersPanel).
+ */
 export const getTypeDocumentsByUO = async (uoId: number): Promise<TypeDocumentDto[]> => {
     try {
         const response = await api.get(`/admin_uo/types-documents/uo/${uoId}`);
@@ -114,7 +119,7 @@ export const getTypeDocumentsVisibles = async (uoId?: number | null): Promise<Ty
 
 export const createTypeDocument = async (dto: TypeDocumentDto): Promise<TypeDocumentDto> => {
     try {
-        const response = await api.post('/admin_uo/types-documents/create', dto);
+        const response = await api.post('/editor/types-documents/create', dto);
         return response.data;
     } catch (error: any) {
         throw error.response?.data?.message
@@ -125,7 +130,7 @@ export const createTypeDocument = async (dto: TypeDocumentDto): Promise<TypeDocu
 
 export const updateTypeDocument = async (id: number, dto: TypeDocumentDto): Promise<TypeDocumentDto> => {
     try {
-        const response = await api.put(`/admin_uo/types-documents/${id}`, dto);
+        const response = await api.put(`/editor/types-documents/${id}`, dto);
         return response.data;
     } catch (error: any) {
         throw error.response?.data?.message
@@ -136,7 +141,7 @@ export const updateTypeDocument = async (id: number, dto: TypeDocumentDto): Prom
 
 export const deleteTypeDocument = async (id: number): Promise<void> => {
     try {
-        await api.delete(`/admin_uo/types-documents/${id}`);
+        await api.delete(`/editor/types-documents/${id}`);
     } catch (error: any) {
         throw error.response?.data?.message
             ? new Error(error.response.data.message)
@@ -146,7 +151,7 @@ export const deleteTypeDocument = async (id: number): Promise<void> => {
 
 export const deleteTypeDocumentList = async (ids: number[]): Promise<void> => {
     try {
-        await api.delete('/admin_uo/types-documents/delete-list', { data: ids });
+        await api.delete('/editor/types-documents/delete-list', { data: ids });
     } catch (error: any) {
         throw error.response?.data?.message
             ? new Error(error.response.data.message)

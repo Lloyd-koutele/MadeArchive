@@ -10,13 +10,11 @@ import {
     restaurerDocumentDepuisCorbeille
 } from '../services/document/DocumentService';
 import { genererAttestation } from '../services/document/AttestationService';
-import { modifierAcces, modifierEmplacementPhysique, modifierMetaDataDocument, modifierProjetDocument, verifierFusionGroupeProjet, getTypeDocumentById } from '../services/document/DocumentService';
+import { modifierAcces, modifierMetaDataDocument, getTypeDocumentById } from '../services/document/DocumentService';
 import ChangerAccesPanel from '../components/ChangerAccesPanel';
+import EmplacementPhysiqueSection from '../components/EmplacementPhysiqueSection';
+import DossierAttachSection from '../components/DossierAttachSection';
 import type { TypeDocumentDto as TypeDocumentEditorDto } from '../services/document/DocumentService';
-import { getEmplacementsDisponibles } from '../services/organisation/PhysicalLocationService';
-import type { PhysicalLocationDto } from '../services/organisation/PhysicalLocationService';
-import { getProjetsDeUO } from '../services/organisation/ProjetService';
-import type { ProjetDto } from '../services/organisation/ProjetService';
 import MetaDataField from './MetadaField';
 import type { DocumentListItemDto, DocumentDetailDto } from '../services/document/DocumentService';
 import { getTypeDocumentsVisibles } from '../services/document/TypedocumentService';
@@ -1317,7 +1315,7 @@ function DocumentDetailPanel({
 
             <EmplacementPhysiqueSection detail={detail} onUpdated={onEmplacementChange} />
 
-            <ProjetAttachSection detail={detail} onUpdated={onEmplacementChange} />
+            <DossierAttachSection detail={detail} onUpdated={onEmplacementChange} />
 
             <MetaDataEditSection
                 detail={detail}
@@ -1494,90 +1492,8 @@ function MetaDataEditSection({
     );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Sous-composant : emplacement physique
-// ─────────────────────────────────────────────────────────────────────────────
-
-function EmplacementPhysiqueSection({
-    detail,
-    onUpdated,
-}: {
-    detail: DocumentDetailDto;
-    onUpdated?: (updated: DocumentDetailDto) => void;
-}) {
-    const notify = useNotify();
-    const [editing, setEditing] = useState(false);
-    const [options, setOptions] = useState<PhysicalLocationDto[]>([]);
-    const [optionsLoading, setOptionsLoading] = useState(false);
-    const [selected, setSelected] = useState('');
-    const [saving, setSaving] = useState(false);
-
-    const ouvrirEdition = async () => {
-        setEditing(true);
-        setSelected(detail.physicalLocationId ?? '');
-        if (detail.uniteOrganisationnelleId == null) return;
-        setOptionsLoading(true);
-        try {
-            const data = await getEmplacementsDisponibles(detail.uniteOrganisationnelleId);
-            setOptions(data);
-        } catch {
-            notify.error('Impossible de charger les emplacements disponibles');
-        } finally {
-            setOptionsLoading(false);
-        }
-    };
-
-    const enregistrer = async () => {
-        setSaving(true);
-        try {
-            const updated = await modifierEmplacementPhysique(detail.documentId, selected || null);
-            onUpdated?.(updated);
-            setEditing(false);
-            notify.success('Emplacement physique mis à jour');
-        } catch (err: any) {
-            notify.error(err.message ?? 'Erreur lors de l\'enregistrement');
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    if (!detail.peutModifierEmplacement && !detail.physicalLocationPath) {
-        return null;
-    }
-
-    return (
-        <div className="details-row emplacement-physique-row">
-            <strong>Emplacement physique :</strong>
-            {editing ? (
-                <div className="emplacement-edit">
-                    {optionsLoading ? (
-                        <i className="fa-solid fa-spinner fa-spin" />
-                    ) : (
-                        <select value={selected} onChange={(e) => setSelected(e.target.value)}>
-                            <option value="">— Aucun —</option>
-                            {options.map((o) => (
-                                <option key={o.id} value={o.id}>{o.cheminComplet}</option>
-                            ))}
-                        </select>
-                    )}
-                    <button type="button" className="attestation-generer-btn" disabled={saving} onClick={enregistrer}>
-                        {saving ? '…' : 'Enregistrer'}
-                    </button>
-                    <button type="button" className="details-close-btn" onClick={() => setEditing(false)}>Annuler</button>
-                </div>
-            ) : (
-                <>
-                    <span>{detail.physicalLocationPath ?? '—'}</span>
-                    {detail.peutModifierEmplacement && (
-                        <button type="button" className="details-close-btn" onClick={ouvrirEdition}>
-                            <i className="fa-solid fa-pen" /> Modifier
-                        </button>
-                    )}
-                </>
-            )}
-        </div>
-    );
-}
+// EmplacementPhysiqueSection : voir components/EmplacementPhysiqueSection.tsx
+// — partagé avec Editor/MesDocumentsEditor.tsx, plus de copie locale ici.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Sous-composant : bascule PUBLIC ↔ PRIVÉ après coup
@@ -1638,119 +1554,7 @@ function AccesToggleSection({
     );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Sous-composant : projet (rattacher, migrer, détacher un document après coup)
-// ─────────────────────────────────────────────────────────────────────────────
-
-function ProjetAttachSection({
-    detail,
-    onUpdated,
-}: {
-    detail: DocumentDetailDto;
-    onUpdated?: (updated: DocumentDetailDto) => void;
-}) {
-    const notify = useNotify();
-    const confirm = useConfirm();
-    const [editing, setEditing] = useState(false);
-    const [options, setOptions] = useState<ProjetDto[]>([]);
-    const [optionsLoading, setOptionsLoading] = useState(false);
-    const [selected, setSelected] = useState('');
-    const [saving, setSaving] = useState(false);
-
-    const ouvrirEdition = async () => {
-        setEditing(true);
-        setSelected(detail.projetId ? String(detail.projetId) : '');
-        if (detail.uniteOrganisationnelleId == null) return;
-        setOptionsLoading(true);
-        try {
-            const data = await getProjetsDeUO(detail.uniteOrganisationnelleId);
-            setOptions(data);
-        } catch {
-            notify.error('Impossible de charger les projets disponibles');
-        } finally {
-            setOptionsLoading(false);
-        }
-    };
-
-    const enregistrer = async () => {
-        const projetIdSelectionne = selected ? Number(selected) : null;
-        let fusionnerGroupes = false;
-
-        // Document privé rattaché à un projet privé : vérifier AVANT
-        // d'écrire si les deux groupes diffèrent, pour avertir l'éditeur
-        // qu'un rattachement les fusionnera (union des membres, lien
-        // permanent — voir DocumentService.modifierProjetDocument).
-        if (projetIdSelectionne && detail.access === 'PRIVE') {
-            try {
-                const verif = await verifierFusionGroupeProjet(detail.documentId, projetIdSelectionne);
-                if (verif.groupesDifferents) {
-                    const liste = verif.membresQuiSerontAjoutes.join(', ');
-                    const accepte = await confirm(
-                        'Le groupe de ce document et celui du projet n\'ont pas les mêmes membres. '
-                        + 'En continuant, les deux groupes seront fusionnés (union des membres)'
-                        + (liste ? ` — ${liste} sera${verif.membresQuiSerontAjoutes.length > 1 ? 'ont' : ''} `
-                            + `ajouté${verif.membresQuiSerontAjoutes.length > 1 ? 's' : ''} au groupe du projet.` : '.')
-                    );
-                    if (!accepte) return;
-                    fusionnerGroupes = true;
-                }
-            } catch (err: any) {
-                notify.error(err.message ?? 'Erreur lors de la vérification des groupes');
-                return;
-            }
-        }
-
-        setSaving(true);
-        try {
-            const updated = await modifierProjetDocument(
-                detail.documentId, projetIdSelectionne, fusionnerGroupes
-            );
-            onUpdated?.(updated);
-            setEditing(false);
-            notify.success('Projet mis à jour');
-        } catch (err: any) {
-            notify.error(err.message ?? 'Erreur lors de l\'enregistrement');
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    if (!detail.peutModifierProjet && !detail.projetNom) {
-        return null;
-    }
-
-    return (
-        <div className="details-row emplacement-physique-row">
-            <strong>Projet :</strong>
-            {editing ? (
-                <div className="emplacement-edit">
-                    {optionsLoading ? (
-                        <i className="fa-solid fa-spinner fa-spin" />
-                    ) : (
-                        <select value={selected} onChange={(e) => setSelected(e.target.value)}>
-                            <option value="">— Aucun (hors projet) —</option>
-                            {options.map((p) => (
-                                <option key={p.id} value={p.id}>{p.nom}</option>
-                            ))}
-                        </select>
-                    )}
-                    <button type="button" className="attestation-generer-btn" disabled={saving} onClick={enregistrer}>
-                        {saving ? '…' : 'Enregistrer'}
-                    </button>
-                    <button type="button" className="details-close-btn" onClick={() => setEditing(false)}>Annuler</button>
-                </div>
-            ) : (
-                <>
-                    <span>{detail.projetNom ?? '—'}</span>
-                    {detail.peutModifierProjet && (
-                        <button type="button" className="details-close-btn" onClick={ouvrirEdition}>
-                            <i className="fa-solid fa-pen" /> Modifier
-                        </button>
-                    )}
-                </>
-            )}
-        </div>
-    );
-}
+// DossierAttachSection : voir components/DossierAttachSection.tsx — partagé
+// avec Editor/MesDocumentsEditor.tsx, plus de copie locale ici.
 
 export default DocumentsAccessibles;

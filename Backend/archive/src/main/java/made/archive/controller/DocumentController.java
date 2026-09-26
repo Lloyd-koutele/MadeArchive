@@ -1,6 +1,7 @@
 package made.archive.controller;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -11,9 +12,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.annotation.Secured;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -28,10 +31,12 @@ import made.archive.dto.BulkUploadReportDto;
 import made.archive.dto.DocumentUploadResultDto;
 import made.archive.dto.FinalizeUploadRequestDto;
 import made.archive.dto.OcrPreviewResponseDto;
+import made.archive.dto.TypeDocumentDto;
 import made.archive.dto.WebImportOcrRequestDto;
 import made.archive.dto.WebImportPreviewRequestDto;
 import made.archive.dto.WebImportPreviewResponseDto;
 import made.archive.entite.TypeDocument;
+import made.archive.exception.AccessDeniedException;
 import made.archive.exception.BusinessException;
 import made.archive.service.document.BulkUploadSameTypeService;
 import made.archive.service.document.DocumentOcrService;
@@ -98,6 +103,172 @@ public class DocumentController
         }
     }
 
+    /**
+     * GET /api/editor/types-documents/uo/{uoId}
+     * Scopé à l'UO donnée — utilisé par l'onglet "Types de documents" de
+     * l'éditeur (toujours SA propre UO, voir TypeDocumentService.getTypeDocumentsByUO
+     * appelée avec le même currentUser que create/update/delete ci-dessous).
+     */
+    @Secured("ROLE_EDITOR")
+    @GetMapping("/types-documents/uo/{uoId}")
+    public ResponseEntity<?> getTypeDocumentsByUo(@PathVariable Long uoId, @AuthenticationPrincipal UserDetailsImpl currentUser)
+    {
+        try
+        {
+            List<TypeDocument> typeDocuments = typeDocumentService.getTypeDocumentsByUO(uoId, currentUser.getUser());
+            return ResponseEntity.ok(typeDocumentMapper.toDtoList(typeDocuments));
+        }
+        catch (Exception e)
+        {
+            return ResponseEntity.badRequest()
+                .body("Erreur lors de la récupération des types de documents de cet UO : " + e.getMessage());
+        }
+    }
+
+    /**
+     * POST /api/editor/types-documents/create
+     * Gestion des types de documents réservée aux EDITOR de leur propre UO —
+     * ni ADMIN ni ADMIN_UO n'y ont accès (voir
+     * UniteOrganisationnelleService.estEditeurDeUO, qui applique la
+     * vérification d'autorité réelle dans TypeDocumentService).
+     */
+    @Secured("ROLE_EDITOR")
+    @PostMapping("/types-documents/create")
+    public ResponseEntity<?> createTypeDocument(@RequestBody TypeDocumentDto dto, @AuthenticationPrincipal UserDetailsImpl currentUser)
+    {
+        try
+        {
+            TypeDocumentDto result = typeDocumentService.createTypeDocument(dto, currentUser.getUser());
+            return ResponseEntity.ok(result);
+        }
+        catch (Exception e)
+        {
+            return ResponseEntity.badRequest().body(buildError("Erreur serveur lors de la création du type de document: " + e.getMessage()));
+        }
+    }
+
+    @Secured("ROLE_EDITOR")
+    @PutMapping("/types-documents/{id}")
+    public ResponseEntity<?> updateTypeDocument(@PathVariable Long id, @RequestBody TypeDocumentDto dto, @AuthenticationPrincipal UserDetailsImpl currentUser)
+    {
+        try
+        {
+            return ResponseEntity.ok(typeDocumentService.updateTypeDocument(id, dto, currentUser.getUser()));
+        }
+        catch (Exception e)
+        {
+            return ResponseEntity.badRequest()
+                .body(buildError("Erreur lors de la mise à jour du type de document: " + e.getMessage()));
+        }
+    }
+
+    @Secured("ROLE_EDITOR")
+    @PutMapping("/types-documents/renommer/{id}")
+    public ResponseEntity<?> renommerTypeDocument(@PathVariable Long id, @RequestBody String nom, @AuthenticationPrincipal UserDetailsImpl currentUser)
+    {
+        try
+        {
+            return ResponseEntity.ok(typeDocumentService.renommerTypeDocument(id, nom, currentUser.getUser()));
+        }
+        catch (Exception e)
+        {
+            return ResponseEntity.badRequest()
+                .body(buildError("Erreur lors du renommage du type de document: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Réinitialise les regex d'extraction du type : le prochain document
+     * déposé pour ce type régénérera automatiquement des regex fraîches.
+     * À utiliser si le premier document ayant servi de base était un mauvais
+     * candidat (scan flou, valeurs atypiques...).
+     */
+    @Secured("ROLE_EDITOR")
+    @PutMapping("/types-documents/{id}/reset-regex")
+    public ResponseEntity<?> resetRegex(@PathVariable Long id, @AuthenticationPrincipal UserDetailsImpl currentUser)
+    {
+        try
+        {
+            typeDocumentService.resetRegex(id, currentUser.getUser());
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("success", true);
+            response.put("message", "Regex réinitialisées — elles seront régénérées au prochain document de ce type");
+            return ResponseEntity.ok(response);
+        }
+        catch (Exception e)
+        {
+            return ResponseEntity.badRequest()
+                .body(buildError("Erreur lors de la réinitialisation des regex : " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Corrige manuellement les regex d'extraction d'un type — pour quand une
+     * regex générée automatiquement se trompe systématiquement, sans avoir à
+     * réinitialiser (et donc attendre un nouveau document) via reset-regex.
+     * Body : { "NomChamp": "regex", ... } — un champ par métadonnée du type.
+     */
+    @Secured("ROLE_EDITOR")
+    @PutMapping("/types-documents/{id}/regex")
+    public ResponseEntity<?> modifierRegex(@PathVariable Long id, @RequestBody Map<String, String> regexMap,
+                                            @AuthenticationPrincipal UserDetailsImpl currentUser)
+    {
+        try
+        {
+            TypeDocumentDto result = typeDocumentService.modifierRegex(id, regexMap, currentUser.getUser());
+            return ResponseEntity.ok(result);
+        }
+        catch (Exception e)
+        {
+            return ResponseEntity.badRequest()
+                .body(buildError("Erreur lors de la modification des regex : " + e.getMessage()));
+        }
+    }
+
+    @Secured("ROLE_EDITOR")
+    @DeleteMapping("/types-documents/{id}")
+    public ResponseEntity<?> deleteTypeDocumentById(@PathVariable Long id, @AuthenticationPrincipal UserDetailsImpl currentUser)
+    {
+        try
+        {
+            typeDocumentService.deleteTypeDocumentById(id, currentUser.getUser());
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("success", true);
+            response.put("message", "Type de document supprimé avec succès");
+            return ResponseEntity.ok(response);
+        }
+        catch (Exception e)
+        {
+            return ResponseEntity.badRequest()
+                .body(buildError("Erreur lors de la suppression du type de document: " + e.getMessage()));
+        }
+    }
+
+    @Secured("ROLE_EDITOR")
+    @DeleteMapping("/types-documents/delete-list")
+    public ResponseEntity<?> deleteListTypeDocuments(@RequestBody List<Long> ids, @AuthenticationPrincipal UserDetailsImpl currentUser)
+    {
+        try
+        {
+            typeDocumentService.deleteListTypeDocumentBestEffort(ids, currentUser.getUser());
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("success", true);
+            response.put("message", "Types de documents supprimés avec succès");
+            return ResponseEntity.ok(response);
+        }
+        catch (BusinessException e)
+        {
+            return ResponseEntity.badRequest()
+                .body(buildError("Erreur lors de la suppression des types de documents : " + e.getMessage()));
+        }
+    }
+
+    /** Corps JSON {"message": ...} attendu par le client (error.response.data.message). */
+    private Map<String, Object> buildError(String message)
+    {
+        return Map.of("message", message);
+    }
+
     // ═══════════════════════════════════════════════════════════════════
     // Upload unitaire — Phase 1 : OCR Preview
     // ═══════════════════════════════════════════════════════════════════
@@ -132,6 +303,7 @@ public class DocumentController
                 .sessionId(sessionId.toString())
                 .metaDataSuggestions(sessionData.suggestions)
                 .message(determinePhase1Message(sessionData))
+                .documentSimilaire(sessionData.documentSimilaire)
                 .build());
         }
         catch (BusinessException e)
@@ -207,6 +379,11 @@ public class DocumentController
         {
             DocumentUploadResultDto result = documentUploadeService.finalizeUpload(request);
             return ResponseEntity.ok(result);
+        }
+        catch (AccessDeniedException e)
+        {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(buildErrorResponse("ACCESS_DENIED", e.getMessage()));
         }
         catch (BusinessException e)
         {
@@ -434,10 +611,10 @@ public class DocumentController
     /**
      * GET /api/editor/uo/{id}/candidats-groupe
      * Utilisateurs proposables comme membres d'un groupe d'accès (document ou
-     * projet privé) À LA CRÉATION — collègues de l'UO donnée, PLUS tous les
+     * dossier privé) À LA CRÉATION — collègues de l'UO donnée, PLUS tous les
      * ADMIN globaux (voir UserService.getCandidatsGroupeAccesPourUO et
      * UniteOrganisationnelleService.getCandidatsGroupeAcces pour la règle
-     * partagée avec GestionGroupe/GestionGroupeProjet, utilisés eux APRÈS la
+     * partagée avec GestionGroupe/GestionGroupeDossier, utilisés eux APRÈS la
      * création).
      */
     @Secured("ROLE_EDITOR")

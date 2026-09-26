@@ -18,9 +18,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Tag("unit")
 class OllamaServiceTest
 {
-    // webClientBuilder/objectMapper non utilisés par repairCandidate/validateCandidate
-    // (seulement par callQwenBatch, jamais appelé ici) — null est sûr.
-    private final OllamaService service = new OllamaService(null, null, null);
+    // Toutes ces dépendances ne sont utilisées que par callLlmBatch/genererViaLlm
+    // (jamais appelés ici, seulement repairCandidate/validateCandidate/validateRegex/
+    // testRegex, purement en mémoire) — null est sûr pour toutes.
+    private final OllamaService service = new OllamaService(null, null, null, null, null, null, null);
 
     // ─────────────────────────────────────────────────────────────────────
     // repairCandidate : classe [...\s...] gourmande -> paresseuse

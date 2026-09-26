@@ -16,13 +16,19 @@ import made.archive.security.UserDetailsImpl;
 import made.archive.service.organisation.PhysicalLocationService;
 
 /**
- * Lecture de l'arbre de localisation physique — ouvert à tout ROLE_USER,
- * mais scopé exactement comme la visibilité des documents/projets (voir
- * UniteOrganisationnelleService.getUoIdsVisiblesPourLecture) : plus large
- * que la gestion (ADMIN/ADMIN_UO only), pour permettre à un éditeur de
- * parcourir l'arbre et choisir un emplacement au moment de l'upload.
+ * Lecture de l'arbre de localisation physique — réservée à ROLE_EDITOR
+ * (revu le 09/2026 : ADMIN/ADMIN_UO n'ont plus AUCUN droit, même de lecture,
+ * sur les emplacements physiques — seule leur propre UO leur donnait un
+ * intérêt à consulter cet arbre, et ils n'en gèrent plus le contenu depuis
+ * que la gestion complète est passée à l'éditeur, voir
+ * PhysicalLocationEditorController). Utilisée exclusivement par l'éditeur
+ * pour parcourir l'arbre et choisir un emplacement au moment de l'upload —
+ * aucun autre rôle n'en a besoin, ni ADMIN/ADMIN_UO ni un simple USER.
  *
- * Base : /api/user/physical-locations
+ * Base : /api/user/physical-locations (préfixe hérité, laissé tel quel :
+ * le middleware d'URL de SecurityConfig exige déjà ROLE_USER dessus, et
+ * ROLE_EDITOR l'implique via la hiérarchie — voir SecurityConfig.roleHierarchy
+ * — donc aucun conflit avec le @Secured plus restrictif ci-dessous).
  */
 @RestController
 @RequestMapping("/api/user/physical-locations")
@@ -35,7 +41,7 @@ public class PhysicalLocationLectureController
         this.service = service;
     }
 
-    @Secured("ROLE_USER")
+    @Secured("ROLE_EDITOR")
     @GetMapping("/{id}")
     public ResponseEntity<?> getById(@PathVariable UUID id,
                                       @AuthenticationPrincipal UserDetailsImpl principal)
@@ -54,7 +60,7 @@ public class PhysicalLocationLectureController
         }
     }
 
-    @Secured("ROLE_USER")
+    @Secured("ROLE_EDITOR")
     @GetMapping("/uo/{uoId}/arbre")
     public ResponseEntity<?> getArbre(@PathVariable Long uoId,
                                        @AuthenticationPrincipal UserDetailsImpl principal)
@@ -73,7 +79,7 @@ public class PhysicalLocationLectureController
         }
     }
 
-    @Secured("ROLE_USER")
+    @Secured("ROLE_EDITOR")
     @GetMapping("/uo/{uoId}/disponibles")
     public ResponseEntity<?> getEmplacementsDisponibles(@PathVariable Long uoId,
                                                           @AuthenticationPrincipal UserDetailsImpl principal)

@@ -18,13 +18,13 @@ public class DocumentAccessFilterDto
     private Long      typeDocumentId;
 
     /**
-     * Restreint aux documents rattachés à un projet précis (ex. onglet
-     * "Types de documents" d'un projet, une fois un type ouvert). Combiné en
+     * Restreint aux documents rattachés à un dossier précis (ex. onglet
+     * "Types de documents" d'un dossier, une fois un type ouvert). Combiné en
      * AND avec les autres filtres — en particulier la visibilité réelle
-     * (2b. plus bas) : un document PRIVÉ d'un projet reste invisible à qui
-     * n'est pas membre de son groupe, même en connaissant le projetId.
+     * (2b. plus bas) : un document PRIVÉ d'un dossier reste invisible à qui
+     * n'est pas membre de son groupe, même en connaissant le dossierId.
      */
-    private Long      projetId;
+    private Long      dossierId;
 
     /**
      * Restreint à une UO précise (ex. navigation dans l'arbre côté Admin/Admin_UO)

@@ -11,8 +11,12 @@ import org.springframework.stereotype.Service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import made.archive.entite.DataType;
+import made.archive.entite.Document;
+import made.archive.entite.DocumentStatus;
 import made.archive.entite.MetaData;
 import made.archive.entite.TypeDocument;
+import made.archive.repository.DocumentRepository;
 import made.archive.repository.TypeDocumentRepository;
 
 /**
@@ -62,7 +66,9 @@ import made.archive.repository.TypeDocumentRepository;
 public class RegexGenerationService
 {
     private final TypeDocumentRepository typeDocumentRepository;
+    private final DocumentRepository documentRepository;
     private final OllamaService ollamaService;
+    private final OcrService ocrService;
 
     @Async
     public void genererSiPremierUsage(Long typeDocumentId, String extractedText,
@@ -103,6 +109,18 @@ public class RegexGenerationService
 
             Map<String, String> generatedRegex = ollamaService.generateRegexForMetaData(
                 metaDataList, extractedText, fieldValues);
+
+            // Map vide = le LLM n'a JAMAIS répondu (panne d'infrastructure, ou rien
+            // configuré du tout — voir OllamaService.generateRegexForMetaData), pas
+            // "aucun champ n'a de motif" (ce cas-là retombe sur ".+", jamais vide).
+            // Ne PAS marquer regexGenerated=true ici : retenterEchecs (toutes les
+            // 8h, voir RegexGenerationRetryScheduler) doit encore voir ce type.
+            if (generatedRegex.isEmpty())
+            {
+                log.warn("[Regex-Async] Type {} : LLM injoignable, laissé en attente pour reprise différée",
+                    typeDocumentId);
+                return;
+            }
 
             typeDocument.setExtractionRegexMap(generatedRegex);
             typeDocument.setRegexGenerated(true);
@@ -229,5 +247,113 @@ public class RegexGenerationService
     private String normalize(String s)
     {
         return s.trim().toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
+    }
+
+    /**
+     * Reprise différée — voir RegexGenerationRetryScheduler (toutes les 8h,
+     * best-effort, ne bloque jamais rien). Couvre le cas où genererSiPremierUsage
+     * a échoué (LLM injoignable au moment de l'upload, pas encore configuré du
+     * tout...) : sans ce filet, un type resterait sans regex pour toujours tant
+     * qu'aucun NOUVEAU document du même type n'est uploadé.
+     *
+     * Contrairement à genererSiPremierUsage (déclenchée à l'upload, avec le
+     * texte OCR encore disponible en mémoire), le texte OCR d'origine n'existe
+     * plus ici — OcrSessionCache expire après 30 minutes. On relit un document
+     * déjà archivé du type et on relance l'OCR dessus via
+     * OcrService.processDocument (PHASE 2, prévue pour exactement ce genre de
+     * retraitement a posteriori) ; les valeurs de champs confirmées, elles,
+     * restent disponibles telles quelles (Document.data).
+     *
+     * Chaque type est traité indépendamment ; l'échec de l'un n'empêche jamais
+     * les suivants. Potentiellement long si plusieurs types sont en attente
+     * (jusqu'à OllamaService.TIMEOUT_SECONDS par type) — sans risque de
+     * chevauchement avec le prochain cycle vu l'intervalle de 8h.
+     */
+    public void retenterEchecs()
+    {
+        List<TypeDocument> aReessayer = typeDocumentRepository.findByRegexGeneratedFalse();
+        if (aReessayer.isEmpty())
+        {
+            return;
+        }
+
+        log.info("[Regex-Retry] {} type(s) sans regex à retenter", aReessayer.size());
+        int reussis = 0;
+        for (TypeDocument type : aReessayer)
+        {
+            try
+            {
+                if (retenterUnType(type.getId()))
+                {
+                    reussis++;
+                }
+            }
+            catch (Exception e)
+            {
+                log.warn("[Regex-Retry] Échec de la reprise pour le type {} : {}",
+                    type.getId(), e.getMessage());
+            }
+        }
+        log.info("[Regex-Retry] Reprise différée terminée : {}/{} type(s) résolu(s)",
+            reussis, aReessayer.size());
+    }
+
+    private boolean retenterUnType(Long typeDocumentId)
+    {
+        TypeDocument typeDocument = typeDocumentRepository.findByIdWithMetaData(typeDocumentId).orElse(null);
+        if (typeDocument == null || typeDocument.hasRegexGenerated())
+        {
+            // Résolu (ou supprimé) entre-temps — même revérification que
+            // genererSiPremierUsage, voir sa Javadoc.
+            return false;
+        }
+
+        List<MetaData> metaDataList = typeDocument.getMetaData();
+        if (metaDataList == null || metaDataList.isEmpty())
+        {
+            return false;
+        }
+
+        Document document = documentRepository.findByTypeDocument_Id(typeDocumentId).stream()
+            .filter(d -> d.getStatus() != DocumentStatus.DELETED && d.getStatus() != DocumentStatus.CORBEILLE)
+            .findFirst()
+            .orElse(null);
+        if (document == null)
+        {
+            log.debug("[Regex-Retry] Type {} : aucun document exploitable pour l'instant", typeDocumentId);
+            return false;
+        }
+
+        String extractedText = ocrService.processDocument(document);
+        if (extractedText == null || extractedText.isBlank())
+        {
+            log.warn("[Regex-Retry] Type {} : ré-OCR du document {} vide ou en échec", typeDocumentId, document.getId());
+            return false;
+        }
+
+        Map<String, String> fieldValues = document.getData() == null ? Map.of()
+            : document.getData().stream()
+                .filter(d -> d.getMetaData() != null && d.getValeur() != null && !d.getValeur().isBlank())
+                .collect(Collectors.toMap(d -> d.getMetaData().getNom(), DataType::getValeur, (a, b) -> a));
+
+        Map<String, String> generatedRegex = ollamaService.generateRegexForMetaData(
+            metaDataList, extractedText, fieldValues);
+
+        // Toujours vide = LLM encore injoignable — voir OllamaService.generateRegexForMetaData
+        // et genererSiPremierUsage ci-dessus. On laisse regexGenerated=false, ce type sera
+        // repris au prochain cycle (dans 8h).
+        if (generatedRegex.isEmpty())
+        {
+            log.debug("[Regex-Retry] Type {} : LLM toujours injoignable", typeDocumentId);
+            return false;
+        }
+
+        typeDocument.setExtractionRegexMap(generatedRegex);
+        typeDocument.setRegexGenerated(true);
+        typeDocumentRepository.save(typeDocument);
+
+        log.info("[Regex-Retry] ✅ {} regex générées et stockées (reprise différée) pour le type {}",
+            generatedRegex.size(), typeDocumentId);
+        return true;
     }
 }

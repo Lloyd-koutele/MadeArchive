@@ -205,7 +205,7 @@
     margin: 0 0 1.25rem;
 }
 
-/* ─── Onglets de contenu UO (Utilisateurs / Documents / Projets) ─── */
+/* ─── Onglets de contenu UO (Utilisateurs / Documents / Dossiers) ─── */
 .uo-tabs {
     display: flex;
     width: fit-content;
@@ -244,8 +244,8 @@
     font-weight: 600;
 }
 
-/* ─── Stub "Projets" (fonctionnalité à venir) ─── */
-.uo-projets-stub {
+/* ─── Stub "Dossiers" (fonctionnalité à venir) ─── */
+.uo-dossiers-stub {
     display: flex;
     align-items: center;
     justify-content: center;

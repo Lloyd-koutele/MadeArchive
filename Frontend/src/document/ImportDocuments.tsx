@@ -7,6 +7,7 @@ import {
     getOcrPreviewPdfUrl,
     getAllTypeDocuments,
     getCandidatsGroupe,
+    streamPdfAAsBlob,
 } from '../services/document/DocumentService';
 import type {
     BulkUploadReportDto,
@@ -17,14 +18,26 @@ import type {
     MetaDataValueDto,
     UserDto,
     WebImportPreviewResponseDto,
+    DocumentSimilaireDto,
 } from '../services/document/DocumentService';
 import { getCurrentUserInfo } from '../auth/authService';
 import { getMyUO } from '../services/organisation/UOService';
-import { getEmplacementsDisponibles } from '../services/organisation/PhysicalLocationService';
-import type { PhysicalLocationDto } from '../services/organisation/PhysicalLocationService';
+import { getEmplacementsDisponibles, getArbreEmplacements } from '../services/organisation/PhysicalLocationService';
+import type { PhysicalLocationDto, PhysicalLocationNodeDto } from '../services/organisation/PhysicalLocationService';
+// Même composant que PhysicalLocationsPanel (arbre + création/modification en
+// un seul modal) — pas de duplication : une mise à jour du constructeur
+// d'arborescence profite aux deux écrans à la fois.
+import EmplacementTreeModal from '../organisation/EmplacementTreeModal';
+import DossierTreePicker from '../organisation/DossierTreePicker';
 import MetaDataField from './MetadaField';
 import { useNotify } from '../notifications/NotificationProvider';
+import { useConfirm } from '../notifications/ConfirmProvider';
 import '../Style/Editor/Editor.css';
+
+/** En dessous de ce seuil (points), le texte d'un tableau mis à l'échelle sur
+ *  une page (voir singlePageSheets côté serveur) est jugé trop petit pour
+ *  rester confortablement lisible — voir handleFinalize. */
+const POLICE_MIN_SEUIL_PT = 8;
 
 interface PrecedentDocumentInfo {
     documentId:     string;
@@ -36,6 +49,9 @@ interface ImportDocumentsProps {
     onsuccess?: (report: BulkUploadReportDto) => void;
     /** Type pré-rempli à l'ouverture (ex : bouton "+" depuis un dossier déjà ouvert) — reste modifiable, pas verrouillé. */
     preselectedTypeId?: number | null;
+    /** Dossier pré-rempli à l'ouverture (bouton "Archiver ici" depuis un dossier déjà
+     *  ouvert, voir DossiersPanel.tsx) — reste modifiable, pas verrouillé, voir DossierTreePicker. */
+    preselectedDossierId?: number | null;
     /**
      * Si fourni, cet import devient le dépôt d'une NOUVELLE VERSION de ce
      * document précis — même composant que pour un import normal (voir
@@ -71,12 +87,19 @@ interface FileValidationState {
     prefilled: Record<string, boolean>;
     hasError: boolean;
     errorMessage?: string;
+    /** Avertissement, jamais un blocage — voir DocumentSimilaireDto (backend). */
+    documentSimilaire?: DocumentSimilaireDto;
+    /** Absent si non pertinent. Sinon, plus petite taille de police (pt)
+     *  mesurée dans le PDF converti — en dessous de 8pt, l'éditeur doit
+     *  confirmer explicitement avant l'archivage (voir handleFinalize). */
+    policeMinPt?: number;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-function ImportDocuments({ onsuccess, preselectedTypeId, precedentDocument }: ImportDocumentsProps) {
+function ImportDocuments({ onsuccess, preselectedTypeId, preselectedDossierId, precedentDocument }: ImportDocumentsProps) {
     const notify = useNotify();
+    const confirm = useConfirm();
     // ── Données stables ──────────────────────────────────────────────────────
     const [typeDocuments, setTypeDocuments]   = useState<TypeDocumentDto[]>([]);
     const [typeDocumentId, setTypeDocumentId] = useState<number | ''>('');
@@ -89,6 +112,21 @@ function ImportDocuments({ onsuccess, preselectedTypeId, precedentDocument }: Im
     const [filtreMembre, setFiltreMembre]        = useState('');
     const [emplacements, setEmplacements]        = useState<PhysicalLocationDto[]>([]);
     const [physicalLocationId, setPhysicalLocationId] = useState('');
+    /** Dossier cible (optionnel) — voir DossierTreePicker. Si ce dossier a déjà
+     *  ce type de document parmi ses types attendus, les fichiers y sont
+     *  simplement versés sans rien recréer ; sinon le type y est automatiquement
+     *  déclaré (voir DocumentUploadeService côté serveur). */
+    const [dossierId, setDossierId] = useState<number | null>(preselectedDossierId ?? null);
+    // uoId : pas connue ailleurs dans ce composant jusqu'ici (getMyUO()
+    // n'était utilisé que transitoirement pour charger users/emplacements) —
+    // nécessaire pour EmplacementTreeModal (création/modification à la volée
+    // pendant l'upload, voir le champ "Emplacement physique" plus bas).
+    const [uoId, setUoId] = useState<number | null>(null);
+    // Même état "mode create/update" que PhysicalLocationsPanel — voir
+    // TreeModalState là-bas, même idée ici.
+    const [emplacementModal, setEmplacementModal] = useState<
+        { open: false } | { open: true; mode: 'create' } | { open: true; mode: 'update'; node: PhysicalLocationNodeDto }
+    >({ open: false });
 
     // ── Fichiers locaux sélectionnés ─────────────────────────────────────────
     const [files, setFiles]           = useState<File[]>([]);
@@ -140,6 +178,7 @@ function ImportDocuments({ onsuccess, preselectedTypeId, precedentDocument }: Im
             .catch(() => notify.error('Impossible de charger les types de documents'));
         getMyUO()
             .then(uo => {
+                setUoId(uo.id);
                 getCandidatsGroupe(uo.id).then(setUsers).catch(() => {});
                 getEmplacementsDisponibles(uo.id).then(setEmplacements).catch(() => {});
             })
@@ -220,6 +259,66 @@ function ImportDocuments({ onsuccess, preselectedTypeId, precedentDocument }: Im
         setSelectedType(typeDocuments.find(td => td.id === id) ?? null);
     };
 
+    /**
+     * Ouvre le document similaire détecté dans un nouvel onglet — jamais un
+     * <a href> direct (JWT en header, pas en cookie, voir streamPdfAAsBlob),
+     * et volontairement un ONGLET SÉPARÉ plutôt que de réutiliser l'aperçu de
+     * ce formulaire : mélanger "le document en cours d'upload" et "un autre
+     * document déjà archivé" dans la même zone d'aperçu serait trompeur.
+     */
+    const handleVoirDocumentSimilaire = async (doc: DocumentSimilaireDto) => {
+        try {
+            const url = await streamPdfAAsBlob(doc.documentId);
+            window.open(url, '_blank');
+        } catch {
+            notify.error("Impossible d'ouvrir le document similaire (peut-être supprimé depuis)");
+        }
+    };
+
+    /** Cherche, dans l'arbre COMPLET de l'UO, la racine (nœud de plus haut
+     *  niveau) qui contient l'id donné — pour ouvrir la modification sur
+     *  TOUTE la branche réelle (pas seulement le point de stockage isolé
+     *  choisi dans le <select>), l'utilisateur peut alors restructurer
+     *  librement (renommer n'importe quel nœud de la branche, en ajouter de
+     *  nouveaux n'importe où) comme dans PhysicalLocationsPanel. */
+    const trouverRacineContenant = (arbre: PhysicalLocationNodeDto[], id: string): PhysicalLocationNodeDto | null => {
+        const contient = (n: PhysicalLocationNodeDto): boolean => n.id === id || n.children.some(contient);
+        return arbre.find(contient) ?? null;
+    };
+
+    const ouvrirModificationEmplacement = async () => {
+        if (uoId == null || !physicalLocationId) return;
+        try {
+            const arbre = await getArbreEmplacements(uoId);
+            const racine = trouverRacineContenant(arbre, physicalLocationId);
+            if (!racine) {
+                notify.error("Cet emplacement n'existe plus dans l'arborescence");
+                return;
+            }
+            setEmplacementModal({ open: true, mode: 'update', node: racine });
+        } catch (err: any) {
+            notify.error(err.message ?? "Erreur lors du chargement de l'arborescence");
+        }
+    };
+
+    /**
+     * Appelé par EmplacementTreeModal après création OU modification —
+     * rafraîchit la liste (la nature Stockage/Chemin n'est connue qu'après
+     * coup : un "Nœud chemin" fraîchement créé ne réapparaît pas dans cette
+     * liste, déjà filtrée aux points de stockage côté serveur, voir
+     * PhysicalLocationService.getEmplacementsDisponibles) et sélectionne
+     * l'emplacement concerné s'il est bien assignable à un document.
+     */
+    const handleEmplacementSaved = async (node: PhysicalLocationNodeDto) => {
+        if (uoId == null) return;
+        const actualises = await getEmplacementsDisponibles(uoId);
+        setEmplacements(actualises);
+        if (node.storagePoint) {
+            setPhysicalLocationId(node.id);
+        }
+        setEmplacementModal({ open: false });
+    };
+
     /** Construit l'état de validation par fichier à partir d'un BulkOcrPreviewResponseDto — commun à toutes les sources. */
     const construireFileStates = (preview: BulkOcrPreviewResponseDto, fallbackNames?: string[]): FileValidationState[] =>
         preview.previews.map((item: OcrPreviewItemDto, idx: number) => {
@@ -247,6 +346,8 @@ function ImportDocuments({ onsuccess, preselectedTypeId, precedentDocument }: Im
                 prefilled,
                 hasError:     !item.sessionId,
                 errorMessage: item.sessionId ? undefined : item.message,
+                documentSimilaire: item.documentSimilaire,
+                policeMinPt: item.policeMinPt,
             };
         });
 
@@ -360,6 +461,26 @@ function ImportDocuments({ onsuccess, preselectedTypeId, precedentDocument }: Im
         const userInfo = getCurrentUserInfo();
         if (!userInfo?.id) { notify.error('Session expirée'); return; }
 
+        // Police réduite (voir POLICE_MIN_SEUIL_PT) sur au moins un fichier du
+        // lot à archiver : demande une confirmation EXPLICITE ici plutôt qu'un
+        // simple bandeau ignorable — l'éditeur doit assumer consciemment le
+        // choix d'archiver un texte difficilement lisible, jamais un blocage.
+        const fichiersPoliceReduite = fileStates
+            .filter(fs => !fs.hasError && fs.policeMinPt != null && fs.policeMinPt < POLICE_MIN_SEUIL_PT);
+        if (fichiersPoliceReduite.length > 0) {
+            const noms = fichiersPoliceReduite.map(fs => fs.nomFichier).join(', ');
+            const accepte = await confirm({
+                title: 'Texte réduit après conversion',
+                message: (fichiersPoliceReduite.length > 1
+                    ? `${fichiersPoliceReduite.length} fichiers (${noms}) ont`
+                    : `Le fichier « ${noms} » a`)
+                    + ` un texte réduit à environ ${Math.min(...fichiersPoliceReduite.map(fs => fs.policeMinPt!)).toFixed(1)}pt `
+                    + 'après conversion — potentiellement difficile à lire. Voulez-vous quand même archiver ?',
+                confirmLabel: 'Archiver quand même',
+            });
+            if (!accepte) return;
+        }
+
         setIsFinalizing(true);
 
         // Accès, groupe et emplacement physique sont partagés par tout le lot
@@ -378,6 +499,7 @@ function ImportDocuments({ onsuccess, preselectedTypeId, precedentDocument }: Im
                         groupeMembresIds: selectedMembres,
                     }),
                     ...(physicalLocationId && { physicalLocationId }),
+                    ...(dossierId != null && { dossierId }),
                     ...(precedentDocument && { documentPrecedentId: precedentDocument.documentId }),
                 },
                 metaDataValidated: selectedType.metaData.map(m => ({
@@ -413,6 +535,10 @@ function ImportDocuments({ onsuccess, preselectedTypeId, precedentDocument }: Im
         setAccess('PUBLIC');
         setSelectedMembres([]);
         setPhysicalLocationId('');
+        // Comme typeDocumentId (non réinitialisé ci-dessus) : "Nouvel import"
+        // repart du dossier pré-rempli à l'ouverture, pas d'un champ vidé —
+        // utile pour enchaîner plusieurs lots dans le même dossier.
+        setDossierId(preselectedDossierId ?? null);
         // Sans ça, resélectionner exactement les mêmes fichiers après un reset
         // ne redéclencherait pas l'analyse automatique (signature identique).
         derniereAnalyseLancee.current = '';
@@ -643,12 +769,30 @@ function ImportDocuments({ onsuccess, preselectedTypeId, precedentDocument }: Im
                         </div>
                     )}
 
-                    {/* Emplacement physique — un seul pour tout le lot */}
-                    {emplacements.length > 0 && (
+                    {/* Dossier cible — un seul pour tout le lot. Si ce dossier a déjà
+                        ce type de document parmi ses types attendus, les fichiers
+                        y sont simplement versés sans rien recréer ; sinon il y est
+                        automatiquement déclaré (voir DocumentUploadeService côté
+                        serveur). Pas d'objet pour une nouvelle version tant que
+                        rien n'est choisi ici : le dossier du prédécesseur est
+                        hérité par défaut. */}
+                    {uoId != null && (
                         <div className="form-field">
-                            <label htmlFor="import-emplacement" className="form-field-label">
-                                Emplacement physique des originaux (optionnel)
-                            </label>
+                            <label className="form-field-label">Dossier cible (optionnel)</label>
+                            <DossierTreePicker uoId={uoId} value={dossierId} onChange={setDossierId} />
+                        </div>
+                    )}
+
+                    {/* Emplacement physique — un seul pour tout le lot. Toujours affiché
+                        (même sans aucun emplacement existant) : le modal dédié
+                        ci-dessous (EmplacementTreeModal, PARTAGÉ avec
+                        PhysicalLocationsPanel) couvre justement ce cas, et
+                        permet aussi de modifier l'emplacement sélectionné. */}
+                    <div className="form-field">
+                        <label htmlFor="import-emplacement" className="form-field-label">
+                            Emplacement physique des originaux (optionnel)
+                        </label>
+                        <div className="up-emplacement-choix">
                             <select
                                 id="import-emplacement"
                                 className="form-field-input up-select"
@@ -660,8 +804,27 @@ function ImportDocuments({ onsuccess, preselectedTypeId, precedentDocument }: Im
                                     <option key={loc.id} value={loc.id}>{loc.cheminComplet}</option>
                                 ))}
                             </select>
+                            <button
+                                type="button"
+                                className="up-btn-secondary"
+                                onClick={() => setEmplacementModal({ open: true, mode: 'create' })}
+                                disabled={uoId == null}
+                                title="Créer un nouvel emplacement"
+                            >
+                                <i className="fa-solid fa-plus" /> Créer
+                            </button>
+                            {physicalLocationId && (
+                                <button
+                                    type="button"
+                                    className="up-btn-secondary"
+                                    onClick={ouvrirModificationEmplacement}
+                                    title="Modifier toute l'arborescence de cet emplacement"
+                                >
+                                    <i className="fa-solid fa-pen" /> Modifier
+                                </button>
+                            )}
                         </div>
-                    )}
+                    </div>
 
                     {/* Local : pas de bouton — l'analyse démarre seule dès que fichier(s) et
                         type sont tous les deux fournis (voir l'effet plus haut). Lien : reste
@@ -850,6 +1013,40 @@ function ImportDocuments({ onsuccess, preselectedTypeId, precedentDocument }: Im
                             {fileStates[currentIdx].errorMessage ?? 'Erreur OCR — ce fichier sera ignoré.'}
                         </div>
                     ) : (
+                        <>
+                        {fileStates[currentIdx].documentSimilaire && (
+                            <div className="up-alert up-alert-warning">
+                                <span>
+                                    <i className="fa-solid fa-triangle-exclamation" style={{ marginRight: '0.5rem' }} />
+                                    Un document similaire existe déjà dans votre UO : «{' '}
+                                    {fileStates[currentIdx].documentSimilaire!.titre} » — vous pouvez
+                                    archiver quand même si ce n'est pas un doublon.
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => handleVoirDocumentSimilaire(fileStates[currentIdx].documentSimilaire!)}
+                                >
+                                    <i className="fa-solid fa-eye" /> Voir
+                                </button>
+                            </div>
+                        )}
+                        {/* Avertissement (pas un blocage ICI) — tableau mis à l'échelle sur
+                            une page (voir singlePageSheets côté serveur) au point que le
+                            texte devient minuscule. La confirmation explicite ("j'assume
+                            d'archiver quand même") est demandée plus loin, au clic sur
+                            "Archiver" (voir handleFinalize), pas ici : cohérent avec le
+                            fait que ce panneau ne montre qu'UN fichier du lot à la fois. */}
+                        {fileStates[currentIdx].policeMinPt != null && fileStates[currentIdx].policeMinPt! < POLICE_MIN_SEUIL_PT && (
+                            <div className="up-alert up-alert-warning">
+                                <span>
+                                    <i className="fa-solid fa-triangle-exclamation" style={{ marginRight: '0.5rem' }} />
+                                    Ce tableau est large — une fois converti, le texte est réduit
+                                    à environ {fileStates[currentIdx].policeMinPt!.toFixed(1)}pt, ce
+                                    qui peut être difficile à lire. Vérifiez l'aperçu ci-dessous
+                                    avant d'archiver.
+                                </span>
+                            </div>
+                        )}
                         <div className="import-validate-split">
                             {/* Visionneuse — le document déjà converti en PDF par le serveur,
                                 pour vérifier en le lisant plutôt qu'en faisant confiance à l'OCR. */}
@@ -904,6 +1101,7 @@ function ImportDocuments({ onsuccess, preselectedTypeId, precedentDocument }: Im
                                 </div>
                             </div>
                         </div>
+                        </>
                     )}
 
                     <div className="bulk-validate-actions">
@@ -943,6 +1141,18 @@ function ImportDocuments({ onsuccess, preselectedTypeId, precedentDocument }: Im
                         <i className="fa-solid fa-plus" /> Nouvel import
                     </button>
                 </>
+            )}
+
+            {uoId != null && emplacementModal.open && (
+                <EmplacementTreeModal
+                    isOpen={emplacementModal.open}
+                    onClose={() => setEmplacementModal({ open: false })}
+                    uoId={uoId}
+                    mode={emplacementModal.mode}
+                    parentId={emplacementModal.mode === 'create' ? null : undefined}
+                    existingNode={emplacementModal.mode === 'update' ? emplacementModal.node : undefined}
+                    onSaved={handleEmplacementSaved}
+                />
             )}
         </div>
     );

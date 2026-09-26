@@ -87,3 +87,15 @@
 .attest-state i { font-size: 1.8rem; }
 
 .attest-error i { color: var(--error); }
+
+/* Lien secondaire (ex. "Voir l'attestation d'archivage" sous le document
+   original) — voir AttestationDocumentPublique.tsx. */
+.attest-lien-secondaire {
+    color: var(--text-light);
+    font-size: 0.85rem;
+    text-decoration: underline;
+}
+
+.attest-lien-secondaire:hover {
+    color: var(--accent);
+}

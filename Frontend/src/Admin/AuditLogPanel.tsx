@@ -54,9 +54,9 @@ const ACTION_LABELS: Record<AuditAction, string> = {
     TYPE_DOCUMENT_REGEX_REINITIALISEE: 'Regex réinitialisées',
     TYPE_DOCUMENT_REGEX_MODIFIEE: 'Regex modifiées',
     TYPE_DOCUMENT_SUPPRIME: 'Type de document supprimé',
-    PROJET_CREE: 'Projet créé',
-    PROJET_TYPES_AJOUTES: 'Types ajoutés au projet',
-    PROJET_SUPPRIME: 'Projet supprimé',
+    DOSSIER_CREE: 'Dossier créé',
+    DOSSIER_TYPES_AJOUTES: 'Types ajoutés au dossier',
+    DOSSIER_SUPPRIME: 'Dossier supprimé',
 };
 
 const CIBLE_LABELS: Record<AuditCible, string> = {
@@ -66,7 +66,7 @@ const CIBLE_LABELS: Record<AuditCible, string> = {
     DOCUMENT: 'Document',
     GROUPE_ACCES: 'Groupe d\'accès',
     TYPE_DOCUMENT: 'Type de document',
-    PROJET: 'Projet',
+    DOSSIER: 'Dossier',
 };
 
 function formatHorodatage(iso: string): string {

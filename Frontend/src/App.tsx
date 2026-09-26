@@ -13,6 +13,7 @@ import { getUserRole, hasRole, ROUTES } from './auth/authService';
 import AdminUoDashboard from './Admin/AdminUoDashboard.tsx';
 import SessionGuard from './auth/SessionGuard.tsx';
 import AttestationPublique from './Page/AttestationPublique.tsx';
+import AttestationDocumentPublique from './Page/AttestationDocumentPublique.tsx';
 import { NotificationProvider } from './notifications/NotificationProvider.tsx';
 import NotificationStack from './notifications/NotificationStack.tsx';
 import { ConfirmProvider } from './notifications/ConfirmProvider.tsx';
@@ -51,6 +52,9 @@ const router = createBrowserRouter([
 
   // Publique — aucune authentification (voir Page/AttestationPublique.tsx)
   { path: '/attestation/:token', element: <AttestationPublique /> },
+  // Destination réelle du QR imprimé sur l'attestation — le document
+  // ORIGINAL, pas l'attestation (voir Page/AttestationDocumentPublique.tsx).
+  { path: '/attestation/:token/document', element: <AttestationDocumentPublique /> },
 
   {
     path: '/admin', element:

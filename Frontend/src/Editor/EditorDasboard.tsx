@@ -7,30 +7,49 @@ import type { BulkUploadReportDto } from '../services/document/DocumentService';
 import MesDocumentsEditor from './MesDocumentsEditor';
 import DocumentsAccessibles from '../document/DocumentsAccessible';
 import Corbeille from '../document/Corbeille';
-import ProjetsPanel from '../organisation/ProjetsPanel';
+import DossiersPanel from '../organisation/DossiersPanel';
+import PhysicalLocationsPanel from '../organisation/PhysicalLocationsPanel';
+import TypeDocumentList from '../document/TypedocumentList';
+import CreateTypeDocument from '../document/Createtypedocument';
 import { getCurrentUserInfo } from '../auth/authService';
 import { getMyUO } from '../services/organisation/UOService';
 import '../Style/Editor/Editor.css';
+// .uo-tabs/.uo-tab — même barre d'onglets horizontale que dans l'espace de
+// travail admin (AdminUoDashboard), réutilisée telle quelle plutôt que
+// dupliquée, pour rester visuellement identique si son style évolue un jour.
+import '../Style/Admin/AdminDashboard.css';
 import { useNotify } from '../notifications/NotificationProvider';
 
-type EditorView  = 'documents' | 'accessibles' | 'corbeille' | 'projets' | 'profile';
+type EditorView = 'documents' | 'profile';
+
+// Sous-onglets de la vue "Documents" — voir la barre .uo-tabs plus bas.
+// Ordre demandé : Documents, puis Mes documents, puis le reste. "Types de
+// documents" : gestion (créer/lire/modifier/supprimer) désormais réservée
+// aux EDITOR de leur propre UO — retirée des dashboards ADMIN/ADMIN_UO (voir
+// DocumentController /api/editor, backend).
+type DocumentsTab = 'accessibles' | 'mesDocuments' | 'dossiers' | 'typesDocuments' | 'emplacements' | 'corbeille';
 
 function EditorDashboard() {
     const userInfo = getCurrentUserInfo();
     const notify = useNotify();
 
     const [currentView, setCurrentView] = useState<EditorView>('documents');
+    const [documentsTab, setDocumentsTab] = useState<DocumentsTab>('accessibles');
 
     // Nom + id de l'UO de rattachement — affichés dans le titre du Sidebar,
-    // et l'id sert de scope pour le panneau Projets ci-dessous.
+    // et l'id sert de scope pour le panneau Dossiers ci-dessous.
     const [uoNom, setUoNom] = useState<string>('');
     const [uoId,  setUoId]  = useState<number | null>(null);
 
     // Modales sidebar
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+    const [isCreateTdModalOpen, setIsCreateTdModalOpen] = useState(false);
 
     // Refresh de la grille après upload
     const [refreshDocs, setRefreshDocs] = useState(0);
+
+    // Refresh de la liste des types de documents après création/modification/suppression
+    const [tdRefresh, setTdRefresh] = useState(0);
 
     // Type pré-sélectionné transmis depuis la grille (bouton "+")
     // null = pas de pré-sélection, undefined = consommé
@@ -77,13 +96,19 @@ function EditorDashboard() {
         }
     };
 
+    const handleTdCreated = () => {
+        setIsCreateTdModalOpen(false);
+        setTdRefresh(r => r + 1);
+        notify.success("Type de document créé avec succès");
+    };
+
     const sidebarTitle = `${userInfo?.role || "ÉDITEUR"}${uoNom ? ` — ${uoNom}` : ''}`;
 
     return (
         <div className="admin-dashboard">
             <div className="admin-body">
 
-                <Sidebar title={sidebarTitle}>
+                <Sidebar title={sidebarTitle} onTitleClick={() => setCurrentView('documents')}>
                     <nav className="sidebar-nav">
                         <div>
                             {/* Profil */}
@@ -104,40 +129,15 @@ function EditorDashboard() {
                                 </button>
                             </div>
 
-                            {/* Documents */}
-                            <div className="sidebar-section-label">Documents</div>
-                            <div className="main-header">
-                                <button
-                                    className={`sidebar-btn ${currentView === 'documents' ? 'active-tab' : ''}`}
-                                    onClick={() => setCurrentView('documents')}
-                                >
-                                    <i className="fa-solid fa-folder-open" /> Mes documents
-                                </button>
-                            </div>
-                            <div className="main-header">
-                                <button
-                                    className={`sidebar-btn ${currentView === 'accessibles' ? 'active-tab' : ''}`}
-                                    onClick={() => setCurrentView('accessibles')}
-                                >
-                                    <i className="fa-solid fa-folder-open" /> Documents
-                                </button>
-                            </div>
-                            <div className="main-header">
-                                <button
-                                    className={`sidebar-btn ${currentView === 'projets' ? 'active-tab' : ''}`}
-                                    onClick={() => setCurrentView('projets')}
-                                >
-                                    <i className="fa-solid fa-folder-tree" /> Projets
-                                </button>
-                            </div>
-                            <div className="main-header">
-                                <button
-                                    className={`sidebar-btn ${currentView === 'corbeille' ? 'active-tab' : ''}`}
-                                    onClick={() => setCurrentView('corbeille')}
-                                >
-                                    <i className="fa-solid fa-trash-can" /> Corbeille
-                                </button>
-                            </div>
+                            {/* Plus de bouton "Documents" ici — les 5 sous-vues
+                                (Documents/Mes documents/Dossiers/Emplacements
+                                physiques/Corbeille) vivent dans la barre
+                                d'onglets .uo-tabs de l'espace de travail (voir
+                                plus bas), comme côté admin. "documents" reste
+                                la vue par défaut au chargement, et l'en-tête
+                                de la sidebar (logo + libellé, onTitleClick
+                                ci-dessus) permet d'y revenir depuis "Mon
+                                Profil". */}
 
                         </div>
                     </nav>
@@ -148,21 +148,84 @@ function EditorDashboard() {
                     {currentView === 'profile' && (
                         <Profile userId={userInfo?.id} />
                     )}
+
                     {currentView === 'documents' && (
-                        <MesDocumentsEditor
-                            refreshTrigger={refreshDocs}
-                            preselectedTypeId={preselectedTypeId}
-                            onPreselectedConsumed={() => setPreselectedTypeId(null)}
-                        />
-                    )}
-                    {currentView === 'accessibles' && (
-                        <DocumentsAccessibles />
-                    )}
-                    {currentView === 'projets' && (
-                        <ProjetsPanel uoId={uoId} />
-                    )}
-                    {currentView === 'corbeille' && (
-                        <Corbeille />
+                        <>
+                            {/* Barre d'onglets — identique à celle de l'admin
+                                (.uo-tabs/.uo-tab), ordre demandé : Documents,
+                                Mes documents, puis le reste. */}
+                            <div className="uo-tabs">
+                                <button
+                                    className={`uo-tab ${documentsTab === 'accessibles' ? 'active' : ''}`}
+                                    onClick={() => setDocumentsTab('accessibles')}
+                                >
+                                    Documents
+                                </button>
+                                <button
+                                    className={`uo-tab ${documentsTab === 'mesDocuments' ? 'active' : ''}`}
+                                    onClick={() => setDocumentsTab('mesDocuments')}
+                                >
+                                    Mes documents
+                                </button>
+                                <button
+                                    className={`uo-tab ${documentsTab === 'dossiers' ? 'active' : ''}`}
+                                    onClick={() => setDocumentsTab('dossiers')}
+                                >
+                                    Dossiers
+                                </button>
+                                <button
+                                    className={`uo-tab ${documentsTab === 'typesDocuments' ? 'active' : ''}`}
+                                    onClick={() => setDocumentsTab('typesDocuments')}
+                                >
+                                    Types de documents
+                                </button>
+                                <button
+                                    className={`uo-tab ${documentsTab === 'emplacements' ? 'active' : ''}`}
+                                    onClick={() => setDocumentsTab('emplacements')}
+                                >
+                                    Emplacements physiques
+                                </button>
+                                <button
+                                    className={`uo-tab ${documentsTab === 'corbeille' ? 'active' : ''}`}
+                                    onClick={() => setDocumentsTab('corbeille')}
+                                >
+                                    <i className="fa-solid fa-trash-can" /> Corbeille
+                                </button>
+                            </div>
+
+                            {documentsTab === 'accessibles' && (
+                                <DocumentsAccessibles />
+                            )}
+                            {documentsTab === 'mesDocuments' && (
+                                <MesDocumentsEditor
+                                    refreshTrigger={refreshDocs}
+                                    preselectedTypeId={preselectedTypeId}
+                                    onPreselectedConsumed={() => setPreselectedTypeId(null)}
+                                />
+                            )}
+                            {documentsTab === 'dossiers' && (
+                                <DossiersPanel uoId={uoId} />
+                            )}
+                            {documentsTab === 'typesDocuments' && uoId !== null && (
+                                <>
+                                    <div className="main-header">
+                                        <button
+                                            className="sidebar-btn"
+                                            onClick={() => setIsCreateTdModalOpen(true)}
+                                        >
+                                            Créer un type
+                                        </button>
+                                    </div>
+                                    <TypeDocumentList refreshTrigger={tdRefresh} uoId={uoId} />
+                                </>
+                            )}
+                            {documentsTab === 'emplacements' && (
+                                <PhysicalLocationsPanel uoId={uoId} mode="gestion" />
+                            )}
+                            {documentsTab === 'corbeille' && (
+                                <Corbeille />
+                            )}
+                        </>
                     )}
 
                     {/* Modal import sidebar — DANS .main-content, pas à côté :
@@ -179,6 +242,16 @@ function EditorDashboard() {
                         size="large"
                     >
                         <ImportDocuments onsuccess={handleUploadSuccess} />
+                    </Modal>
+
+                    <Modal
+                        isOpen={isCreateTdModalOpen}
+                        onClose={() => setIsCreateTdModalOpen(false)}
+                        title="Créer un type de document"
+                    >
+                        {uoId !== null && (
+                            <CreateTypeDocument onsuccess={handleTdCreated} restrictToUO={{ id: uoId, nom: uoNom }} />
+                        )}
                     </Modal>
                 </div>
             </div>

@@ -8,8 +8,8 @@ public enum NotificationType
     /** Nouveau document ajouté dans une UO (ou dans un groupe d'accès si privé). */
     DOCUMENT_AJOUTE,
 
-    /** Nouveau projet créé dans une UO. */
-    PROJET_CREE,
+    /** Nouveau dossier créé dans une UO. */
+    DOSSIER_CREE,
 
     /** Nouvelle unité organisationnelle créée (racine ou enfant). */
     UO_CREEE,
@@ -44,5 +44,27 @@ public enum NotificationType
     /** Vous avez été retiré du groupe d'accès d'un document privé — envoyée
      *  au membre RETIRÉ lui-même (il perd l'accès au document à partir de ce
      *  moment, il doit en être informé). Voir GroupeAccessService.retirerMembre. */
-    GROUPE_MEMBRE_RETIRE
+    GROUPE_MEMBRE_RETIRE,
+
+    /** Le LLM configuré pour la génération automatique de regex (Ollama local
+     *  et/ou API externe, voir OllamaService) est injoignable ou a refusé la
+     *  connexion — envoyée à tous les ADMIN globaux, au plus une fois par
+     *  cooldown (voir RedisCacheConfig.CACHE_LLM_INVALIDE_COOLDOWN) pour ne
+     *  pas spammer même si plusieurs types de documents échouent en même
+     *  temps. Purement informatif : la génération automatique est
+     *  best-effort, aucun document n'est jamais bloqué par cette panne. */
+    LLM_GENERATION_INDISPONIBLE,
+
+    /** Le TSA configuré pour l'horodatage RFC 3161 (gratuit et/ou payant, voir
+     *  HorodatageService/HorodatageProperties) est injoignable, a refusé la
+     *  connexion, ou a rejeté la requête — envoyée à tous les ADMIN globaux,
+     *  au plus une fois par cooldown (voir RedisCacheConfig
+     *  .CACHE_HORODATAGE_INVALIDE_COOLDOWN) pour ne pas spammer même si
+     *  plusieurs documents échouent dans la même fenêtre. Couvre notamment un
+     *  abonnement payant coupé (impayé, quota dépassé...) — distincte de
+     *  DOCUMENT_HORODATAGE_ECHEC (par document, envoyée à l'éditeur) : celle-ci
+     *  signale LE LIEN lui-même, pas un document précis. Purement informatif :
+     *  l'horodatage est best-effort, aucun document n'est jamais bloqué par
+     *  cette panne. */
+    HORODATAGE_INDISPONIBLE
 }
