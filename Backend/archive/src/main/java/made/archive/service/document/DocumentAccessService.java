@@ -11,6 +11,7 @@ import made.archive.dto.DocumentPageDto;
 import made.archive.entite.Document;
 import made.archive.entite.DocumentStatus;
 import made.archive.entite.Role_Name;
+import made.archive.entite.SortFinal;
 import made.archive.entite.TypeAccess;
 import made.archive.entite.User;
 import made.archive.exception.BusinessException;
@@ -57,6 +58,7 @@ public class DocumentAccessService
     private final WebClient.Builder webClientBuilder;
     private final MeilisearchProperties meilisearchProperties;
     private final ObjectMapper objectMapper;
+    private final made.archive.service.organisation.PlanClassementService planClassementService;
 
     @Transactional(readOnly = true)
     public DocumentPageDto getDocumentsAccessibles(
@@ -116,6 +118,10 @@ public class DocumentAccessService
         java.util.Set<Long> uoVisibles,
         Set<UUID> idsPleinTexte)
     {
+        final java.util.Set<Long> idsActivite = filter.getPlanClassementNoeudId() != null
+            ? planClassementService.idsAvecDescendants(filter.getPlanClassementNoeudId())
+            : java.util.Set.of();
+
         return (root, query, cb) ->
         {
             List<Predicate> predicates = new ArrayList<>();
@@ -230,6 +236,20 @@ public class DocumentAccessService
                 ));
             }
 
+            // ── 4a. Filtre par activité (nœud du plan de classement + descendants) —
+            //       via le type de document ; un ensemble vide (nœud inconnu) ne renvoie rien.
+            if (filter.getPlanClassementNoeudId() != null)
+            {
+                if (idsActivite.isEmpty())
+                {
+                    predicates.add(cb.disjunction());
+                }
+                else
+                {
+                    predicates.add(root.get("typeDocument").get("planClassementNoeud").get("id").in(idsActivite));
+                }
+            }
+
             // ── 4b. Filtre par dossier — ne contourne jamais la visibilité
             //       réelle calculée en 2b, seulement une restriction de plus.
             if (filter.getDossierId() != null)
@@ -237,6 +257,17 @@ public class DocumentAccessService
                 predicates.add(cb.equal(
                     root.get("dossier").get("id"),
                     filter.getDossierId()
+                ));
+            }
+
+            // ── 4c. Filtre par emplacement physique — "Voir les documents"
+            //       d'un nœud de stockage (voir PhysicalLocationsPanel). Même
+            //       principe que le dossier ci-dessus.
+            if (filter.getPhysicalLocationId() != null)
+            {
+                predicates.add(cb.equal(
+                    root.get("physicalLocation").get("id"),
+                    filter.getPhysicalLocationId()
                 ));
             }
 
@@ -453,8 +484,31 @@ public class DocumentAccessService
             .versionLabel(DocumentVersionLabels.compute(doc))
             .statutAvantCorbeille(doc.getStatutAvantCorbeille() != null ? doc.getStatutAvantCorbeille().name() : null)
             .suppressionPrevueLe(doc.getSuppressionPrevueLe())
+            .retentionYearsType(doc.getTypeDocument().getRetention() != null
+                ? doc.getTypeDocument().getRetention().getRetentionYears() : null)
             .peutGererCorbeille(peutGererCorbeille(doc, currentUser))
+            .peutSupprimerDefinitivement(peutSupprimerDefinitivement(doc, currentUser))
             .build();
+    }
+
+    /** Voir Javadoc de DocumentListItemDto.peutSupprimerDefinitivement. */
+    private boolean peutSupprimerDefinitivement(Document doc, User currentUser)
+    {
+        if (doc.getStatus() != DocumentStatus.CORBEILLE
+            || doc.getSuppressionPrevueLe() == null
+            || doc.getSuppressionPrevueLe().isAfter(java.time.LocalDate.now()))
+        {
+            return false;
+        }
+
+        SortFinal sortFinal = doc.getTypeDocument().getRetention() != null
+            ? doc.getTypeDocument().getRetention().getSortFinal() : SortFinal.DETRUIRE;
+        if (sortFinal == SortFinal.DETRUIRE)
+        {
+            return false;
+        }
+
+        return peutGererCorbeille(doc, currentUser);
     }
 
     /**

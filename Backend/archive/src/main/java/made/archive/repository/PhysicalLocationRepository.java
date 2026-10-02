@@ -21,4 +21,9 @@ public interface PhysicalLocationRepository extends JpaRepository<PhysicalLocati
         Long uniteOrganisationnelleId, made.archive.entite.LocationStatus status);
 
     Optional<PhysicalLocation> findByIdAndUniteOrganisationnelleId(UUID id, Long uniteOrganisationnelleId);
+
+    /** Tous les nœuds (storagePoint=true) liés à CE dossier précisément —
+     *  plusieurs peuvent exister pour un même dossier volumineux, voir
+     *  LocationModeContrainte.DOSSIER. */
+    List<PhysicalLocation> findByDossierIdAndUniteOrganisationnelleId(Long dossierId, Long uniteOrganisationnelleId);
 }

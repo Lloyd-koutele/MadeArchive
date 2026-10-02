@@ -61,6 +61,23 @@ dependencies {
 	// Base de données
 	runtimeOnly 'org.postgresql:postgresql'
 
+	// Flyway — gère désormais réellement les évolutions de schéma (voir
+	// src/main/resources/db/migration). Avant ce commit, spring.flyway.* dans
+	// application.properties ne faisait RIEN : ces dépendances étaient absentes,
+	// donc l'auto-configuration Flyway ne s'activait jamais — le vrai mécanisme
+	// était ddl-auto=update + schema.sql. flyway-database-postgresql est un
+	// module séparé depuis Flyway 10 (plus inclus dans flyway-core).
+	// spring-boot-flyway EST INDISPENSABLE EN PLUS de flyway-core : Spring Boot 4
+	// a éclaté l'ancien gros "spring-boot-autoconfigure" en modules séparés par
+	// techno (spring-boot-hibernate, spring-boot-jpa, spring-boot-sql, ...) — la
+	// seule présence de flyway-core sur le classpath NE SUFFIT PLUS à déclencher
+	// l'auto-configuration comme en Spring Boot 3 : celle-ci vit maintenant dans
+	// ce module séparé, constaté en conditions réelles (démarrage réussi mais
+	// AUCUNE migration jouée, aucun log Flyway, jusqu'à l'ajout de cette ligne).
+	implementation 'org.flywaydb:flyway-core'
+	implementation 'org.flywaydb:flyway-database-postgresql'
+	implementation 'org.springframework.boot:spring-boot-flyway'
+
 	// Cache (Redis) — voir config.RedisCacheConfig
 	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 	implementation 'org.springframework.boot:spring-boot-starter-cache'
@@ -109,6 +126,8 @@ dependencies {
     
     // PDFBox — version 2.x obligatoire pour compatibilité avec Tika 2.9.1
     implementation 'org.apache.pdfbox:pdfbox:2.0.31'
+    // Validation PDF/A de référence (Open Preservation Foundation) — voir PdfAConversionService
+    implementation 'org.verapdf:validation-model-jakarta:1.28.1'
 
     // Exclure PDFBox 3.x si importé transitivement
     configurations.all {

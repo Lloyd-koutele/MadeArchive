@@ -18,14 +18,14 @@
 }
 
 .version-badge-old {
-    background: rgba(139, 94, 60, 0.12);
+    background: rgba(var(--accent-rgb), 0.12);
     color: var(--accent, #8B5E3C);
 }
 
 .version-history {
     margin-top: 1rem;
     padding-top: 0.85rem;
-    border-top: 1px solid rgba(44, 26, 14, 0.1);
+    border-top: 1px solid rgba(var(--dark-choc-rgb), 0.1);
 }
 
 .version-history-title {
@@ -58,7 +58,7 @@
 }
 
 .version-history-item:hover {
-    background: rgba(139, 94, 60, 0.08);
+    background: rgba(var(--accent-rgb), 0.08);
 }
 
 .version-history-item-current {
@@ -67,6 +67,6 @@
 }
 
 .version-history-meta {
-    color: rgba(44, 26, 14, 0.55);
+    color: rgba(var(--dark-choc-rgb), 0.55);
     font-size: 0.72rem;
 }

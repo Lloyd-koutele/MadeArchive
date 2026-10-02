@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
-import { rechercherAuditLogs, exporterAuditLogs } from '../services/admin/AuditLogService';
-import type { AuditAction, AuditCible, AuditLogDto, AuditLogFiltre, AuditLogExportFormat } from '../services/admin/AuditLogService';
+import { rechercherAuditLogs, exporterAuditLogs, verifierChaineAudit } from '../services/admin/AuditLogService';
+import type { AuditAction, AuditCible, AuditLogDto, AuditLogFiltre, AuditLogExportFormat, ChaineAuditVerificationDto } from '../services/admin/AuditLogService';
 import { getAllUsers, getUsersByUO } from '../services/admin/AdminService';
 import { getAllUOs, getMyUO, getSousArbre } from '../services/organisation/UOService';
 import { getCurrentUserInfo, hasRole } from '../auth/authService';
@@ -54,9 +54,11 @@ const ACTION_LABELS: Record<AuditAction, string> = {
     TYPE_DOCUMENT_REGEX_REINITIALISEE: 'Regex réinitialisées',
     TYPE_DOCUMENT_REGEX_MODIFIEE: 'Regex modifiées',
     TYPE_DOCUMENT_SUPPRIME: 'Type de document supprimé',
+    TYPE_DOCUMENT_SORT_FINAL_MODIFIE: 'Sort final modifié',
     DOSSIER_CREE: 'Dossier créé',
     DOSSIER_TYPES_AJOUTES: 'Types ajoutés au dossier',
     DOSSIER_SUPPRIME: 'Dossier supprimé',
+    CHAINE_AUDIT_VERIFICATION_DEMANDEE: 'Vérification de la chaîne demandée',
 };
 
 const CIBLE_LABELS: Record<AuditCible, string> = {
@@ -196,6 +198,27 @@ function AuditLogPanel() {
     };
 
     const [exportLoading, setExportLoading] = useState<AuditLogExportFormat | null>(null);
+
+    // ── Vérification de la chaîne du journal d'audit ────────────────────────
+    const [chaineLoading, setChaineLoading] = useState(false);
+    const [chaineResultat, setChaineResultat] = useState<ChaineAuditVerificationDto | null>(null);
+
+    const handleVerifierChaine = async () => {
+        setChaineLoading(true);
+        try {
+            const resultat = await verifierChaineAudit();
+            setChaineResultat(resultat);
+            if (resultat.chaineIntacte) {
+                notify.success(`Chaîne intacte — ${resultat.nombreEntreesChainees} entrée(s) vérifiée(s).`);
+            } else {
+                notify.error(`${resultat.ruptures.length} rupture(s) détectée(s) dans la chaîne.`);
+            }
+        } catch (err: any) {
+            notify.error(err.message ?? 'Erreur lors de la vérification de la chaîne');
+        } finally {
+            setChaineLoading(false);
+        }
+    };
 
     const handleExporter = async (format: AuditLogExportFormat) => {
         setExportLoading(format);
@@ -362,6 +385,65 @@ function AuditLogPanel() {
                 </button>
             </div>
 
+            {/* Vérification de la chaîne — voir AuditChainService côté backend.
+                Chaînage/scellement eux-mêmes sont nocturnes et automatiques (voir
+                AuditChainScheduler) ; ce bouton ne fait que RECALCULER et COMPARER,
+                à la demande, sans jamais rien modifier. */}
+            <div className="audit-log-export-actions">
+                <span className="audit-log-export-label">Intégrité de la chaîne :</span>
+                <button
+                    type="button"
+                    className="bulk-back-btn"
+                    onClick={handleVerifierChaine}
+                    disabled={chaineLoading}
+                >
+                    {chaineLoading
+                        ? <><i className="fa-solid fa-spinner fa-spin" /> Vérification…</>
+                        : <><i className="fa-solid fa-link" /> Vérifier la chaîne</>}
+                </button>
+                {chaineResultat && (
+                    <span className={`status-tag ${chaineResultat.chaineIntacte ? 'active' : 'inactive'}`}>
+                        {chaineResultat.chaineIntacte
+                            ? `Intacte (${chaineResultat.nombreEntreesChainees} entrée(s))`
+                            : `${chaineResultat.ruptures.length} rupture(s) détectée(s)`}
+                    </span>
+                )}
+                {chaineResultat?.rupturesHorsPerimetre && (
+                    <span className="audit-log-export-label" title="D'autres ruptures existent hors de votre périmètre d'UO">
+                        <i className="fa-solid fa-triangle-exclamation" /> D'autres ruptures existent hors de votre UO
+                    </span>
+                )}
+                {chaineResultat?.dernierScellementDate && (
+                    <span className="audit-log-export-label">
+                        Dernier scellement horodaté : {formatHorodatage(chaineResultat.dernierScellementDate)}
+                    </span>
+                )}
+            </div>
+
+            {chaineResultat && !chaineResultat.chaineIntacte && chaineResultat.ruptures.length > 0 && (
+                <div className="td-table-container">
+                    <table className="td-table audit-log-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Action</th>
+                                <th className="audit-col-uo">UO</th>
+                                <th className="audit-col-description">Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {chaineResultat.ruptures.map(r => (
+                                <tr key={r.id}>
+                                    <td>{r.horodatage ? formatHorodatage(r.horodatage) : '—'}</td>
+                                    <td>{r.action ? (ACTION_LABELS[r.action] ?? r.action) : '—'}</td>
+                                    <td className="audit-col-uo">{r.uoId != null ? (uoNomParId.get(r.uoId) ?? `#${r.uoId}`) : '—'}</td>
+                                    <td className="audit-log-description audit-col-description">{r.description ?? '—'}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
 
             <div className="td-table-container">
                 <table className="td-table audit-log-table">

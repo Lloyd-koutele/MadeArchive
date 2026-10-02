@@ -25,15 +25,20 @@ import made.archive.entite.AuditAction;
 import made.archive.entite.AuditCible;
 import made.archive.entite.Document;
 import made.archive.entite.DocumentStatus;
+import made.archive.entite.Dossier;
+import made.archive.entite.LocationModeContrainte;
 import made.archive.entite.LocationStatus;
 import made.archive.entite.PhysicalLocation;
 import made.archive.entite.Role_Name;
+import made.archive.entite.TypeDocument;
 import made.archive.entite.UniteOrganisationnelle;
 import made.archive.entite.User;
 import made.archive.exception.AccessDeniedException;
 import made.archive.exception.BusinessException;
 import made.archive.repository.DocumentRepository;
+import made.archive.repository.DossierRepository;
 import made.archive.repository.PhysicalLocationRepository;
+import made.archive.repository.TypeDocumentRepository;
 import made.archive.repository.UniteOrganisationnelleRepository;
 import made.archive.service.audit.AuditLogService;
 import made.archive.util.NormalisationNoms;
@@ -81,6 +86,8 @@ public class PhysicalLocationService
     private final DocumentRepository documentRepository;
     private final UniteOrganisationnelleService uoService;
     private final AuditLogService auditLogService;
+    private final TypeDocumentRepository typeDocumentRepository;
+    private final DossierRepository dossierRepository;
 
     // ═══════════════════════════════════════════════════════════════════
     // Écriture
@@ -198,6 +205,20 @@ public class PhysicalLocationService
                 "Seul un éditeur de cette unité organisationnelle peut y créer un emplacement");
         }
 
+        // La racine d'une arborescence SANS parent (créée directement à la
+        // racine de l'UO) ne peut jamais être un point de stockage — retour
+        // utilisateur 10/2026 : un emplacement physique part forcément d'un
+        // conteneur organisationnel (bâtiment, salle...), jamais directement
+        // d'une boîte isolée au sommet de l'UO. Déjà imposé côté client (voir
+        // EmplacementTreeModal, racineNouvelleVerrouillee) — revalidé ici
+        // pour ne pas dépendre uniquement du frontend.
+        if (dto.getParentId() == null && dto.getNode().isStoragePoint())
+        {
+            throw new BusinessException(
+                "La racine d'un nouvel emplacement ne peut pas être un point de stockage — "
+                    + "ce doit être un nœud chemin (conteneur)");
+        }
+
         UniteOrganisationnelle uo = uoRepository.findById(dto.getUniteOrganisationnelleId())
             .orElseThrow(() -> new BusinessException("UO introuvable : " + dto.getUniteOrganisationnelleId()));
 
@@ -253,17 +274,33 @@ public class PhysicalLocationService
                 "\"" + node.getName() + "\" est un point de stockage, il ne peut pas avoir d'enfant");
         }
 
+        if (node.getCapaciteMax() != null && !node.isStoragePoint())
+        {
+            throw new BusinessException(
+                "\"" + node.getName() + "\" est un nœud chemin, il ne peut pas avoir de capacité maximale");
+        }
+        if (node.getCapaciteMax() != null && node.getCapaciteMax() < 1)
+        {
+            throw new BusinessException("La capacité maximale doit être d'au moins 1 document");
+        }
+
         verifierNomUnique(node.getName(), uo.getId(), parent, null);
 
         PhysicalLocation loc = new PhysicalLocation();
         loc.setName(node.getName());
         loc.setDescription(node.getDescription());
         loc.setStoragePoint(node.isStoragePoint());
+        loc.setCapaciteMax(node.getCapaciteMax());
         loc.setParent(parent);
         loc.setUniteOrganisationnelle(uo);
         loc.setStatus(LocationStatus.ACTIVE);
         loc.setCreatedBy(currentUser);
         loc.setCreatedAt(LocalDateTime.now());
+
+        if (node.isStoragePoint())
+        {
+            appliquerContrainte(loc, node.getModeContrainte(), node.getTypeDocumentId(), node.getDossierId(), uo);
+        }
 
         PhysicalLocation saved = locationRepository.save(loc);
         compteur[0]++;
@@ -282,6 +319,13 @@ public class PhysicalLocationService
             .name(saved.getName())
             .status(saved.getStatus().name())
             .storagePoint(saved.isStoragePoint())
+            .capaciteMax(saved.getCapaciteMax())
+            .nombreDocuments(0L)
+            .modeContrainte(saved.getModeContrainte().name())
+            .typeDocumentAccepteId(saved.getTypeDocumentAccepte() != null ? saved.getTypeDocumentAccepte().getId() : null)
+            .typeDocumentAccepteNom(saved.getTypeDocumentAccepte() != null ? saved.getTypeDocumentAccepte().getNom() : null)
+            .dossierId(saved.getDossier() != null ? saved.getDossier().getId() : null)
+            .dossierNom(saved.getDossier() != null ? saved.getDossier().getNom() : null)
             .children(enfants)
             .build();
     }
@@ -350,13 +394,7 @@ public class PhysicalLocationService
                 + (compteurNouveaux[0] > 0 ? ", " + compteurNouveaux[0] + " nouveau(x) descendant(s)" : ""),
             true);
 
-        return PhysicalLocationNodeDto.builder()
-            .id(root.getId())
-            .name(root.getName())
-            .status(root.getStatus().name())
-            .storagePoint(root.isStoragePoint())
-            .children(enfants)
-            .build();
+        return versNodeDtoSimple(root, enfants);
     }
 
     /** Applique récursivement un nœud de brouillon (renommage si existant, création si nouveau) — voir mettreAJourArborescence. */
@@ -400,17 +438,31 @@ public class PhysicalLocationService
                 throw new BusinessException(
                     "\"" + dto.getName() + "\" est un point de stockage, il ne peut pas avoir d'enfant");
             }
+            if (dto.getCapaciteMax() != null && !dto.isStoragePoint())
+            {
+                throw new BusinessException(
+                    "\"" + dto.getName() + "\" est un nœud chemin, il ne peut pas avoir de capacité maximale");
+            }
+            if (dto.getCapaciteMax() != null && dto.getCapaciteMax() < 1)
+            {
+                throw new BusinessException("La capacité maximale doit être d'au moins 1 document");
+            }
             verifierNomUnique(dto.getName(), uo.getId(), parentAttendu, null);
 
             loc = new PhysicalLocation();
             loc.setName(dto.getName());
             loc.setDescription(dto.getDescription());
             loc.setStoragePoint(dto.isStoragePoint());
+            loc.setCapaciteMax(dto.getCapaciteMax());
             loc.setParent(parentAttendu);
             loc.setUniteOrganisationnelle(uo);
             loc.setStatus(LocationStatus.ACTIVE);
             loc.setCreatedBy(currentUser);
             loc.setCreatedAt(LocalDateTime.now());
+            if (dto.isStoragePoint())
+            {
+                appliquerContrainte(loc, dto.getModeContrainte(), dto.getTypeDocumentId(), dto.getDossierId(), uo);
+            }
             loc = locationRepository.save(loc);
             compteurNouveaux[0]++;
         }
@@ -424,11 +476,29 @@ public class PhysicalLocationService
             }
         }
 
+        return versNodeDtoSimple(loc, enfants);
+    }
+
+    /** Fabrique un PhysicalLocationNodeDto pour UN nœud déjà persisté (nombreDocuments recalculé, enfants fournis) —
+     *  factorisé entre mettreAJourArborescence/appliquerNoeudMiseAJour (versNode n'est pas réutilisable ici, il
+     *  attend une Map d'enfants bruts pré-groupée, pas une liste déjà convertie). */
+    private PhysicalLocationNodeDto versNodeDtoSimple(PhysicalLocation loc, List<PhysicalLocationNodeDto> enfants)
+    {
+        long nombreDocuments = loc.isStoragePoint()
+            ? documentRepository.countByPhysicalLocationIdAndStatusNot(loc.getId(), DocumentStatus.DELETED)
+            : 0L;
         return PhysicalLocationNodeDto.builder()
             .id(loc.getId())
             .name(loc.getName())
             .status(loc.getStatus().name())
             .storagePoint(loc.isStoragePoint())
+            .capaciteMax(loc.getCapaciteMax())
+            .nombreDocuments(nombreDocuments)
+            .modeContrainte(loc.getModeContrainte().name())
+            .typeDocumentAccepteId(loc.getTypeDocumentAccepte() != null ? loc.getTypeDocumentAccepte().getId() : null)
+            .typeDocumentAccepteNom(loc.getTypeDocumentAccepte() != null ? loc.getTypeDocumentAccepte().getNom() : null)
+            .dossierId(loc.getDossier() != null ? loc.getDossier().getId() : null)
+            .dossierNom(loc.getDossier() != null ? loc.getDossier().getNom() : null)
             .children(enfants)
             .build();
     }
@@ -573,6 +643,153 @@ public class PhysicalLocationService
     }
 
     /**
+     * Fixe (ou retire, si capaciteMax == null) la limite de documents d'un
+     * point de stockage — contrairement à modifier() (name/description),
+     * endpoint DÉDIÉ car null est ici une valeur SIGNIFICATIVE ("aucune
+     * limite"), pas "champ non fourni" : un DTO à plusieurs champs optionnels
+     * ne peut pas distinguer les deux avec Jackson, cet appel à un seul
+     * paramètre le peut. Modifiable à tout moment, PAS seulement si le nœud
+     * est vide (augmenter ou retirer une limite ne casse jamais rien) — mais
+     * refusé si la nouvelle valeur est inférieure au nombre de documents déjà
+     * rattachés, ce qui laisserait un nœud immédiatement "en dépassement".
+     */
+    @Transactional
+    public PhysicalLocationDto definirCapacite(UUID id, Integer capaciteMax, User currentUser)
+    {
+        PhysicalLocation loc = getEtVerifierAutorite(id, currentUser);
+
+        if (!loc.isStoragePoint())
+        {
+            throw new BusinessException("Seul un point de stockage peut avoir une capacité maximale");
+        }
+
+        if (capaciteMax != null)
+        {
+            if (capaciteMax < 1)
+            {
+                throw new BusinessException("La capacité maximale doit être d'au moins 1 document");
+            }
+            long occupees = documentRepository.countByPhysicalLocationIdAndStatusNot(id, DocumentStatus.DELETED);
+            if (capaciteMax < occupees)
+            {
+                throw new BusinessException("Impossible : " + occupees + " document(s) déjà rattaché(s) à \""
+                    + loc.getName() + "\" — la capacité ne peut pas être fixée en dessous");
+            }
+        }
+
+        loc.setCapaciteMax(capaciteMax);
+        loc.setUpdatedBy(currentUser);
+        loc.setUpdatedAt(LocalDateTime.now());
+        PhysicalLocation saved = locationRepository.save(loc);
+
+        auditLogService.log(currentUser, AuditAction.LOCATION_MODIFIEE, AuditCible.PHYSICAL_LOCATION,
+            saved.getId().toString(), saved.getUniteOrganisationnelle().getId(),
+            capaciteMax != null
+                ? "Capacité maximale de \"" + saved.getName() + "\" fixée à " + capaciteMax + " document(s)"
+                : "Capacité maximale de \"" + saved.getName() + "\" retirée (illimitée)",
+            true);
+
+        return toDto(saved);
+    }
+
+    /**
+     * Fixe le mode de contrainte d'acceptation (LIBRE/TYPE_UNIQUE/DOSSIER) —
+     * voir LocationModeContrainte. Contrairement à la capacité, modifiable
+     * SEULEMENT si le nœud est vide (aucun document vivant rattaché) : changer
+     * ce qu'un nœud accepte alors qu'il contient déjà des documents qui ne
+     * respecteraient plus la nouvelle règle laisserait le nœud dans un état
+     * incohérent — même principe que changerTypeStockage pour storagePoint.
+     */
+    @Transactional
+    public PhysicalLocationDto definirContrainte(
+        UUID id, String modeContrainte, Long typeDocumentId, Long dossierId, User currentUser)
+    {
+        PhysicalLocation loc = getEtVerifierAutorite(id, currentUser);
+
+        if (!loc.isStoragePoint())
+        {
+            throw new BusinessException("Seul un point de stockage peut avoir une contrainte d'acceptation");
+        }
+        if (documentRepository.existsByPhysicalLocationIdAndStatusNot(id, DocumentStatus.DELETED))
+        {
+            throw new BusinessException(
+                "Impossible de changer la contrainte : des documents sont déjà rattachés à cet emplacement");
+        }
+
+        appliquerContrainte(loc, modeContrainte, typeDocumentId, dossierId, loc.getUniteOrganisationnelle());
+        loc.setUpdatedBy(currentUser);
+        loc.setUpdatedAt(LocalDateTime.now());
+        PhysicalLocation saved = locationRepository.save(loc);
+
+        String description = switch (saved.getModeContrainte())
+        {
+            case TYPE_UNIQUE -> "type unique (\"" + saved.getTypeDocumentAccepte().getNom() + "\")";
+            case DOSSIER -> "dossier unique (\"" + saved.getDossier().getNom() + "\")";
+            default -> "libre (aucune contrainte)";
+        };
+        auditLogService.log(currentUser, AuditAction.LOCATION_MODIFIEE, AuditCible.PHYSICAL_LOCATION,
+            saved.getId().toString(), saved.getUniteOrganisationnelle().getId(),
+            "Contrainte d'acceptation de \"" + saved.getName() + "\" fixée à : " + description, true);
+
+        return toDto(saved);
+    }
+
+    /**
+     * Résout et valide modeContrainte/typeDocumentId/dossierId pour un point
+     * de stockage — factorisé entre creerNoeudArborescence (nouveau nœud) et
+     * definirContrainte (nœud existant, déjà vérifié vide par l'appelant).
+     * Ne sauvegarde jamais elle-même (locationRepository.save() reste à la
+     * charge de l'appelant) — se contente de poser les champs sur loc.
+     */
+    private void appliquerContrainte(
+        PhysicalLocation loc, String modeContrainteStr, Long typeDocumentId, Long dossierId, UniteOrganisationnelle uo)
+    {
+        LocationModeContrainte mode;
+        try
+        {
+            mode = (modeContrainteStr == null || modeContrainteStr.isBlank())
+                ? LocationModeContrainte.LIBRE : LocationModeContrainte.valueOf(modeContrainteStr);
+        }
+        catch (IllegalArgumentException e)
+        {
+            throw new BusinessException("Mode de contrainte invalide : " + modeContrainteStr);
+        }
+
+        loc.setModeContrainte(mode);
+        loc.setTypeDocumentAccepte(null);
+        loc.setDossier(null);
+
+        if (mode == LocationModeContrainte.TYPE_UNIQUE)
+        {
+            if (typeDocumentId == null)
+            {
+                throw new BusinessException("Le type de document accepté est obligatoire pour ce mode");
+            }
+            TypeDocument type = typeDocumentRepository.findById(typeDocumentId)
+                .orElseThrow(() -> new BusinessException("Type de document introuvable : " + typeDocumentId));
+            if (!type.getUniteOrganisationnelle().getId().equals(uo.getId()))
+            {
+                throw new BusinessException("Ce type de document n'appartient pas à la même unité organisationnelle");
+            }
+            loc.setTypeDocumentAccepte(type);
+        }
+        else if (mode == LocationModeContrainte.DOSSIER)
+        {
+            if (dossierId == null)
+            {
+                throw new BusinessException("Le dossier accepté est obligatoire pour ce mode");
+            }
+            Dossier dossier = dossierRepository.findById(dossierId)
+                .orElseThrow(() -> new BusinessException("Dossier introuvable : " + dossierId));
+            if (!dossier.getUniteOrganisationnelle().getId().equals(uo.getId()))
+            {
+                throw new BusinessException("Ce dossier n'appartient pas à la même unité organisationnelle");
+            }
+            loc.setDossier(dossier);
+        }
+    }
+
+    /**
      * Désactive un emplacement ET toute sa sous-arborescence (jamais ses
      * frères) — voir Javadoc de classe.
      */
@@ -688,7 +905,9 @@ public class PhysicalLocationService
         return toDto(loc);
     }
 
-    /** Arbre complet (tous statuts) d'une UO — reconstruit en mémoire à partir d'un seul SELECT. */
+    /** Arbre complet (tous statuts) d'une UO — reconstruit en mémoire à partir d'un seul SELECT,
+     *  taux d'occupation inclus (un second SELECT groupé, jamais un par nœud — voir
+     *  DocumentRepository.countDocumentsGroupedByPhysicalLocation). */
     @Transactional(readOnly = true)
     public List<PhysicalLocationNodeDto> getArbre(Long uoId, User currentUser)
     {
@@ -699,22 +918,59 @@ public class PhysicalLocationService
             .filter(n -> n.getParent() != null)
             .collect(Collectors.groupingBy(n -> n.getParent().getId()));
 
+        List<UUID> pointsDeStockage = tous.stream()
+            .filter(PhysicalLocation::isStoragePoint)
+            .map(PhysicalLocation::getId)
+            .toList();
+        Map<UUID, Long> comptesParEmplacement = pointsDeStockage.isEmpty() ? Map.of()
+            : documentRepository.countDocumentsGroupedByPhysicalLocation(pointsDeStockage, DocumentStatus.DELETED)
+                .stream()
+                .collect(Collectors.toMap(r -> (UUID) r[0], r -> (Long) r[1]));
+
         return tous.stream()
             .filter(n -> n.getParent() == null)
-            .map(n -> versNode(n, parEnfantsDe))
+            .map(n -> versNode(n, parEnfantsDe, comptesParEmplacement))
             .toList();
     }
 
-    /** Emplacements assignables à un document (storagePoint=true, ACTIVE) pour une UO. */
+    /**
+     * Emplacements assignables à un document (storagePoint=true, ACTIVE) pour
+     * une UO — filtré par compatibilité si typeDocumentId et/ou dossierId
+     * sont fournis (voir LocationModeContrainte) : un nœud LIBRE est toujours
+     * inclus, un nœud TYPE_UNIQUE seulement si typeDocumentId correspond, un
+     * nœud DOSSIER seulement si dossierId correspond. Les deux null = aucun
+     * filtrage de compatibilité (comportement historique, tous les points de
+     * stockage actifs). PLUSIEURS nœuds peuvent revenir pour le même dossier
+     * (voir LocationModeContrainte.DOSSIER) — le choix entre eux reste
+     * entièrement manuel côté client, chacun annoté de son taux d'occupation
+     * (nombreDocuments/capaciteMax) pour permettre une décision éclairée.
+     */
     @Transactional(readOnly = true)
-    public List<PhysicalLocationDto> getEmplacementsDisponibles(Long uoId, User currentUser)
+    public List<PhysicalLocationDto> getEmplacementsDisponibles(
+        Long uoId, Long typeDocumentId, Long dossierId, User currentUser)
     {
         verifierVisiblePourLecture(uoId, currentUser);
         return locationRepository
             .findByUniteOrganisationnelleIdAndStoragePointTrueAndStatus(uoId, LocationStatus.ACTIVE)
             .stream()
+            .filter(loc -> estCompatible(loc, typeDocumentId, dossierId))
             .map(this::toDto)
             .toList();
+    }
+
+    /** true si aucun filtre n'est demandé, ou si le nœud accepterait un document portant ces critères. */
+    private boolean estCompatible(PhysicalLocation loc, Long typeDocumentId, Long dossierId)
+    {
+        if (typeDocumentId == null && dossierId == null)
+        {
+            return true;
+        }
+        return switch (loc.getModeContrainte())
+        {
+            case LIBRE -> true;
+            case TYPE_UNIQUE -> typeDocumentId != null && loc.getTypeDocumentAccepte().getId().equals(typeDocumentId);
+            case DOSSIER -> dossierId != null && loc.getDossier().getId().equals(dossierId);
+        };
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -722,8 +978,14 @@ public class PhysicalLocationService
     // ═══════════════════════════════════════════════════════════════════
 
     /**
-     * Résout et valide un emplacement pour le rattacher à un document :
-     * doit être un point de stockage ACTIF de la MÊME UO que le document.
+     * Résout et valide un emplacement pour le rattacher à un document : doit
+     * être un point de stockage ACTIF de la MÊME UO que le document,
+     * compatible avec sa contrainte d'acceptation (voir
+     * LocationModeContrainte), et disposer encore de place (capaciteMax).
+     * SEUL point de passage pour tout rattachement (archivage initial via
+     * DocumentUploadeService, ou changement après coup via
+     * DocumentService.modifierEmplacementPhysique) — toute règle posée ici
+     * s'applique donc automatiquement aux deux.
      */
     @Transactional(readOnly = true)
     public PhysicalLocation resolvePourRattachement(UUID locationId, Document document)
@@ -746,6 +1008,42 @@ public class PhysicalLocationService
             throw new BusinessException(
                 "Cet emplacement n'appartient pas à la même unité organisationnelle que le document");
         }
+
+        if (loc.getModeContrainte() == LocationModeContrainte.TYPE_UNIQUE)
+        {
+            if (document.getTypeDocument() == null
+                || !loc.getTypeDocumentAccepte().getId().equals(document.getTypeDocument().getId()))
+            {
+                throw new BusinessException("\"" + loc.getName() + "\" n'accepte que les documents de type \""
+                    + loc.getTypeDocumentAccepte().getNom() + "\"");
+            }
+        }
+        else if (loc.getModeContrainte() == LocationModeContrainte.DOSSIER)
+        {
+            if (document.getDossier() == null || !loc.getDossier().getId().equals(document.getDossier().getId()))
+            {
+                throw new BusinessException("\"" + loc.getName() + "\" n'accepte que les documents du dossier \""
+                    + loc.getDossier().getNom() + "\"");
+            }
+        }
+
+        if (loc.getCapaciteMax() != null)
+        {
+            // Un document déjà sur CE nœud (ex. reconfirmation d'un emplacement
+            // inchangé) ne doit jamais se compter lui-même comme "en plus".
+            boolean dejaSurCeNoeud = document.getPhysicalLocation() != null
+                && document.getPhysicalLocation().getId().equals(loc.getId());
+            if (!dejaSurCeNoeud)
+            {
+                long occupees = documentRepository.countByPhysicalLocationIdAndStatusNot(loc.getId(), DocumentStatus.DELETED);
+                if (occupees >= loc.getCapaciteMax())
+                {
+                    throw new BusinessException("\"" + loc.getName() + "\" a atteint sa capacité maximale ("
+                        + loc.getCapaciteMax() + " document(s)) — choisissez un autre emplacement");
+                }
+            }
+        }
+
         return loc;
     }
 
@@ -893,7 +1191,8 @@ public class PhysicalLocationService
         return resultat;
     }
 
-    private PhysicalLocationNodeDto versNode(PhysicalLocation n, Map<UUID, List<PhysicalLocation>> parEnfantsDe)
+    private PhysicalLocationNodeDto versNode(
+        PhysicalLocation n, Map<UUID, List<PhysicalLocation>> parEnfantsDe, Map<UUID, Long> comptesParEmplacement)
     {
         List<PhysicalLocation> enfants = parEnfantsDe.getOrDefault(n.getId(), List.of());
         return PhysicalLocationNodeDto.builder()
@@ -901,18 +1200,35 @@ public class PhysicalLocationService
             .name(n.getName())
             .status(n.getStatus().name())
             .storagePoint(n.isStoragePoint())
-            .children(enfants.stream().map(e -> versNode(e, parEnfantsDe)).toList())
+            .capaciteMax(n.getCapaciteMax())
+            .nombreDocuments(comptesParEmplacement.getOrDefault(n.getId(), 0L))
+            .modeContrainte(n.getModeContrainte().name())
+            .typeDocumentAccepteId(n.getTypeDocumentAccepte() != null ? n.getTypeDocumentAccepte().getId() : null)
+            .typeDocumentAccepteNom(n.getTypeDocumentAccepte() != null ? n.getTypeDocumentAccepte().getNom() : null)
+            .dossierId(n.getDossier() != null ? n.getDossier().getId() : null)
+            .dossierNom(n.getDossier() != null ? n.getDossier().getNom() : null)
+            .children(enfants.stream().map(e -> versNode(e, parEnfantsDe, comptesParEmplacement)).toList())
             .build();
     }
 
     private PhysicalLocationDto toDto(PhysicalLocation loc)
     {
+        long nombreDocuments = loc.isStoragePoint()
+            ? documentRepository.countByPhysicalLocationIdAndStatusNot(loc.getId(), DocumentStatus.DELETED)
+            : 0L;
         return PhysicalLocationDto.builder()
             .id(loc.getId())
             .name(loc.getName())
             .description(loc.getDescription())
             .status(loc.getStatus().name())
             .storagePoint(loc.isStoragePoint())
+            .capaciteMax(loc.getCapaciteMax())
+            .nombreDocuments(nombreDocuments)
+            .modeContrainte(loc.getModeContrainte().name())
+            .typeDocumentAccepteId(loc.getTypeDocumentAccepte() != null ? loc.getTypeDocumentAccepte().getId() : null)
+            .typeDocumentAccepteNom(loc.getTypeDocumentAccepte() != null ? loc.getTypeDocumentAccepte().getNom() : null)
+            .dossierId(loc.getDossier() != null ? loc.getDossier().getId() : null)
+            .dossierNom(loc.getDossier() != null ? loc.getDossier().getNom() : null)
             .parentId(loc.getParent() != null ? loc.getParent().getId() : null)
             .uniteOrganisationnelleId(loc.getUniteOrganisationnelle().getId())
             .cheminComplet(construireChemin(loc))

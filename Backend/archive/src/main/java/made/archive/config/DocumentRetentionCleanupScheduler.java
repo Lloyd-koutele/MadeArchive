@@ -7,9 +7,11 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * Tâche planifiée pour purger les documents en fin de vie — soit par fin de
- * rétention, soit par délai de grâce de 3 jours écoulé pour un document en
- * corbeille (voir DocumentRetentionService).
+ * Tâche planifiée pour la fin de vie des documents — met d'abord à la
+ * corbeille ceux dont la rétention légale vient d'être atteinte
+ * (purgeExpiredDocuments), puis purge réellement ceux dont le délai de grâce
+ * de la corbeille est écoulé sans restauration (purgeDocumentsCorbeille),
+ * qu'ils y soient arrivés ainsi ou manuellement (voir DocumentRetentionService).
  *
  * Une fois par jour suffit : les deux échéances sont des dates (granularité jour).
  * @EnableScheduling est déjà activé globalement via OcrSessionCleanupScheduler.

@@ -176,6 +176,51 @@ public class PhysicalLocationEditorController
         }
     }
 
+    /** capaciteMax absent/null = retire la limite (illimité) — voir PhysicalLocationService.definirCapacite. */
+    @Secured("ROLE_EDITOR")
+    @PutMapping("/{id}/capacite")
+    public ResponseEntity<?> definirCapacite(@PathVariable UUID id,
+                                              @RequestParam(required = false) Integer capaciteMax,
+                                              @AuthenticationPrincipal UserDetailsImpl principal)
+    {
+        try
+        {
+            return ResponseEntity.ok(service.definirCapacite(id, capaciteMax, principal.getUser()));
+        }
+        catch (AccessDeniedException e)
+        {
+            return ResponseEntity.status(403).body(e.getMessage());
+        }
+        catch (BusinessException e)
+        {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    /** Voir PhysicalLocationService.definirContrainte. */
+    @Secured("ROLE_EDITOR")
+    @PutMapping("/{id}/contrainte")
+    public ResponseEntity<?> definirContrainte(@PathVariable UUID id,
+                                                @RequestParam String modeContrainte,
+                                                @RequestParam(required = false) Long typeDocumentId,
+                                                @RequestParam(required = false) Long dossierId,
+                                                @AuthenticationPrincipal UserDetailsImpl principal)
+    {
+        try
+        {
+            return ResponseEntity.ok(
+                service.definirContrainte(id, modeContrainte, typeDocumentId, dossierId, principal.getUser()));
+        }
+        catch (AccessDeniedException e)
+        {
+            return ResponseEntity.status(403).body(e.getMessage());
+        }
+        catch (BusinessException e)
+        {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
     @Secured("ROLE_EDITOR")
     @PutMapping("/{id}/desactiver")
     public ResponseEntity<?> desactiver(@PathVariable UUID id,

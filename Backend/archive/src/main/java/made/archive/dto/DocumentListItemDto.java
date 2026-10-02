@@ -31,6 +31,12 @@ public class DocumentListItemDto
     /** Date de purge définitive prévue — non-null uniquement quand status == "CORBEILLE". */
     private LocalDate suppressionPrevueLe;
 
+    /** Durée de rétention (en années) configurée sur le TYPE de ce document,
+     *  null si aucune limite — voir DocumentDetailDto.retentionYearsType
+     *  (même usage : annoncer la nouvelle échéance avant de restaurer, depuis
+     *  la corbeille, un document dont retentionUntil est déjà dépassé). */
+    private Long retentionYearsType;
+
     /**
      * "Version 1", "Version 2"... ou "Final" pour la version actuelle d'une
      * chaîne. null si ce document n'a jamais été versionné (pas de badge).
@@ -44,4 +50,15 @@ public class DocumentListItemDto
      * rapide directement dans la liste, sans ouvrir le détail.
      */
     private boolean peutGererCorbeille;
+
+    /**
+     * true si CE document précis, en CORBEILLE, peut être supprimé
+     * définitivement MAINTENANT par l'utilisateur consultant (voir
+     * DocumentService.supprimerDefinitivementDepuisCorbeille) — c'est-à-dire :
+     * délai de grâce déjà écoulé ET sort final du type (CONSERVER/TRIER)
+     * excluant la purge automatique (voir entite.SortFinal). false pour un
+     * document dont le sort final est DETRUIRE : celui-là sera purgé
+     * automatiquement, pas besoin (ni possibilité) d'une action manuelle.
+     */
+    private boolean peutSupprimerDefinitivement;
 }

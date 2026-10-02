@@ -2,6 +2,9 @@ FROM eclipse-temurin:17-jdk-jammy
 
 WORKDIR /app
 
+# Ghostscript : conversion en PDF/A des PDF importés tels quels (voir
+# PdfAConversionService) — les polices fonts-* ci-dessous lui servent aussi de
+# substituts pour les polices non intégrées dans le PDF d'origine.
 # Tesseract + langues (LibreOffice n'est plus installé ici — la conversion
 # PDF passe désormais par le conteneur Gotenberg, voir docker-compose.yml)
 # Version non épinglée : suit les dépôts de la distro (Ubuntu 22.04 "jammy",
@@ -15,8 +18,10 @@ RUN apt-get update && apt-get install -y \
     tesseract-ocr-ara \
     fonts-liberation \
     fonts-dejavu \
+    ghostscript \
     && rm -rf /var/lib/apt/lists/* \
-    && tesseract --version
+    && tesseract --version \
+    && gs --version
 
 COPY build/libs/*.jar app.jar
 

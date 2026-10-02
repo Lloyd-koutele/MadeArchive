@@ -66,6 +66,19 @@ public class TypeDocument
     @JsonIgnore
     private UniteOrganisationnelle uniteOrganisationnelle;
 
+    /**
+     * Activité (plan de classement de l'UO) à laquelle ce type se rattache —
+     * nullable : un type sans activité reste valide ("Non classé"). Modifiable
+     * à tout moment, même avec des documents déjà rattachés (voir
+     * PlanClassementService.rattacherType) : les documents héritent de
+     * l'activité de leur type, elle n'est jamais copiée dans chaque document.
+     * Toujours un nœud de la MÊME UO que ce type.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "plan_classement_noeud_id")
+    @JsonIgnore
+    private PlanClassementNoeud planClassementNoeud;
+
     @Column(name = "extraction_regex_json", columnDefinition = "TEXT", nullable = true)
     private String extractionRegexJson;
     

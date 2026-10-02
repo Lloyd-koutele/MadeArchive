@@ -130,7 +130,14 @@ public class BulkUploadSameTypeService
         }
         catch (PdfAConversionException e)
         {
-            log.warn("[BulkSameType-Phase1] ERREUR PDF/A {} : {}", nomFichier, e.getMessage());
+            // e.getCause() porte la VRAIE raison (timeout, erreur HTTP Gotenberg,
+            // connexion refusée...) — LibreOfficeConversionService l'enveloppe
+            // dans PdfAConversionException dont le message ne redit que "Erreur
+            // conversion Gotenberg pour : X", inutile pour diagnostiquer sans la
+            // cause. Passer `e` en dernier argument à SLF4J loggue la trace
+            // complète (cause incluse), comme le fait déjà le catch (Exception e)
+            // juste en dessous.
+            log.warn("[BulkSameType-Phase1] ERREUR PDF/A {} : {}", nomFichier, e.getMessage(), e);
             return buildFailedPreview(nomFichier, "Échec conversion PDF/A : " + e.getMessage());
         }
         catch (BusinessException e)

@@ -93,6 +93,12 @@ public class ExportJob
     @Column(name = "include_prive_non_membre", nullable = false)
     private boolean includePriveNonMembre;
 
+    /** ZIP_CSV (défaut, historique) ou SEDA. @ColumnDefault non nécessaire ici : la colonne
+     *  est créée par la migration Flyway V4 avec son DEFAULT. */
+    @Column(name = "format", nullable = false, length = 20)
+    @Enumerated(EnumType.STRING)
+    private ExportFormat format = ExportFormat.ZIP_CSV;
+
     @Column(name = "separate_projects", nullable = false)
     private boolean separateProjects;
 

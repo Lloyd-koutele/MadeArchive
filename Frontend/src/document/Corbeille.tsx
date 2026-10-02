@@ -3,6 +3,9 @@ import { createPortal } from 'react-dom';
 import {
     getDocumentsCorbeille,
     restaurerDocumentDepuisCorbeille,
+    supprimerDefinitivementDepuisCorbeille,
+    retentionEstDepassee,
+    formaterNouvelleEcheanceRetention,
     streamPdfAAsBlob,
     getThumbnailBlob,
     downloadPdfA,
@@ -10,8 +13,10 @@ import {
 import type { DocumentListItemDto } from '../services/document/DocumentService';
 import { hasRole } from '../auth/authService';
 import Modal from '../Page/Modal';
+import PdfViewer from '../components/PdfViewer';
 import VersionBadge from './VersionBadge';
 import { useNotify } from '../notifications/NotificationProvider';
+import { useConfirm } from '../notifications/ConfirmProvider';
 import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus';
 import '../Style/document/Filtre.css';
 import '../Style/Editor/Editor.css';
@@ -25,7 +30,9 @@ function formatDate(iso: string | null | undefined): string {
 /**
  * Corbeille — documents envoyés à la corbeille (n'importe quel document,
  * plus seulement un corrompu, voir DocumentService.envoyerCorbeille côté
- * serveur), en attente de purge définitive dans 3 jours.
+ * serveur) OU arrivés ici automatiquement en fin de rétention légale (voir
+ * DocumentRetentionService.purgeExpiredDocuments), en attente de purge
+ * définitive après le délai de grâce (DocumentService.DELAI_GRACE_CORBEILLE_JOURS).
  *
  * Visibilité et droits déjà tranchés côté serveur (DocumentAccessService.
  * getDocumentsCorbeille) : ADMIN voit tout, ADMIN_UO voit son UO en lecture
@@ -37,6 +44,7 @@ function formatDate(iso: string | null | undefined): string {
  */
 function Corbeille() {
     const notify = useNotify();
+    const confirm = useConfirm();
     const peutRestaurer = hasRole('EDITOR');
 
     const [documents, setDocuments] = useState<DocumentListItemDto[]>([]);
@@ -46,6 +54,7 @@ function Corbeille() {
     const [isLoading, setIsLoading] = useState(false);
 
     const [restaurationEnCoursId, setRestaurationEnCoursId] = useState<string | null>(null);
+    const [suppressionEnCoursId, setSuppressionEnCoursId] = useState<string | null>(null);
     const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
     // ── Menu "..." compact (vue liste, écran réduit uniquement — voir
@@ -168,16 +177,67 @@ function Corbeille() {
     }, [viewMode, documents]);
     useRefetchOnFocus(useCallback(() => charger(page), [charger, page]));
 
+    /**
+     * Si retentionUntil est déjà dépassé, restaurer tel quel referait
+     * aussitôt retomber le document en corbeille au prochain passage du job
+     * (voir DocumentService.restaurerDepuisCorbeille côté serveur, qui
+     * refuse justement ce cas sans confirmation) — on demande donc d'abord à
+     * l'éditeur s'il souhaite renouveler la rétention, avec la nouvelle
+     * échéance calculée depuis la durée du TYPE de document.
+     */
     const handleRestaurer = async (doc: DocumentListItemDto) => {
+        const depassee = retentionEstDepassee(doc.retentionUntil);
+        if (depassee) {
+            const nouvelle = formaterNouvelleEcheanceRetention(doc.retentionYearsType);
+            const accepte = await confirm({
+                title: 'Rétention dépassée',
+                message: `La date de rétention de "${doc.titre}" est dépassée (${formatDate(doc.retentionUntil)}). `
+                    + (nouvelle
+                        ? `Le restaurer avec une nouvelle rétention de ${nouvelle.annees} an${nouvelle.annees > 1 ? 's' : ''} `
+                            + `(jusqu'au ${nouvelle.dateAffichee}) ?`
+                        : `Son type de document n'a pas de limite de rétention — le restaurer sans limite ?`),
+                confirmLabel: 'Restaurer',
+            });
+            if (!accepte) return;
+        }
+
         setRestaurationEnCoursId(doc.documentId);
         try {
-            await restaurerDocumentDepuisCorbeille(doc.documentId);
+            await restaurerDocumentDepuisCorbeille(doc.documentId, depassee);
             notify.success(`"${doc.titre}" restauré`);
             charger(page);
         } catch (err: any) {
             notify.error(err.message ?? 'Erreur lors de la restauration');
         } finally {
             setRestaurationEnCoursId(null);
+        }
+    };
+
+    /**
+     * Suppression définitive IMMÉDIATE — seule issue pour un document dont le
+     * sort final (CONSERVER/TRIER) exclut la purge automatique après le délai
+     * de grâce (voir DocumentListItemDto.peutSupprimerDefinitivement, calculé
+     * côté serveur). Irréversible, contrairement à "Restaurer" : confirmation
+     * explicite obligatoire.
+     */
+    const handleSupprimerDefinitivement = async (doc: DocumentListItemDto) => {
+        const accepte = await confirm({
+            title: 'Suppression définitive',
+            message: `Supprimer définitivement "${doc.titre}" ? Cette action est irréversible — `
+                + `le fichier et son entrée dans la recherche disparaîtront, seul l'historique d'audit sera conservé.`,
+            confirmLabel: 'Supprimer définitivement',
+        });
+        if (!accepte) return;
+
+        setSuppressionEnCoursId(doc.documentId);
+        try {
+            await supprimerDefinitivementDepuisCorbeille(doc.documentId);
+            notify.success(`"${doc.titre}" supprimé définitivement`);
+            charger(page);
+        } catch (err: any) {
+            notify.error(err.message ?? 'Erreur lors de la suppression définitive');
+        } finally {
+            setSuppressionEnCoursId(null);
         }
     };
 
@@ -325,6 +385,19 @@ function Corbeille() {
                                                 }
                                             </button>
                                         )}
+                                        {doc.peutSupprimerDefinitivement && (
+                                            <button
+                                                className="action-button delete"
+                                                onClick={() => handleSupprimerDefinitivement(doc)}
+                                                disabled={suppressionEnCoursId === doc.documentId}
+                                                title="Supprimer définitivement"
+                                            >
+                                                {suppressionEnCoursId === doc.documentId
+                                                    ? <i className="fa-solid fa-spinner fa-spin" />
+                                                    : <i className="fa-solid fa-trash-can" />
+                                                }
+                                            </button>
+                                        )}
                                         <button
                                             className="action-button"
                                             onClick={() => handleDownload(doc)}
@@ -414,6 +487,19 @@ function Corbeille() {
                                                         }
                                                     </button>
                                                 )}
+                                                {doc.peutSupprimerDefinitivement && (
+                                                    <button
+                                                        className="action-button delete corbeille-actions-standalone"
+                                                        onClick={() => handleSupprimerDefinitivement(doc)}
+                                                        disabled={suppressionEnCoursId === doc.documentId}
+                                                        title="Supprimer définitivement"
+                                                    >
+                                                        {suppressionEnCoursId === doc.documentId
+                                                            ? <i className="fa-solid fa-spinner fa-spin" />
+                                                            : <i className="fa-solid fa-trash-can" />
+                                                        }
+                                                    </button>
+                                                )}
                                                 <button
                                                     className="action-button corbeille-actions-standalone"
                                                     onClick={() => handleDownload(doc)}
@@ -457,6 +543,14 @@ function Corbeille() {
                                                                     className="action-menu-item"
                                                                 >
                                                                     <i className="fa-solid fa-clock-rotate-left" /> Restaurer
+                                                                </button>
+                                                            )}
+                                                            {doc.peutSupprimerDefinitivement && (
+                                                                <button
+                                                                    onClick={() => { closeCompactMenu(); handleSupprimerDefinitivement(doc); }}
+                                                                    className="action-menu-item"
+                                                                >
+                                                                    <i className="fa-solid fa-trash-can" /> Supprimer définitivement
                                                                 </button>
                                                             )}
                                                             <button
@@ -505,7 +599,7 @@ function Corbeille() {
                             <span>Chargement du document...</span>
                         </div>
                     ) : pdfBlobUrl ? (
-                        <iframe src={pdfBlobUrl} className="pdf-viewer-iframe" title="Lecteur PDF" />
+                        <PdfViewer url={pdfBlobUrl} className="pdf-viewer-iframe" />
                     ) : (
                         <div className="td-empty"><p>Impossible de charger le document.</p></div>
                     )}

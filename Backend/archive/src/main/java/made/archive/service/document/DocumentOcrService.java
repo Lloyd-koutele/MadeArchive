@@ -135,8 +135,12 @@ public class DocumentOcrService
             LibreOfficeConversionService.ConversionResult conversion =
                 libreOfficeConversionService.convertToPdf(originalBytes, originalFilename);
 
-            // ── 4. Marquage PDF/A-3b ─────────────────────────────────────────
-            byte[] pdfABytes = pdfAConversionService.convertToPdfA3(conversion.pdfBytes());
+            // ── 4. Conversion PDF/A RÉELLE + vérification (veraPDF, polices,
+            //      lisibilité) — refuse le document plutôt que de l'étiqueter
+            //      PDF/A sans qu'il le soit (voir PdfAConversionService) ──────
+            PdfAConversionService.ResultatPdfA resultatPdfA =
+                pdfAConversionService.convertirEtVerifier(conversion.pdfBytes(), originalFilename);
+            byte[] pdfABytes = resultatPdfA.pdfBytes();
 
             // ── 4b. AVERTISSEMENT (pas un blocage) taille de police — voir
             //      mesurerPoliceMinimalePt. Seulement pertinent pour un tableur

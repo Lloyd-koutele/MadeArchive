@@ -409,7 +409,7 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
 
                             <span className="td-folder-name" title={td.nom}>{td.nom}</span>
                             <span className="td-folder-meta">
-                                Rétention : {td.retentionYears ?? 'Indéfinie'} · Grâce : {td.periodGrace ?? '—'} j
+                                Rétention : {td.retentionYears ?? 'Indéfinie'}
                             </span>
 
                             {/* Seul point d'action de la carte — pas de
@@ -421,14 +421,13 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
                 </div>
             ) : (
                 <div className="td-table-container">
-                    <table className="td-table">
+                    <table className="td-table td-types-table">
                         <thead>
                             <tr>
                                 <th>Nom</th>
                                 <th>Rétention (ans)</th>
-                                <th className="td-col-grace">Période de grâce (j)</th>
                                 <th className="td-col-meta">Métadonnées</th>
-                                <th>Actions</th>
+                                <th className="td-col-actions">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -442,13 +441,12 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
                                 >
                                     <td className="td-nom">{td.nom}</td>
                                     <td>{td.retentionYears ?? 'Indéfinie'}</td>
-                                    <td className="td-col-grace">{td.periodGrace ?? '—'}</td>
                                     <td className="td-col-meta">
                                         <span className="td-meta-count">
                                             {td.metaData?.length ?? 0} champ{(td.metaData?.length ?? 0) > 1 ? 's' : ''}
                                         </span>
                                     </td>
-                                    <td onDoubleClick={(e) => e.stopPropagation()}>
+                                    <td className="td-col-actions" onDoubleClick={(e) => e.stopPropagation()}>
                                         <div className="td-actions">
                                             {/* Masqués sous 1100px (td-actions-standalone, voir
                                                 Typedocument.css) — repris comme entrées du menu

@@ -28,5 +28,24 @@ public class PhysicalLocationTreeNodeDto
     private String name;
     private String description;
     private boolean storagePoint;
+
+    /** Nombre maximal de documents — uniquement pour un NOUVEAU nœud
+     *  storagePoint=true (id == null). Ignoré pour un nœud existant : voir
+     *  PhysicalLocationService.definirCapacite pour modifier celle d'un nœud
+     *  déjà en base. */
+    private Integer capaciteMax;
+
+    /** LIBRE (défaut si absent), TYPE_UNIQUE ou DOSSIER — voir
+     *  LocationModeContrainte. Uniquement pour un NOUVEAU nœud
+     *  storagePoint=true (id == null) ; ignoré pour un nœud existant, voir
+     *  PhysicalLocationService.definirContrainte. */
+    private String modeContrainte;
+
+    /** Renseigné seulement si modeContrainte=TYPE_UNIQUE, pour un nouveau nœud. */
+    private Long typeDocumentId;
+
+    /** Renseigné seulement si modeContrainte=DOSSIER, pour un nouveau nœud. */
+    private Long dossierId;
+
     private List<PhysicalLocationTreeNodeDto> children;
 }

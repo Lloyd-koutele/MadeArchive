@@ -14,8 +14,12 @@ export interface ExportApercuRequestDto {
     includePriveNonMembre: boolean;
 }
 
+/** ZIP_CSV : arborescence + manifest.csv + preuves (.tsr/.sig). SEDA : paquet SEDA 2.1 (manifest.xml + content/). */
+export type ExportFormat = 'ZIP_CSV' | 'SEDA';
+
 export interface ExportLancerRequestDto {
     uoIds: number[];
+    format?: ExportFormat;
     /** Optionnel : restreint le périmètre UO à ces documents précis. */
     docIds?: string[];
     separateProjects: boolean;

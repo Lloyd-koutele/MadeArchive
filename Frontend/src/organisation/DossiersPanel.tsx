@@ -29,6 +29,7 @@ import Modal from '../Page/Modal';
 import VersionBadge from '../document/VersionBadge';
 import GestionGroupeDossier from './GestionGroupeDossier';
 import ImportDocuments from '../document/ImportDocuments';
+import PdfViewer from '../components/PdfViewer';
 import { useNotify } from '../notifications/NotificationProvider';
 import { useConfirm } from '../notifications/ConfirmProvider';
 import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus';
@@ -47,6 +48,17 @@ interface DossiersPanelProps {
     uoId: number | null;
     /** Affiche le bouton de création — réservé à ROLE_EDITOR (vérifié aussi côté serveur). */
     canCreate?: boolean;
+    /** Lien profond — ouvre directement ce dossier (et, si fourni, descend
+     *  jusqu'au type de document indiqué) au montage, au lieu de partir de la
+     *  racine. Utilisé par PhysicalLocationsPanel ("Ouvrir dans l'emplacement"
+     *  depuis un nœud physique — voir EditorDasboard). Consommé une seule
+     *  fois : onInitialDossierConsumed prévient l'appelant pour qu'il efface
+     *  sa valeur, sinon ce panneau se remonte sur cette même cible à chaque
+     *  réaffichage de l'onglet "Dossiers" (il démonte/remonte entre deux
+     *  onglets, voir EditorDasboard). */
+    initialDossierId?: number | null;
+    initialTypeDocumentId?: number | null;
+    onInitialDossierConsumed?: () => void;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -78,7 +90,7 @@ const FOLDER_GLASS_COLOR = '#8B5E3C';
 // Composant principal
 // ─────────────────────────────────────────────────────────────────────────────
 
-function DossiersPanel({ uoId, canCreate = true }: DossiersPanelProps) {
+function DossiersPanel({ uoId, canCreate = true, initialDossierId = null, initialTypeDocumentId = null, onInitialDossierConsumed }: DossiersPanelProps) {
     const notify = useNotify();
     const confirm = useConfirm();
 
@@ -364,17 +376,33 @@ function DossiersPanel({ uoId, canCreate = true }: DossiersPanelProps) {
     // Navigation : dossiers → types
     // ─────────────────────────────────────────────────────────────────────
 
-    const ouvrirDossier = (id: number) => {
+    const ouvrirDossier = (id: number, onCharge?: (detail: DossierDetailDto) => void) => {
         setDossierActifLoading(true);
         setPanelView('types');
         setFiltreContenuDossier('');
         setSelectedDossierIds(new Set());
         getDossierDetail(id)
-            .then(setDossierActif)
+            .then(detail => { setDossierActif(detail); onCharge?.(detail); })
             .catch(err => { notify.error(err.message); setPanelView('dossiers'); })
             .finally(() => setDossierActifLoading(false));
         chargerSousDossiers(id);
     };
+
+    // ── Lien profond — voir Javadoc DossiersPanelProps.initialDossierId.
+    // getDossierDetail(id) renvoie déjà le chemin complet (parentNom, utilisé
+    // dans le fil d'Ariane) : ouvrirDossier(id) seul suffit à atterrir
+    // exactement sur ce dossier, inutile de remonter la hiérarchie à la main. ──
+    useEffect(() => {
+        if (initialDossierId == null) return;
+        ouvrirDossier(initialDossierId, detail => {
+            if (initialTypeDocumentId != null) {
+                const type = detail.typesAttendus.find(t => t.typeDocumentId === initialTypeDocumentId);
+                if (type) ouvrirType(type, detail.id);
+            }
+        });
+        onInitialDossierConsumed?.();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialDossierId, initialTypeDocumentId]);
 
     const chargerSousDossiers = (parentId: number) => {
         if (!uoId) return;
@@ -797,11 +825,22 @@ function DossiersPanel({ uoId, canCreate = true }: DossiersPanelProps) {
     // Navigation : types → documents d'un type
     // ─────────────────────────────────────────────────────────────────────
 
-    const chargerDocumentsDuType = (type: TypeAttenduDto, page: number) => {
-        if (!dossierActif) return;
+    // `dossierId` optionnel : par défaut dossierActif.id (cas normal, l'utilisateur
+    // a déjà cliqué pour ouvrir le dossier, l'état a eu le temps de se poser avant ce
+    // nouvel appel). Paramètre nécessaire pour le lien profond (voir plus bas,
+    // useEffect sur initialDossierId) : y appeler ouvrirType juste après
+    // setDossierActif(detail) dans le MÊME tick ne garantit PAS que l'état
+    // dossierActif soit déjà à jour (React ne l'applique qu'au rendu suivant) —
+    // sans ce paramètre, le garde-fou "if (!dossierActif) return" ci-dessous
+    // lisait encore l'ancienne fermeture (null) et sortait en silence, d'où le
+    // "0 document" alors que la navigation normale (deux clics séparés, avec un
+    // rendu entre les deux) fonctionne très bien.
+    const chargerDocumentsDuType = (type: TypeAttenduDto, page: number, dossierId?: number) => {
+        const idDossier = dossierId ?? dossierActif?.id;
+        if (!idDossier) return;
         setDocsLoading(true);
         getDocumentsAccessibles({
-            dossierId:       dossierActif.id,
+            dossierId:       idDossier,
             typeDocumentId: type.typeDocumentId,
             page,
             size: 10,
@@ -817,10 +856,10 @@ function DossiersPanel({ uoId, canCreate = true }: DossiersPanelProps) {
             .finally(() => setDocsLoading(false));
     };
 
-    const ouvrirType = (type: TypeAttenduDto) => {
+    const ouvrirType = (type: TypeAttenduDto, dossierId?: number) => {
         setTypeActif(type);
         setPanelView('documents');
-        chargerDocumentsDuType(type, 1);
+        chargerDocumentsDuType(type, 1, dossierId);
     };
 
     const retourAuxTypes = () => {
@@ -1146,7 +1185,7 @@ function DossiersPanel({ uoId, canCreate = true }: DossiersPanelProps) {
                             <span>Chargement du document...</span>
                         </div>
                     ) : pdfBlobUrl ? (
-                        <iframe src={pdfBlobUrl} className="pdf-viewer-iframe" title="Lecteur PDF" />
+                        <PdfViewer url={pdfBlobUrl} className="pdf-viewer-iframe" />
                     ) : (
                         <div className="td-empty"><p>Impossible de charger le document.</p></div>
                     )}

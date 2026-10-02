@@ -117,7 +117,7 @@
     border-color: var(--accent, #8B5E3C);
 }
 
-.pl-node.pl-match { background: rgba(139, 94, 60, 0.08); }
+.pl-node.pl-match { background: rgba(var(--accent-rgb), 0.08); }
 .pl-node.pl-match .pl-name { font-weight: 700; }
 
 .pl-root-dropzone {
@@ -159,6 +159,26 @@
 
 .pl-type-tag.stockage { background: #E8F5E9; color: #2E7D32; }
 .pl-type-tag.chemin   { background: #ECEFF1; color: #455A64; }
+
+/* Occupation (N/capacité) d'un point de stockage — voir PlNode, .plein quand
+   la capacité déclarée est atteinte (rouge, cohérent avec .pl-status-tag). */
+.pl-occupation-tag {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.66rem;
+    font-weight: 600;
+    padding: 0.1rem 0.45rem;
+    border-radius: 999px;
+    background: var(--cream, #FAF3EA);
+    color: var(--text-light, #9E8878);
+    border: 1px solid var(--border, #E8D9C5);
+}
+
+.pl-occupation-tag.plein {
+    background: #FEE2E2;
+    color: #B91C1C;
+    border-color: #FCA5A5;
+}
 
 .pl-name { font-weight: 500; color: var(--dark-choc, #2C1A0E); }
 
@@ -295,6 +315,16 @@
     padding: 0.5rem 0.2rem;
 }
 
+/* Cette modale (taille "large", 1100px) s'étire par défaut à pleine largeur
+   quel que soit son contenu — correct pour un grand organigramme existant,
+   absurde pour le cas le plus courant ("Créer un emplacement" = une seule
+   carte racine) qui se retrouvait minuscule au milieu d'un immense vide.
+   Largeur réduite au contenu réel, plafonnée par modal-content-large. */
+.modal-content:has(.tbo-wrap) {
+    width: fit-content;
+    min-width: 380px;
+}
+
 .tbo-root {
     display: flex;
     flex-direction: column;
@@ -370,7 +400,7 @@
     border: 1px solid var(--border, #E8D9C5);
     border-radius: 8px;
     padding: 0.4rem 0.5rem;
-    width: 148px;
+    width: 190px;
     margin-bottom: 0.4rem;
     cursor: pointer;
 }
@@ -458,3 +488,53 @@ button.tbo-type-pill.clickable:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 
 .tbo-footer-btn.danger:hover { color: var(--error, #9B3A3A); border-color: var(--error, #9B3A3A); }
+
+/* ── Capacité + contrainte d'acceptation d'un point de stockage — voir
+   EmplacementNodeCard (EmplacementTreeModal.tsx). Uniquement affiché pour un
+   NOUVEAU nœud (édition immédiate pour un nœud existant, voir panneau). ── */
+.tbo-constraint-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px dashed var(--border, #E8D9C5);
+}
+
+.tbo-constraint-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    width: 100%;
+    font-size: 0.62rem;
+    color: var(--text-light, #9E8878);
+}
+
+.tbo-constraint-field input,
+.tbo-constraint-field select,
+select.tbo-constraint-field {
+    width: 100%;
+    box-sizing: border-box;
+    font-size: 0.68rem;
+    padding: 0.25rem 0.35rem;
+    border: 1px solid var(--border, #E8D9C5);
+    border-radius: 6px;
+    font-family: inherit;
+    background: var(--white-choc, #fff);
+}
+
+.tbo-constraint-summary {
+    margin: 0.4rem 0 0;
+    font-size: 0.62rem;
+    color: var(--text-light, #9E8878);
+}
+
+.tbo-constraint-summary p {
+    margin: 0 0 0.3rem;
+}
+
+.tbo-summary-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+}

@@ -545,9 +545,26 @@ public class OllamaService
         }
     }
 
+    /**
+     * Normalisation AVANT comparaison (matchesKnownValue/estTropLitterale) — doit
+     * neutraliser tout ce qui distingue légitimement le texte brut du document de
+     * la valeur saisie par l'utilisateur SANS rien dire de la qualité de la regex
+     * elle-même. Les accents en sont un cas réel et fréquent sur les documents
+     * français : un titre/intitulé en MAJUSCULES y perd presque toujours ses
+     * accents ("DEPARTEMENT GENIE INFORMATIQUE", "DIPLOME DE MASTER"), alors que
+     * l'utilisateur tape naturellement la valeur avec ("Département Génie
+     * Informatique") en Phase 2 — sans dépouillement des diacritiques, une regex
+     * par ailleurs PARFAITE (elle capture exactement le bon segment du texte) est
+     * rejetée à tort par une simple différence d'accentuation, jamais par un
+     * défaut réel du motif (vu en pratique le 10/2026 : tous les candidats
+     * Gemini, syntaxiquement corrects et bien ancrés sur le bon libellé,
+     * rejetés en boucle pour cette seule raison).
+     */
     private String normalize(String s)
     {
-        return s.trim().toLowerCase().replaceAll("\\s+", " ");
+        String sansAccents = java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD)
+            .replaceAll("\\p{M}", "");
+        return sansAccents.trim().toLowerCase().replaceAll("\\s+", " ");
     }
 
     // ─────────────────────────────────────────────────────────────────────────

@@ -78,8 +78,16 @@ export interface DocumentListItemDto {
     statutAvantCorbeille?: string | null;
     /** Date de purge définitive prévue — non-null uniquement quand status === "CORBEILLE". */
     suppressionPrevueLe?:  string | null;
+    /** Durée de rétention (en années) du TYPE de ce document, null si aucune limite —
+     *  voir DocumentDetailDto.retentionYearsType (même usage). */
+    retentionYearsType?: number | null;
     /** true si l'utilisateur consultant peut envoyer/restaurer CE document précis vers/depuis la corbeille. */
     peutGererCorbeille?:  boolean;
+    /** true si CE document précis, en CORBEILLE, peut être supprimé définitivement
+     *  MAINTENANT (délai de grâce écoulé ET sort final CONSERVER/TRIER — voir
+     *  supprimerDefinitivementDepuisCorbeille). false pour un document dont le
+     *  sort final est DETRUIRE : celui-là sera purgé automatiquement. */
+    peutSupprimerDefinitivement?: boolean;
 }
 
 /**
@@ -137,6 +145,11 @@ export interface DocumentDetailDto {
     statutAvantCorbeille: string | null;
     /** Date de suppression définitive programmée — non-null uniquement quand status === "CORBEILLE". */
     suppressionPrevueLe: string | null;
+    /** Durée de rétention (en années) du TYPE de ce document, null si aucune limite —
+     *  utilisée pour annoncer la nouvelle échéance avant de renouveler la rétention
+     *  d'un document restauré dont retentionUntil est déjà dépassé (voir
+     *  restaurerDocumentDepuisCorbeille). */
+    retentionYearsType: number | null;
     /** true si l'utilisateur consultant peut envoyer ce document à la corbeille, ou le restaurer s'il y est déjà. */
     peutGererCorbeille: boolean;
     metaData:        MetaDataValueInDocDto[];
@@ -159,6 +172,8 @@ export interface DocumentDetailDto {
     /** true si l'utilisateur consultant peut basculer PUBLIC ↔ PRIVÉ ce document
      *  (toujours false si le document hérite de la confidentialité d'un dossier PRIVÉ). */
     peutModifierAcces: boolean;
+    /** Activité (plan de classement de l'UO) héritée du type, ex. "03 Finances › 03.2 Factures". Null = non classé. */
+    activite?: string | null;
 }
 
 /**
@@ -373,7 +388,7 @@ export const downloadPdfA = async (id: string, titre: string): Promise<void> => 
 /**
  * POST /api/user/docs/{id}/corbeille
  * Envoie un document à la corbeille — n'importe quel document, plus
- * seulement un corrompu. Suppression définitive dans 3 jours, restaurable
+ * seulement un corrompu. Suppression définitive dans 6 jours, restaurable
  * jusque-là (voir restaurerDocumentDepuisCorbeille). Réservé à un éditeur
  * ayant accès au document.
  */
@@ -388,18 +403,71 @@ export const envoyerDocumentCorbeille = async (id: string): Promise<void> => {
 };
 
 /**
- * POST /api/user/docs/{id}/restaurer
+ * POST /api/user/docs/{id}/restaurer?renouvelerRetention=
  * Restaure un document depuis la corbeille — réservé à un éditeur ayant
- * accès au document.
+ * accès au document. renouvelerRetention : à passer à true UNIQUEMENT après
+ * confirmation explicite de l'éditeur quand retentionYearsType (voir
+ * DocumentDetailDto) a servi à lui annoncer la nouvelle échéance — le
+ * serveur refuse la restauration (erreur métier) si retentionUntil du
+ * document est déjà dépassé et que ce n'est pas true, pour ne jamais le
+ * renvoyer silencieusement retomber en corbeille au prochain passage du job.
  */
-export const restaurerDocumentDepuisCorbeille = async (id: string): Promise<void> => {
+export const restaurerDocumentDepuisCorbeille = async (id: string, renouvelerRetention = false): Promise<void> => {
     try {
-        await api.post(`/user/docs/${id}/restaurer`);
+        await api.post(`/user/docs/${id}/restaurer`, null, {
+            params: renouvelerRetention ? { renouvelerRetention } : {},
+        });
     } catch (error: any) {
         throw error.response?.data?.message
             ? new Error(error.response.data.message)
             : error;
     }
+};
+
+/**
+ * POST /api/user/docs/{id}/corbeille/supprimer-definitivement
+ * Suppression définitive IMMÉDIATE d'un document en CORBEILLE — seule issue
+ * pour un document dont le sort final (CONSERVER/TRIER, voir
+ * DocumentListItemDto.peutSupprimerDefinitivement) exclut la purge
+ * automatique après le délai de grâce : sans cet appel, il resterait en
+ * corbeille indéfiniment. Irréversible — à confirmer côté UI avant l'appel.
+ */
+export const supprimerDefinitivementDepuisCorbeille = async (id: string): Promise<void> => {
+    try {
+        await api.post(`/user/docs/${id}/corbeille/supprimer-definitivement`);
+    } catch (error: any) {
+        throw error.response?.data?.message
+            ? new Error(error.response.data.message)
+            : error;
+    }
+};
+
+/**
+ * true si retentionUntil est déjà passé (ou égal à aujourd'hui) — un
+ * document dans ce cas ne peut pas être restauré depuis la corbeille sans
+ * confirmer un renouvellement de sa rétention (voir
+ * formaterNouvelleEcheanceRetention et restaurerDocumentDepuisCorbeille).
+ */
+export const retentionEstDepassee = (retentionUntil: string | null | undefined): boolean => {
+    if (!retentionUntil) return false;
+    return new Date(retentionUntil) <= new Date();
+};
+
+/**
+ * Calcule la nouvelle échéance de rétention (depuis AUJOURD'HUI, durée du
+ * TYPE de document) à annoncer à l'éditeur avant qu'il ne confirme la
+ * restauration d'un document dont la rétention est dépassée — purement
+ * informatif côté client, le serveur recalcule la même chose de son côté
+ * (voir DocumentService.restaurerDepuisCorbeille). null si ce type n'a pas
+ * de limite de rétention (le document sera restauré sans limite).
+ */
+export const formaterNouvelleEcheanceRetention = (
+    retentionYearsType: number | null | undefined
+): { annees: number; dateAffichee: string } | null => {
+    if (retentionYearsType == null) return null;
+    const d = new Date();
+    d.setFullYear(d.getFullYear() + retentionYearsType);
+    return { annees: retentionYearsType, dateAffichee: d.toLocaleDateString('fr-FR') };
 };
 
 /**
@@ -948,6 +1016,10 @@ export interface DocumentAccessFilterParams {
     uoId?:           number | null;
     /** Restreint aux documents rattachés à un dossier précis (voir DossiersPanel). */
     dossierId?:       number | null;
+    /** Restreint aux documents dont le type est rattaché à cette activité du plan de classement OU à l'une de ses sous-activités. */
+    planClassementNoeudId?: number | null;
+    /** Restreint aux documents rattachés à un emplacement physique précis (voir PhysicalLocationsPanel). */
+    physicalLocationId?: string | null;
     page?:           number;
     size?:           number;
 }
@@ -971,6 +1043,8 @@ export const getDocumentsAccessibles = async (
                 ...(params.statut         ? { statut:         params.statut }                   : {}),
                 ...(params.uoId           ? { uoId:           params.uoId }                     : {}),
                 ...(params.dossierId       ? { dossierId:       params.dossierId }                 : {}),
+                ...(params.planClassementNoeudId ? { planClassementNoeudId: params.planClassementNoeudId } : {}),
+                ...(params.physicalLocationId ? { physicalLocationId: params.physicalLocationId }   : {}),
                 page: params.page ?? 1,
                 size: params.size ?? 10,
             },

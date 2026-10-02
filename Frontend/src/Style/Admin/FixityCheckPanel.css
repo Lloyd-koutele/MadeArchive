@@ -45,7 +45,7 @@
 }
 
 .fixity-scope-btn:hover {
-    background: var(--hover-bg, rgba(139, 94, 60, 0.08));
+    background: var(--hover-bg, rgba(var(--accent-rgb), 0.08));
 }
 
 .fixity-scope-btn.active {

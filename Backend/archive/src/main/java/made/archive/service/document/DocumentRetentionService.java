@@ -13,22 +13,35 @@ import made.archive.entite.AuditAction;
 import made.archive.entite.AuditCible;
 import made.archive.entite.Document;
 import made.archive.entite.DocumentStatus;
+import made.archive.entite.SortFinal;
+import made.archive.entite.User;
+import made.archive.exception.BusinessException;
 import made.archive.repository.DocumentRepository;
 import made.archive.service.audit.AuditLogService;
 import made.archive.service.storage.StorageService;
 
 /**
- * Fin de vie des documents. Deux voies de purge, toutes deux "tombstone" (le
- * contenu disparaît réellement — fichiers MinIO + entrée Meilisearch — mais la
- * ligne Document et son historique restent en base comme preuve que le document
- * a existé et a été archivé, status passe à DELETED) :
+ * Fin de vie des documents — UN SEUL mécanisme de grâce, deux déclencheurs :
  *
- *   1. retentionUntil atteint — automatique, jamais déclenché manuellement.
- *   2. suppressionPrevueLe atteint — un document en CORBEILLE (envoyé là par
- *      un éditeur, voir DocumentService.envoyerCorbeille — n'importe quel
- *      document, plus seulement un corrompu), après un délai de grâce de 3
- *      jours pendant lequel il reste consultable et restaurable. C'est la
- *      SEULE voie de suppression manuelle du système.
+ *   1. retentionUntil atteint — automatique (purgeExpiredDocuments), jamais
+ *      déclenché manuellement. N'envoie plus directement à la purge : le
+ *      document est d'abord mis à la corbeille (voir envoyerCorbeilleAutomatique),
+ *      exactement comme s'il y avait été envoyé par un éditeur.
+ *   2. suppressionPrevueLe atteint — un document en CORBEILLE, qu'il y soit
+ *      arrivé manuellement (DocumentService.envoyerCorbeille) ou
+ *      automatiquement (1. ci-dessus), après un délai de grâce unique
+ *      (DocumentService.DELAI_GRACE_CORBEILLE_JOURS) pendant lequel il reste
+ *      consultable et restaurable.
+ *
+ * La purge réelle (purgeOne) est "tombstone" : le contenu disparaît réellement —
+ * fichiers MinIO + entrée Meilisearch — mais la ligne Document et son historique
+ * restent en base comme preuve que le document a existé et a été archivé,
+ * status passe à DELETED. Déclenchée automatiquement depuis purgeDocumentsCorbeille
+ * (ci-dessous) UNIQUEMENT quand le sort final du type de document est DETRUIRE
+ * (voir SortFinal) — CONSERVER/TRIER laissent le document en CORBEILLE
+ * indéfiniment, une suppression définitive restant alors possible à tout moment
+ * mais exclusivement MANUELLE (voir supprimerDefinitivementManuellement, appelée
+ * depuis DocumentService à la demande explicite d'un éditeur).
  *
  * Important : Meilisearch n'a aucune connaissance des suppressions côté base
  * ou stockage. C'est cette classe qui doit explicitement lui dire de retirer
@@ -48,44 +61,129 @@ public class DocumentRetentionService
     @Transactional
     public void purgeExpiredDocuments()
     {
-        List<Document> expired = documentRepository
-            .findByRetentionUntilLessThanEqualAndStatusNot(LocalDate.now(), DocumentStatus.DELETED);
+        List<Document> expired = documentRepository.findByRetentionUntilLessThanEqualAndStatusNotIn(
+            LocalDate.now(), List.of(DocumentStatus.DELETED, DocumentStatus.CORBEILLE));
 
         if (expired.isEmpty())
         {
             return;
         }
 
-        log.info("[Retention] {} document(s) ont atteint leur fin de rétention", expired.size());
+        log.info("[Retention] {} document(s) ont atteint leur fin de rétention — envoi à la corbeille",
+            expired.size());
 
         for (Document document : expired)
         {
-            purgeOne(document, "Fin de rétention atteinte le " + document.getRetentionUntil());
+            envoyerCorbeilleAutomatique(document);
         }
     }
 
     /**
-     * Documents en CORBEILLE dont le délai de grâce de 3 jours est écoulé —
-     * voir DocumentService.envoyerCorbeille.
+     * Met un document à la corbeille suite à sa fin de rétention légale —
+     * même effet que DocumentService.envoyerCorbeille (déclenchée par un
+     * éditeur), mais un acteur système (null) : ce déclenchement est
+     * toujours un batch planifié, jamais une action HTTP d'un utilisateur au
+     * moment de l'exécution réelle. La purge réelle suit son cours normal
+     * via purgeDocumentsCorbeille une fois le délai de grâce écoulé.
+     */
+    private void envoyerCorbeilleAutomatique(Document document)
+    {
+        DocumentStatus statutOrigine = document.getStatus();
+        document.setStatutAvantCorbeille(statutOrigine);
+        document.setStatus(DocumentStatus.CORBEILLE);
+        document.setSuppressionPrevueLe(LocalDate.now().plusDays(DocumentService.DELAI_GRACE_CORBEILLE_JOURS));
+        documentRepository.save(document);
+
+        log.info("[Retention] Document {} (fin de rétention le {}) envoyé à la corbeille — "
+            + "suppression définitive prévue le {}",
+            document.getId(), document.getRetentionUntil(), document.getSuppressionPrevueLe());
+
+        auditLogService.log(null, AuditAction.DOCUMENT_PLACE_CORBEILLE, AuditCible.DOCUMENT,
+            document.getId().toString(),
+            document.getUniteOrganisationnelle() != null ? document.getUniteOrganisationnelle().getId() : null,
+            "Document \"" + document.getTitre() + "\" (" + statutOrigine + ") envoyé automatiquement à la "
+                + "corbeille — fin de rétention atteinte le " + document.getRetentionUntil()
+                + ", suppression définitive prévue le " + document.getSuppressionPrevueLe(),
+            true);
+    }
+
+    /**
+     * Documents en CORBEILLE dont le délai de grâce (voir
+     * DocumentService.DELAI_GRACE_CORBEILLE_JOURS) est écoulé — qu'ils y
+     * soient arrivés manuellement (DocumentService.envoyerCorbeille) ou
+     * automatiquement (purgeExpiredDocuments ci-dessus). Le SORT FINAL du type
+     * de document (voir SortFinal) décide seul de ce qui se passe à ce moment,
+     * quelle que soit la cause d'entrée en corbeille — les deux partagent le
+     * même délai de grâce et la même décision :
+     *   - DETRUIRE  : purge automatique, comportement historique inchangé.
+     *   - CONSERVER / TRIER : aucune purge automatique — le document reste en
+     *     CORBEILLE indéfiniment (toujours consultable/restaurable comme avant
+     *     ce délai), une suppression définitive restant possible à tout moment
+     *     mais exclusivement manuelle (voir supprimerDefinitivementManuellement).
+     *     Note : ce cas reste candidat à chaque passage de ce job tant qu'aucune
+     *     suppression manuelle n'a eu lieu — coût négligeable (simple skip) vu le
+     *     faible volume attendu, préféré à une colonne de suivi supplémentaire.
      */
     @Transactional
     public void purgeDocumentsCorbeille()
     {
-        List<Document> aPurger = documentRepository
+        List<Document> candidats = documentRepository
             .findByStatusAndSuppressionPrevueLeLessThanEqual(DocumentStatus.CORBEILLE, LocalDate.now());
 
-        if (aPurger.isEmpty())
+        if (candidats.isEmpty())
         {
             return;
         }
 
-        log.info("[Retention] {} document(s) en corbeille, délai de grâce écoulé", aPurger.size());
-
-        for (Document document : aPurger)
+        int purges = 0;
+        for (Document document : candidats)
         {
-            purgeOne(document, "Suppression demandée par l'éditeur (corbeille), "
-                + "délai de grâce de 3 jours écoulé");
+            if (resolveSortFinal(document) != SortFinal.DETRUIRE)
+            {
+                continue;
+            }
+
+            purgeOne(document, "Délai de grâce de la corbeille (" + DocumentService.DELAI_GRACE_CORBEILLE_JOURS
+                + " jours) écoulé sans restauration — sort final DETRUIRE", null);
+            purges++;
         }
+
+        log.info("[Retention] {} document(s) en corbeille avec délai de grâce écoulé examiné(s), "
+            + "{} purgé(s) (sort final DETRUIRE), {} conservé(s) en corbeille (CONSERVER/TRIER)",
+            candidats.size(), purges, candidats.size() - purges);
+    }
+
+    private SortFinal resolveSortFinal(Document document)
+    {
+        return document.getTypeDocument().getRetention().getSortFinal();
+    }
+
+    /**
+     * Suppression définitive MANUELLE depuis la corbeille, demandée par un
+     * éditeur — seule issue possible pour un document dont le sort final
+     * (CONSERVER/TRIER) exclut la purge automatique (voir purgeDocumentsCorbeille).
+     * L'autorisation (éditeur ayant accès au document) est vérifiée par
+     * l'appelant (voir DocumentService.supprimerDefinitivementDepuisCorbeille) —
+     * ce service ne vérifie ici que les règles métier propres au cycle de vie
+     * du document lui-même, pas qui a le droit de les déclencher.
+     */
+    @Transactional
+    public void supprimerDefinitivementManuellement(Document document, User acteur)
+    {
+        if (document.getStatus() != DocumentStatus.CORBEILLE)
+        {
+            throw new BusinessException("Ce document n'est pas dans la corbeille");
+        }
+
+        if (document.getSuppressionPrevueLe() == null || document.getSuppressionPrevueLe().isAfter(LocalDate.now()))
+        {
+            throw new BusinessException("Le délai de grâce de la corbeille ("
+                + DocumentService.DELAI_GRACE_CORBEILLE_JOURS + " jours) n'est pas encore écoulé pour ce document");
+        }
+
+        purgeOne(document, "Suppression définitive manuelle demandée par "
+            + (acteur != null ? acteur.getEmail() : "un éditeur") + " (sort final CONSERVER/TRIER, "
+            + "délai de grâce écoulé mais purge automatique exclue)", acteur);
     }
 
     /**
@@ -129,7 +227,7 @@ public class DocumentRetentionService
         return fantomes.size();
     }
 
-    private void purgeOne(Document document, String raisonAudit)
+    private void purgeOne(Document document, String raisonAudit, User acteur)
     {
         UUID id = document.getId();
 
@@ -177,9 +275,11 @@ public class DocumentRetentionService
 
         log.info("[Retention] Document {} purgé ({})", id, raisonAudit);
 
-        // Acteur système (null) : ce déclenchement est toujours un batch planifié,
-        // jamais une action HTTP d'un utilisateur au moment de l'exécution réelle.
-        auditLogService.log(null, AuditAction.DOCUMENT_SUPPRIME_DEFINITIVEMENT, AuditCible.DOCUMENT,
+        // acteur == null pour un déclenchement automatique (batch planifié, voir
+        // purgeDocumentsCorbeille) ; un véritable utilisateur pour une suppression
+        // manuelle (voir supprimerDefinitivementManuellement) — distingue les deux
+        // dans le journal sans avoir besoin d'une AuditAction séparée.
+        auditLogService.log(acteur, AuditAction.DOCUMENT_SUPPRIME_DEFINITIVEMENT, AuditCible.DOCUMENT,
             id.toString(),
             document.getUniteOrganisationnelle() != null ? document.getUniteOrganisationnelle().getId() : null,
             "Document \"" + document.getTitre() + "\" supprimé définitivement — " + raisonAudit,

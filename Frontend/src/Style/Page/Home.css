@@ -33,12 +33,12 @@ li {
 
 a {
     text-decoration: none;
-    color: antiquewhite;
+    color: var(--white-choc, antiquewhite);
     font-size: 1rem;
 }
 
 a:hover {
-    color: #7abdf5;
+    color: var(--accent, #7abdf5);
 }
 
 /* ─────────────────────────────────────────
@@ -61,7 +61,7 @@ header {
     width: 100%;
     z-index: 1000;
     padding: 0 2rem;
-    background-color: rgba(0, 0, 0, 0.6);
+    background-color: rgba(var(--dark-choc-rgb), 0.6);
 }
 
 /* ─────────────────────────────────────────
@@ -90,7 +90,7 @@ header {
 .navbar .logo a {
     font-size: 1.5rem;
     font-weight: bold;
-    color: #fff;
+    color: var(--white-choc, #fff);
 }
 
 .navbar .links {
@@ -99,7 +99,7 @@ header {
 }
 
 .navbar .burger-menu-button {
-    color: #fff;
+    color: var(--white-choc, #fff);
     font-size: 1.5rem;
     cursor: pointer;
     display: none;
@@ -117,10 +117,10 @@ header {
 }
 
 .action-button {
-    background-color: aquamarine;
-    color: #120d31;
+    background-color: var(--white-choc, #fff);
+    color: var(--dark-choc, #120d31);
     padding: 0.5rem 1.2rem;
-    border: 1px solid aquamarine;
+    border: 1px solid var(--white-choc, #fff);
     border-radius: 5px;
     outline: none;
     font-size: 0.9rem;
@@ -132,21 +132,21 @@ header {
 }
 
 .action-button:hover {
-    background-color: #fff;
-    border-color: #fff;
-    color: #120d31;
+    background-color: var(--cream, #fff);
+    border-color: var(--cream, #fff);
+    color: var(--dark-choc, #120d31);
 }
 
 /* Variante transparente (Se connecter dans la navbar) */
 .action-button.pro {
     background-color: transparent;
-    color: #fff;
-    border: 1px solid #fff;
+    color: var(--white-choc, #fff);
+    border: 1px solid var(--white-choc, #fff);
 }
 
 .action-button.pro:hover {
-    background-color: #fff;
-    color: #120d31;
+    background-color: var(--white-choc, #fff);
+    color: var(--dark-choc, #120d31);
 }
 
 /* ─────────────────────────────────────────
@@ -169,16 +169,16 @@ main section {
 }
 
 main section h2 {
-    color: #ffffff;
+    color: var(--white-choc, #fff);
     font-size: 2.5rem;
-    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+    text-shadow: 2px 2px 4px rgba(var(--dark-choc-rgb), 0.7);
     margin-bottom: 15px;
 }
 
 main section p {
-    color: #f0f0f0;
+    color: var(--white-choc, #f0f0f0);
     font-size: 1.2rem;
-    text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.6);
+    text-shadow: 1px 1px 3px rgba(var(--dark-choc-rgb), 0.6);
 }
 
 /* ─────────────────────────────────────────
@@ -191,7 +191,7 @@ main section p {
     right: 2rem;
     top: 60px;
     width: 220px;
-    background: rgba(0, 0, 0, 0.85);
+    background: rgba(var(--dark-choc-rgb), 0.85);
     border-radius: 10px;
     overflow: hidden;
     transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -218,7 +218,7 @@ main section p {
 
 .divider {
     height: 1px;
-    background-color: rgba(255, 255, 255, 0.3);
+    background-color: rgba(var(--white-choc-rgb), 0.3);
     width: 80%;
     margin: 0.5rem auto 1rem auto;
 }
@@ -244,7 +244,7 @@ main section p {
 ───────────────────────────────────────── */
 @media (max-width: 768px) {
     header {
-        background-color: rgba(0, 0, 0, 0.7);
+        background-color: rgba(var(--dark-choc-rgb), 0.7);
     }
 
     .navbar .links,

@@ -431,7 +431,7 @@
 
 .template-item:last-child { border-bottom: none; }
 .template-item:hover { background: var(--cream); }
-.template-item.selected { background: rgba(44,26,14,0.04); }
+.template-item.selected { background: rgba(var(--dark-choc-rgb),0.04); }
 
 .template-item-check {
     width: 18px;
@@ -498,7 +498,7 @@
 }
 .template-btn.csv:hover:not(:disabled) {
     background: var(--dark-mid);
-    box-shadow: 0 0 0 3px rgba(44,26,14,0.12);
+    box-shadow: 0 0 0 3px rgba(var(--dark-choc-rgb),0.12);
 }
 
 .template-btn.excel {
@@ -645,9 +645,9 @@
 }
 
 .doc-access-tag.prive {
-    background: rgba(139,94,60,0.1);
+    background: rgba(var(--accent-rgb),0.1);
     color: var(--accent);
-    border: 1px solid rgba(139,94,60,0.2);
+    border: 1px solid rgba(var(--accent-rgb),0.2);
 }
 
 /* ── Détail document ── */

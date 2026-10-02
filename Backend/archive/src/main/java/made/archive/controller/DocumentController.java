@@ -203,6 +203,33 @@ public class DocumentController
     }
 
     /**
+     * POST /api/editor/types-documents/{id}/sort-final
+     * Body : "CONSERVER" | "DETRUIRE" | "TRIER" (voir entite.SortFinal).
+     * Contrairement à updateTypeDocument, modifiable même si des documents sont
+     * déjà rattachés — voir TypeDocumentService.modifierSortFinal pour la raison.
+     */
+    @Secured("ROLE_EDITOR")
+    @PostMapping("/types-documents/{id}/sort-final")
+    public ResponseEntity<?> modifierSortFinal(@PathVariable Long id, @RequestBody String sortFinal,
+                                                @AuthenticationPrincipal UserDetailsImpl currentUser)
+    {
+        try
+        {
+            TypeDocumentDto result = typeDocumentService.modifierSortFinal(id, sortFinal, currentUser.getUser());
+            return ResponseEntity.ok(result);
+        }
+        catch (BusinessException | AccessDeniedException e)
+        {
+            return ResponseEntity.badRequest().body(buildError("Erreur : " + e.getMessage()));
+        }
+        catch (Exception e)
+        {
+            return ResponseEntity.badRequest()
+                .body(buildError("Erreur lors de la modification du sort final : " + e.getMessage()));
+        }
+    }
+
+    /**
      * Corrige manuellement les regex d'extraction d'un type — pour quand une
      * regex générée automatiquement se trompe systématiquement, sans avoir à
      * réinitialiser (et donc attendre un nouveau document) via reset-regex.

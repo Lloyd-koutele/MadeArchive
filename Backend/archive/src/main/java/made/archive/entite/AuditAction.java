@@ -117,5 +117,23 @@ public enum AuditAction
     /** Vérification déclenchée manuellement (par opposition à la tâche planifiée
      *  quotidienne, voir FixityCheckScheduler) — journalise le périmètre demandé,
      *  pas chaque document vérifié individuellement (déjà trop de volume pour ça). */
-    FIXITY_CHECK_DEMANDE
+    FIXITY_CHECK_DEMANDE,
+
+    // ── Journal d'audit chaîné (voir service.audit.AuditChainService) ─────────
+    /** Vérification de la chaîne déclenchée manuellement, à la demande — par
+     *  opposition au chaînage/scellement nocturne automatique (AuditChainScheduler),
+     *  qui n'est volontairement jamais journalisé lui-même (bruit quotidien
+     *  inutile, même principe que FixityCheckScheduler). */
+    CHAINE_AUDIT_VERIFICATION_DEMANDEE,
+
+    // ── Sort final (voir entite.SortFinal) ─────────────────────────────────────
+    TYPE_DOCUMENT_SORT_FINAL_MODIFIE,
+
+    // ── Plan de classement (voir entite.PlanClassementNoeud) ───────────────────
+    PLAN_CLASSEMENT_NOEUD_CREE,
+    PLAN_CLASSEMENT_NOEUD_MODIFIE,
+    PLAN_CLASSEMENT_NOEUD_DEPLACE,
+    PLAN_CLASSEMENT_NOEUD_SUPPRIME,
+    /** Rattachement/changement/détachement de l'activité d'un type de document. */
+    TYPE_DOCUMENT_ACTIVITE_MODIFIEE
 }

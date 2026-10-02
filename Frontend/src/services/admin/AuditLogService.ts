@@ -14,8 +14,9 @@ export type AuditAction =
     | 'DOCUMENT_CONSULTE' | 'DOCUMENT_TELECHARGE' | 'DOCUMENT_RECHERCHE' | 'DOCUMENT_VERIFICATION_PUBLIQUE'
     | 'GROUPE_MEMBRE_AJOUTE' | 'GROUPE_MEMBRE_RETIRE'
     | 'TYPE_DOCUMENT_CREE' | 'TYPE_DOCUMENT_MODIFIE' | 'TYPE_DOCUMENT_REGEX_REINITIALISEE'
-    | 'TYPE_DOCUMENT_REGEX_MODIFIEE' | 'TYPE_DOCUMENT_SUPPRIME'
-    | 'DOSSIER_CREE' | 'DOSSIER_TYPES_AJOUTES' | 'DOSSIER_SUPPRIME';
+    | 'TYPE_DOCUMENT_REGEX_MODIFIEE' | 'TYPE_DOCUMENT_SUPPRIME' | 'TYPE_DOCUMENT_SORT_FINAL_MODIFIE'
+    | 'DOSSIER_CREE' | 'DOSSIER_TYPES_AJOUTES' | 'DOSSIER_SUPPRIME'
+    | 'CHAINE_AUDIT_VERIFICATION_DEMANDEE';
 
 export type AuditCible =
     | 'SESSION' | 'UTILISATEUR' | 'UNITE_ORGANISATIONNELLE' | 'DOCUMENT'
@@ -110,6 +111,43 @@ export const exporterAuditLogs = async (
         const date = new Date().toISOString().slice(0, 10);
         const nomFichier = `journal-audit_${date}.${format}`;
         triggerDownload(response.data, nomFichier);
+    } catch (error: any) {
+        throw error.response?.data?.message
+            ? new Error(error.response.data.message)
+            : error;
+    }
+};
+
+/** Miroir de made.archive.dto.ChaineAuditRuptureDto. */
+export interface ChaineAuditRuptureDto {
+    id: number;
+    horodatage: string | null;
+    uoId: number | null;
+    action: AuditAction | null;
+    description: string | null;
+}
+
+/** Miroir de made.archive.dto.ChaineAuditVerificationDto. */
+export interface ChaineAuditVerificationDto {
+    chaineIntacte: boolean;
+    nombreEntreesChainees: number;
+    ruptures: ChaineAuditRuptureDto[];
+    rupturesHorsPerimetre: boolean;
+    dernierScellementDate: string | null;
+    dernierScellementEntryId: number | null;
+}
+
+/**
+ * GET /api/admin_uo/audit-logs/chaine/verification — vérifie l'intégrité de la
+ * chaîne du journal d'audit (voir AuditChainService côté backend). ADMIN voit
+ * toute rupture, ADMIN_UO ne voit que celles de son UO + sous-arbre (voir
+ * rupturesHorsPerimetre pour signaler, sans détail, qu'autre chose est cassé
+ * ailleurs) — même restriction serveur que rechercherAuditLogs.
+ */
+export const verifierChaineAudit = async (): Promise<ChaineAuditVerificationDto> => {
+    try {
+        const response = await api.get('/admin_uo/audit-logs/chaine/verification');
+        return response.data;
     } catch (error: any) {
         throw error.response?.data?.message
             ? new Error(error.response.data.message)

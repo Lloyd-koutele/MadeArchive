@@ -143,19 +143,24 @@ public interface DocumentRepository extends JpaRepository<Document, UUID>, JpaSp
         Pageable pageable);
 
     /**
-     * Documents dont la durée de rétention est dépassée et pas encore purgés.
-     * Seule voie de suppression AUTOMATIQUE (pas demandée par un éditeur) du
-     * système — voir DocumentRetentionService. Volontairement pas d'exclusion
-     * CORBEILLE ici : un document en corbeille dont la rétention arrive
-     * quand même à échéance doit être purgé tout pareil, la corbeille ne
-     * doit jamais prolonger une rétention légale.
+     * Documents dont la durée de rétention est dépassée et pas encore mis de
+     * côté — voir DocumentRetentionService.purgeExpiredDocuments, qui les
+     * envoie à la corbeille (même délai de grâce unifié que la corbeille
+     * manuelle, voir DocumentService.DELAI_GRACE_CORBEILLE_JOURS) plutôt que
+     * de les purger immédiatement. CORBEILLE exclu ici (avec DELETED) :
+     * un document déjà en corbeille — qu'il y soit arrivé manuellement ou
+     * pour cette même raison — suit désormais sa propre échéance
+     * (suppressionPrevueLe, voir findByStatusAndSuppressionPrevueLeLessThanEqual
+     * ci-dessous), pas une seconde fois celle-ci.
      */
-    List<Document> findByRetentionUntilLessThanEqualAndStatusNot(
-        LocalDate date, DocumentStatus excludedStatus);
+    List<Document> findByRetentionUntilLessThanEqualAndStatusNotIn(
+        LocalDate date, Collection<DocumentStatus> statutsExclus);
 
     /**
-     * Documents en CORBEILLE dont le délai de grâce de 3 jours est atteint —
-     * voir DocumentService.envoyerCorbeille et DocumentRetentionService.
+     * Documents en CORBEILLE dont le délai de grâce (voir
+     * DocumentService.DELAI_GRACE_CORBEILLE_JOURS) est atteint — qu'ils y
+     * soient arrivés manuellement (DocumentService.envoyerCorbeille) ou
+     * automatiquement en fin de rétention (DocumentRetentionService).
      */
     List<Document> findByStatusAndSuppressionPrevueLeLessThanEqual(
         DocumentStatus status, LocalDate date);
@@ -213,6 +218,27 @@ public interface DocumentRepository extends JpaRepository<Document, UUID>, JpaSp
     boolean existsByPhysicalLocationIdAndStatusNot(UUID physicalLocationId, DocumentStatus status);
 
     /**
+     * Nombre de documents VIVANTS rattachés à un emplacement précis — capacité
+     * (PhysicalLocationService.resolvePourRattachement/definirCapacite) et
+     * affichage du taux d'occupation (toDto).
+     */
+    long countByPhysicalLocationIdAndStatusNot(UUID physicalLocationId, DocumentStatus status);
+
+    /**
+     * Même compte que ci-dessus, mais groupé pour PLUSIEURS emplacements en un
+     * seul aller-retour — utilisé par PhysicalLocationService.getArbre pour
+     * annoter tout l'arbre d'une UO sans une requête par nœud (N+1). Chaque
+     * Object[] est {physicalLocationId (UUID), total (Long)} ; un emplacement
+     * sans aucun document n'apparaît simplement pas dans le résultat (compter
+     * 0 par défaut côté appelant).
+     */
+    @Query("SELECT d.physicalLocation.id, COUNT(d) FROM Document d "
+        + "WHERE d.physicalLocation.id IN :locationIds AND d.status <> :statutExclu "
+        + "GROUP BY d.physicalLocation.id")
+    List<Object[]> countDocumentsGroupedByPhysicalLocation(
+        @Param("locationIds") Collection<UUID> locationIds, @Param("statutExclu") DocumentStatus statutExclu);
+
+    /**
      * Nombre de documents VIVANTS (non tombstonés) d'un type — utilisé pour
      * savoir si un document dont on corrige les métadonnées est le SEUL
      * document de son type (auquel cas les regex d'extraction, générées à
@@ -263,7 +289,9 @@ public interface DocumentRepository extends JpaRepository<Document, UUID>, JpaSp
     @Query("SELECT new made.archive.dto.DocumentExportRow(" +
            "d.id, d.titre, d.storageKey, d.access, d.status, d.createAt, " +
            "d.uniteOrganisationnelle.id, d.uniteOrganisationnelle.nom, " +
-           "d.typeDocument.nom, p.nom) " +
+           "d.typeDocument.nom, p.nom, p.id, n.id, " +
+           "d.pdfaSha256, d.originalSha256, d.pkiSignature, d.horodatageToken, d.horodatageDate, " +
+           "d.retentionUntil, d.typeDocument.retention.retentionYears, d.typeDocument.retention.sortFinal) " +
            // LEFT JOIN explicite sur dossier (nullable) : une navigation par
            // point (d.dossier.nom) génère un INNER JOIN implicite en JPQL,
            // qui aurait exclu silencieusement tout document sans dossier —
@@ -271,6 +299,7 @@ public interface DocumentRepository extends JpaRepository<Document, UUID>, JpaSp
            // dossier revenant vide). uniteOrganisationnelle/typeDocument
            // sont non-nullables (nullable=false sur Document), la navigation
            // par point y reste sans risque.
-           "FROM Document d LEFT JOIN d.dossier p WHERE d.id IN :ids")
+           "FROM Document d LEFT JOIN d.dossier p LEFT JOIN d.typeDocument t LEFT JOIN t.planClassementNoeud n " +
+           "WHERE d.id IN :ids")
     List<made.archive.dto.DocumentExportRow> findAllByIdPourExport(@Param("ids") Collection<UUID> ids);
 }

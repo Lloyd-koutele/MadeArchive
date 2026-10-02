@@ -1,23 +1,39 @@
-import type { MetaDataDto } from '../services/document/TypedocumentService';
+import type { MetaDataDto, SortFinal } from '../services/document/TypedocumentService';
+import type { PlanClassementOption } from '../services/organisation/PlanClassementService';
+
+const SORT_FINAL_LABELS: Record<SortFinal, string> = {
+    CONSERVER: 'Conserver — jamais purgé automatiquement',
+    DETRUIRE: 'Détruire — purge automatique après le délai de grâce',
+    TRIER: 'Trier — pas de purge automatique, tri à faire plus tard',
+};
 
 interface TypeDocumentFormFieldsProps {
     nom: string;
     onNomChange: (v: string) => void;
     retentionYears: number | null;
     onRetentionYearsChange: (v: number | null) => void;
-    periodGrace: number | null;
-    onPeriodGraceChange: (v: number | null) => void;
     metaData: MetaDataDto[];
     onMetaDataChange: (metaData: MetaDataDto[]) => void;
     idPrefix: string;
+    /** Optionnels : absents, le sélecteur de sort final n'est pas rendu (utile
+     *  si un écran appelant veut le gérer séparément — voir Updatetypedocument.tsx,
+     *  qui le modifie via un appel serveur dédié, indépendant du reste du formulaire). */
+    sortFinal?: SortFinal;
+    onSortFinalChange?: (v: SortFinal) => void;
+    /** Activités du plan de classement de l'UO (aplaties) + choix courant (null = non classé).
+     *  Absent : le sélecteur n'est pas rendu. */
+    activites?: PlanClassementOption[];
+    activiteId?: number | null;
+    onActiviteChange?: (v: number | null) => void;
 }
 
 function TypeDocumentFormFields({
     nom, onNomChange,
     retentionYears, onRetentionYearsChange,
-    periodGrace, onPeriodGraceChange,
     metaData, onMetaDataChange,
-    idPrefix
+    idPrefix,
+    sortFinal, onSortFinalChange,
+    activites, activiteId, onActiviteChange,
 }: TypeDocumentFormFieldsProps) {
 
     const handleMetaChange = (index: number, field: keyof MetaDataDto, value: any) => {
@@ -63,30 +79,54 @@ function TypeDocumentFormFields({
                     </label>
 
                     {retentionDefinie && (
-                        <>
-                            <div className="form-field">
-                                <input
-                                    id={`${idPrefix}-retention`}
-                                    type="number"
-                                    className="form-field-input"
-                                    placeholder="Durée de rétention (années)" aria-label="Durée de rétention (années)"
-                                    min={1}
-                                    value={retentionYears ?? ''}
-                                    onChange={e => onRetentionYearsChange(Number(e.target.value))}
-                                />
-                            </div>
-                            <div className="form-field">
-                                <input
-                                    id={`${idPrefix}-grace`}
-                                    type="number"
-                                    className="form-field-input"
-                                    placeholder="Période de grâce (jours)" aria-label="Période de grâce (jours)"
-                                    min={0}
-                                    value={periodGrace ?? ''}
-                                    onChange={e => onPeriodGraceChange(Number(e.target.value))}
-                                />
-                            </div>
-                        </>
+                        <div className="form-field td-span2">
+                            <input
+                                id={`${idPrefix}-retention`}
+                                type="number"
+                                className="form-field-input"
+                                placeholder="Durée de rétention (années)" aria-label="Durée de rétention (années)"
+                                min={1}
+                                value={retentionYears ?? ''}
+                                onChange={e => onRetentionYearsChange(Number(e.target.value))}
+                            />
+                        </div>
+                    )}
+
+                    {onActiviteChange && activites && (
+                        <div className="form-field td-span2">
+                            <label className="form-field-label" htmlFor={`${idPrefix}-activite`}>
+                                Activité (plan de classement)
+                            </label>
+                            <select
+                                id={`${idPrefix}-activite`}
+                                className="form-field-input up-select"
+                                value={activiteId ?? ''}
+                                onChange={e => onActiviteChange(e.target.value ? Number(e.target.value) : null)}
+                            >
+                                <option value="">— Non classé —</option>
+                                {activites.map(a => (
+                                    <option key={a.id} value={a.id}>{a.label}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+
+                    {onSortFinalChange && (
+                        <div className="form-field td-span2">
+                            <label className="form-field-label" htmlFor={`${idPrefix}-sort-final`}>
+                                Sort final — une fois en corbeille, délai de grâce écoulé
+                            </label>
+                            <select
+                                id={`${idPrefix}-sort-final`}
+                                className="form-field-input up-select"
+                                value={sortFinal ?? 'CONSERVER'}
+                                onChange={e => onSortFinalChange(e.target.value as SortFinal)}
+                            >
+                                {(Object.keys(SORT_FINAL_LABELS) as SortFinal[]).map(s => (
+                                    <option key={s} value={s}>{SORT_FINAL_LABELS[s]}</option>
+                                ))}
+                            </select>
+                        </div>
                     )}
                 </div>
             </div>

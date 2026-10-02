@@ -9,6 +9,7 @@ import DocumentsAccessibles from '../document/DocumentsAccessible';
 import Corbeille from '../document/Corbeille';
 import DossiersPanel from '../organisation/DossiersPanel';
 import PhysicalLocationsPanel from '../organisation/PhysicalLocationsPanel';
+import PlanClassementPanel from '../organisation/PlanClassementPanel';
 import TypeDocumentList from '../document/TypedocumentList';
 import CreateTypeDocument from '../document/Createtypedocument';
 import { getCurrentUserInfo } from '../auth/authService';
@@ -27,7 +28,7 @@ type EditorView = 'documents' | 'profile';
 // documents" : gestion (créer/lire/modifier/supprimer) désormais réservée
 // aux EDITOR de leur propre UO — retirée des dashboards ADMIN/ADMIN_UO (voir
 // DocumentController /api/editor, backend).
-type DocumentsTab = 'accessibles' | 'mesDocuments' | 'dossiers' | 'typesDocuments' | 'emplacements' | 'corbeille';
+type DocumentsTab = 'accessibles' | 'mesDocuments' | 'dossiers' | 'typesDocuments' | 'planClassement' | 'emplacements' | 'corbeille';
 
 function EditorDashboard() {
     const userInfo = getCurrentUserInfo();
@@ -35,6 +36,15 @@ function EditorDashboard() {
 
     const [currentView, setCurrentView] = useState<EditorView>('documents');
     const [documentsTab, setDocumentsTab] = useState<DocumentsTab>('accessibles');
+
+    // Lien profond vers un dossier précis (+ éventuellement son type de
+    // document) dans l'onglet "Dossiers" — déclenché par "Ouvrir dans
+    // l'emplacement" depuis PhysicalLocationsPanel (voir DossiersPanel,
+    // initialDossierId). Remis à null une fois consommé par DossiersPanel
+    // (onInitialDossierConsumed) : sinon, ce panneau se remonte sur cette
+    // même cible à chaque réaffichage de l'onglet (il démonte/remonte entre
+    // deux onglets).
+    const [dossierDeepLink, setDossierDeepLink] = useState<{ dossierId: number; typeDocumentId: number | null } | null>(null);
 
     // Nom + id de l'UO de rattachement — affichés dans le titre du Sidebar,
     // et l'id sert de scope pour le panneau Dossiers ci-dessous.
@@ -180,6 +190,12 @@ function EditorDashboard() {
                                     Types de documents
                                 </button>
                                 <button
+                                    className={`uo-tab ${documentsTab === 'planClassement' ? 'active' : ''}`}
+                                    onClick={() => setDocumentsTab('planClassement')}
+                                >
+                                    Plan de classement
+                                </button>
+                                <button
                                     className={`uo-tab ${documentsTab === 'emplacements' ? 'active' : ''}`}
                                     onClick={() => setDocumentsTab('emplacements')}
                                 >
@@ -204,7 +220,12 @@ function EditorDashboard() {
                                 />
                             )}
                             {documentsTab === 'dossiers' && (
-                                <DossiersPanel uoId={uoId} />
+                                <DossiersPanel
+                                    uoId={uoId}
+                                    initialDossierId={dossierDeepLink?.dossierId ?? null}
+                                    initialTypeDocumentId={dossierDeepLink?.typeDocumentId ?? null}
+                                    onInitialDossierConsumed={() => setDossierDeepLink(null)}
+                                />
                             )}
                             {documentsTab === 'typesDocuments' && uoId !== null && (
                                 <>
@@ -219,8 +240,18 @@ function EditorDashboard() {
                                     <TypeDocumentList refreshTrigger={tdRefresh} uoId={uoId} />
                                 </>
                             )}
+                            {documentsTab === 'planClassement' && (
+                                <PlanClassementPanel uoId={uoId} />
+                            )}
                             {documentsTab === 'emplacements' && (
-                                <PhysicalLocationsPanel uoId={uoId} mode="gestion" />
+                                <PhysicalLocationsPanel
+                                    uoId={uoId}
+                                    mode="gestion"
+                                    onOuvrirDansDossier={(dossierId, typeDocumentId) => {
+                                        setDossierDeepLink({ dossierId, typeDocumentId });
+                                        setDocumentsTab('dossiers');
+                                    }}
+                                />
                             )}
                             {documentsTab === 'corbeille' && (
                                 <Corbeille />

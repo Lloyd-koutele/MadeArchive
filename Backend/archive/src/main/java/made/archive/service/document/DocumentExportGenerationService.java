@@ -16,6 +16,7 @@ import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -27,6 +28,7 @@ import made.archive.entite.DocumentStatus;
 import made.archive.entite.ExportJob;
 import made.archive.entite.ExportJobStatus;
 import made.archive.entite.NotificationType;
+import made.archive.repository.DataTypeRepository;
 import made.archive.repository.DocumentRepository;
 import made.archive.repository.ExportJobRepository;
 import made.archive.security.DocumentEncryptionService;
@@ -39,6 +41,14 @@ import made.archive.service.storage.StorageService;
  * DocumentExportService (même raison que HorodatageService/
  * RegexGenerationService : un appel this.xxx() depuis DocumentExportService
  * contournerait silencieusement le proxy @Async de Spring).
+ *
+ * Export "preuve" : à côté de chaque PDF/A, le ZIP contient le jeton d'horodatage
+ * RFC 3161 (<nom>.tsr — jeton DER brut, vérifiable avec "openssl ts -verify
+ * -token_in") et la signature PKI (<nom>.sig, texte tel que stocké) quand ils
+ * existent ; manifest.csv porte les empreintes SHA-256 (PDF/A et original), le
+ * format, l'échéance et la durée de conservation, le sort final, la date
+ * d'horodatage et les métadonnées extraites (JSON). Un bordereau SEDA viendra
+ * en complément, jamais à la place.
  *
  * Reçoit un jobId déjà créé, avec sa liste de documents déjà RÉSOLUE (voir
  * ExportJob.documentIdsJson) — aucune décision d'autorisation n'est reprise
@@ -56,6 +66,9 @@ public class DocumentExportGenerationService
     private final NotificationService               notificationService;
     private final DocumentExportProperties          properties;
     private final UniteOrganisationnelleService     uniteOrganisationnelleService;
+    private final DataTypeRepository                dataTypeRepository;
+    private final SedaExportGenerationService       sedaExportGenerationService;
+    private final ObjectMapper                      objectMapper;
 
     private static final DateTimeFormatter FORMAT_DATE = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
@@ -101,6 +114,9 @@ public class DocumentExportGenerationService
 
         List<DocumentExportRow> documents = documentRepository.findAllByIdPourExport(job.getDocumentIds());
 
+        // Métadonnées extraites, en UNE requête pour tout le lot (pas une par document).
+        Map<UUID, Map<String, String>> metadonneesParDoc = chargerMetadonnees(job.getDocumentIds());
+
         // Chemins complets des UO (id -> "Ucad/Faculté Sciences/Département
         // Info") pour que l'arborescence du ZIP reflète la vraie hiérarchie
         // organisationnelle plutôt qu'un dossier par nom d'UO isolé (deux UO
@@ -128,6 +144,15 @@ public class DocumentExportGenerationService
 
             try (ZipOutputStream zos = new ZipOutputStream(Files.newOutputStream(zipPath)))
             {
+                if (job.getFormat() == made.archive.entite.ExportFormat.SEDA)
+                {
+                    SedaExportGenerationService.Resultat sip = sedaExportGenerationService.ecrireSip(
+                        job, documents, metadonneesParDoc, cheminsUO, zos);
+                    traites = sip.traites();
+                    echecs  = sip.echecs();
+                }
+                else
+                {
                 for (DocumentExportRow doc : documents)
                 {
                     try
@@ -150,6 +175,24 @@ public class DocumentExportGenerationService
                         zos.closeEntry();
                         traites++;
 
+                        // Preuves à côté du PDF/A (même nom, extension différente) :
+                        // jeton RFC 3161 et signature PKI — absents si le document n'en
+                        // a pas (horodatage en échec/repris plus tard) : jamais de
+                        // fichier vide, le manifeste dit explicitement "absent".
+                        String base = cheminEntree.replaceAll("(?i)\\.pdf$", "");
+                        if (doc.horodatageToken() != null && doc.horodatageToken().length > 0)
+                        {
+                            zos.putNextEntry(new ZipEntry(base + ".tsr"));
+                            zos.write(doc.horodatageToken());
+                            zos.closeEntry();
+                        }
+                        if (doc.pkiSignature() != null && !doc.pkiSignature().isBlank())
+                        {
+                            zos.putNextEntry(new ZipEntry(base + ".sig"));
+                            zos.write(doc.pkiSignature().getBytes(StandardCharsets.UTF_8));
+                            zos.closeEntry();
+                        }
+
                         lignesManifest.add(new String[] {
                             doc.id().toString(),
                             doc.titre(),
@@ -160,6 +203,16 @@ public class DocumentExportGenerationService
                             doc.access() != null ? doc.access().name() : "",
                             doc.createAt() != null ? doc.createAt().format(FORMAT_DATE) : "",
                             cheminEntree,
+                            nullSafe(doc.pdfaSha256()),
+                            nullSafe(doc.originalSha256()),
+                            "application/pdf (PDF/A)",
+                            doc.retentionUntil() != null ? doc.retentionUntil().format(FORMAT_DATE) : "",
+                            doc.retentionYears() != null ? doc.retentionYears().toString() : "",
+                            doc.sortFinal() != null ? doc.sortFinal().name() : "",
+                            doc.horodatageDate() != null ? doc.horodatageDate().toString() : "",
+                            doc.horodatageToken() != null && doc.horodatageToken().length > 0 ? "OUI" : "NON",
+                            doc.pkiSignature() != null && !doc.pkiSignature().isBlank() ? "OUI" : "NON",
+                            serialiserMetadonnees(metadonneesParDoc.get(doc.id())),
                         });
                     }
                     catch (Exception e)
@@ -181,6 +234,7 @@ public class DocumentExportGenerationService
                 zos.putNextEntry(new ZipEntry("manifest.csv"));
                 zos.write(genererManifestCsv(lignesManifest));
                 zos.closeEntry();
+                }
             }
 
             job.setStatut(ExportJobStatus.PRET);
@@ -204,47 +258,54 @@ public class DocumentExportGenerationService
     }
 
     /**
-     * <chemin complet UO>/<type>/[Corbeille/][<dossier>/]<titre>.pdf — reflète
+     * <chemin complet UO>/[<dossier>/]<type>/[Corbeille/]<titre>.pdf — reflète
      * la vraie hiérarchie des UO (dossiers imbriqués, pas un nom aplati) et
      * regroupe TOUJOURS par type de document, comme partout ailleurs dans
-     * l'app ("Mes documents" côté éditeur). Avant cette version, ni le type
-     * ni la hiérarchie n'apparaissaient : tous les documents d'une UO se
-     * retrouvaient à plat dans un seul dossier, types mélangés. La
-     * séparation par dossier reste optionnelle (job.isSeparateProjects) et
-     * s'imbrique désormais SOUS le type plutôt qu'à sa place.
+     * l'app ("Mes documents" côté éditeur).
+     *
+     * DOSSIER AVANT type, pas l'inverse — corrigé 10/2026 (retour utilisateur :
+     * "les dossiers ne sont pas créés pour empaqueter les types de documents
+     * qu'ils contenaient, ça casse la logique"). Une version précédente
+     * imbriquait le dossier SOUS le type ; ça ne correspondait à aucun autre
+     * écran de l'app, où un dossier est TOUJOURS le regroupement principal et
+     * les types de documents n'en sont qu'une subdivision (voir
+     * DossiersPanel : ouvrir un dossier montre ses sous-dossiers ET les types
+     * de documents qu'il contient, jamais l'inverse). La séparation par
+     * dossier reste optionnelle (job.isSeparateProjects) — à false, pas de
+     * niveau dossier du tout, juste UO/type/titre.
      *
      * Un document en corbeille (inclus seulement si excludeCorbeille=false —
      * exclu par défaut) atterrit dans un sous-dossier "Corbeille" DANS son
-     * dossier de type, juste avant l'éventuel sous-dossier dossier — sans
-     * cette distinction, il était indiscernable d'un document actif dans le
-     * ZIP (le manifeste, lui, porte aussi ce statut — voir genererManifestCsv).
+     * dossier de type — sans cette distinction, il était indiscernable d'un
+     * document actif dans le ZIP (le manifeste, lui, porte aussi ce statut —
+     * voir genererManifestCsv).
      *
      * Le préfixe UUID du nom de fichier disparaît (redondant avec le
      * manifeste) au profit d'un titre lisible ; en cas de collision entre
-     * deux documents au même chemin (même UO/type/[dossier]/titre),
+     * deux documents au même chemin (même UO/[dossier]/type/titre),
      * dédupliqué via un suffixe " (2)", " (3)"...
      */
     private String construireCheminEntree(
         DocumentExportRow doc, String cheminUO, boolean separateProjects, Set<String> cheminsUtilises)
     {
         String uoDossier = nettoyerChemin(cheminUO, "UO");
-        String typeDossier = nettoyer(doc.typeDocumentNom(), "Sans_type");
 
-        StringBuilder chemin = new StringBuilder(uoDossier).append('/').append(typeDossier).append('/');
+        StringBuilder chemin = new StringBuilder(uoDossier).append('/');
+
+        // Pas de dossier "Sans_dossier" — inutile : un document sans dossier
+        // reste identifiable par sa seule présence au niveau du type,
+        // directement sous l'UO. Ce niveau n'apparaît QUE pour un document
+        // qui a réellement un dossier.
+        if (separateProjects && doc.dossierNom() != null && !doc.dossierNom().isBlank())
+        {
+            chemin.append(nettoyer(doc.dossierNom(), "Sans_dossier")).append('/');
+        }
+
+        chemin.append(nettoyer(doc.typeDocumentNom(), "Sans_type")).append('/');
 
         if (doc.status() == DocumentStatus.CORBEILLE)
         {
             chemin.append("Corbeille/");
-        }
-
-        // Pas de dossier "Sans_dossier" — inutile : un document sans dossier
-        // reste identifiable par sa seule présence dans le dossier de type,
-        // pas besoin d'un niveau de plus qui ne dirait rien de plus. Le
-        // sous-dossier dossier n'apparaît QUE pour un document qui en a
-        // réellement un.
-        if (separateProjects && doc.dossierNom() != null && !doc.dossierNom().isBlank())
-        {
-            chemin.append(nettoyer(doc.dossierNom(), "Sans_dossier")).append('/');
         }
 
         // Le titre archivé inclut déjà ".pdf" (ex. "invoice_..._36652.pdf") —
@@ -254,6 +315,37 @@ public class DocumentExportGenerationService
             .replaceAll("(?i)\\.pdf$", "");
         chemin.append(titreSansExtension).append(".pdf");
         return dedupliquer(chemin.toString(), cheminsUtilises);
+    }
+
+    private static String nullSafe(String v)
+    {
+        return v != null ? v : "";
+    }
+
+    /** libellé -> valeur par document ; un DataType sans libellé (ancien) est ignoré. */
+    private Map<UUID, Map<String, String>> chargerMetadonnees(java.util.Collection<UUID> ids)
+    {
+        Map<UUID, Map<String, String>> res = new java.util.HashMap<>();
+        for (Object[] r : dataTypeRepository.findMetadonneesPourExport(ids))
+        {
+            if (r[1] == null) continue;
+            res.computeIfAbsent((UUID) r[0], k -> new java.util.LinkedHashMap<>())
+               .put((String) r[1], (String) r[2]);
+        }
+        return res;
+    }
+
+    private String serialiserMetadonnees(Map<String, String> metas)
+    {
+        if (metas == null || metas.isEmpty()) return "";
+        try
+        {
+            return objectMapper.writeValueAsString(metas);
+        }
+        catch (Exception e)
+        {
+            return "";
+        }
     }
 
     /** Nettoie chaque segment d'un chemin UO ("Ucad/Faculté Sciences") indépendamment,
@@ -314,7 +406,9 @@ public class DocumentExportGenerationService
         out.writeBytes(new byte[] { (byte) 0xEF, (byte) 0xBB, (byte) 0xBF }); // BOM UTF-8
 
         String entete = String.join(",",
-            "document_id", "titre", "uo", "dossier", "type", "statut", "acces", "archive_le", "chemin_dans_zip");
+            "document_id", "titre", "uo", "dossier", "type", "statut", "acces", "archive_le", "chemin_dans_zip",
+            "sha256_pdfa", "sha256_original", "format", "echeance_conservation", "duree_conservation_annees",
+            "sort_final", "horodatage_rfc3161", "jeton_tsr", "signature_pki", "metadonnees_json");
         out.writeBytes((entete + "\n").getBytes(StandardCharsets.UTF_8));
 
         for (String[] ligne : lignes)

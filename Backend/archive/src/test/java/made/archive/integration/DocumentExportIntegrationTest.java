@@ -75,7 +75,15 @@ import static org.mockito.Mockito.when;
  */
 @Tag("integration")
 @SpringBootTest(classes = DocumentExportIntegrationTest.TestJpaConfig.class,
-                 webEnvironment = SpringBootTest.WebEnvironment.NONE)
+                 webEnvironment = SpringBootTest.WebEnvironment.NONE,
+                 // Base Testcontainers VIDE : Hibernate crée le schéma (les migrations
+                 // Flyway V2+ supposent un schéma de production déjà baseliné), et
+                 // schema.sql (contraintes CHECK de prod) n'a pas à être rejoué ici.
+                 properties = {
+                     "spring.jpa.hibernate.ddl-auto=create-drop",
+                     "spring.flyway.enabled=false",
+                     "spring.sql.init.mode=never"
+                 })
 @Testcontainers
 class DocumentExportIntegrationTest
 {
@@ -181,6 +189,45 @@ class DocumentExportIntegrationTest
             .doesNotContain(docPriveUo1.getId());
     }
 
+    @Test
+    void lExportEnrichiRemonteEmpreintesJetonEtSortFinal()
+    {
+        UniteOrganisationnelle uo = uoRepository.save(nouvelleUo("UO-Enrichi"));
+        Role roleAdmin = roleRepository.save(new Role(null, Role_Name.ADMIN));
+        User admin = userRepository.save(nouvelUtilisateur("enrichi@test.local", roleAdmin));
+
+        TypeDocument type = nouveauTypeDocument(uo, admin);
+        type.getRetention().setSortFinal(made.archive.entite.SortFinal.DETRUIRE);
+        type = typeDocumentRepository.save(type);
+
+        Document doc = nouveauDocument("Avec preuves", TypeAccess.PUBLIC, uo, type, admin, null, DocumentStatus.ACTIVE);
+        doc.setHorodatageToken(new byte[] { 1, 2, 3 });
+        doc.setHorodatageDate(java.time.Instant.parse("2026-01-01T00:00:00Z"));
+        doc.setPkiSignature("c2lnbmF0dXJl");
+        final Document docAvec = documentRepository.save(doc);
+        // Sans dossier, sans jeton : doit quand même remonter (LEFT JOIN dossier, pas d'INNER JOIN caché).
+        Document nu = documentRepository.save(
+            nouveauDocument("Sans preuves", TypeAccess.PUBLIC, uo, type, admin, null, DocumentStatus.ACTIVE));
+
+        List<made.archive.dto.DocumentExportRow> rows =
+            documentRepository.findAllByIdPourExport(List.of(docAvec.getId(), nu.getId()));
+
+        assertThat(rows).hasSize(2);
+        made.archive.dto.DocumentExportRow avec = rows.stream()
+            .filter(r -> r.id().equals(docAvec.getId())).findFirst().orElseThrow();
+        assertThat(avec.pdfaSha256()).isEqualTo(docAvec.getPdfaSha256());
+        assertThat(avec.originalSha256()).isEqualTo(docAvec.getOriginalSha256());
+        assertThat(avec.horodatageToken()).containsExactly(1, 2, 3);
+        assertThat(avec.pkiSignature()).isEqualTo("c2lnbmF0dXJl");
+        assertThat(avec.retentionYears()).isEqualTo(10L);
+        assertThat(avec.sortFinal()).isEqualTo(made.archive.entite.SortFinal.DETRUIRE);
+
+        made.archive.dto.DocumentExportRow sans = rows.stream()
+            .filter(r -> r.id().equals(nu.getId())).findFirst().orElseThrow();
+        assertThat(sans.horodatageToken()).isNull();
+        assertThat(sans.pkiSignature()).isNull();
+    }
+
     // ── Fixtures ─────────────────────────────────────────────────────────
 
     private UniteOrganisationnelle nouvelleUo(String nom)
@@ -215,8 +262,8 @@ class DocumentExportIntegrationTest
         type.setNom("Type de test");
         // Retention.createAt est @NotNull — l'initialisateur par défaut du champ
         // (LocalDateTime.now()) est écrasé par ce constructeur @AllArgsConstructor
-        // dès qu'on lui passe explicitement 4 arguments, null y compris.
-        type.setRetention(new Retention(null, 10L, 0L, LocalDateTime.now()));
+        // dès qu'on lui passe explicitement les arguments, null y compris.
+        type.setRetention(new Retention(null, 10L, 0L, LocalDateTime.now(), made.archive.entite.SortFinal.CONSERVER));
         type.setUniteOrganisationnelle(uo);
         type.setUser(createur); // @NotNull — oublié à l'écriture initiale, voir 5.10.3
         return type;

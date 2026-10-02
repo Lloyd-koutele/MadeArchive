@@ -23,6 +23,24 @@ public class PhysicalLocationDto
     private String description;
     private String status;
     private boolean storagePoint;
+
+    /** Nombre maximal de documents (uniquement significatif si storagePoint=true) — null = illimité. */
+    private Integer capaciteMax;
+
+    /** Nombre de documents actuellement rattachés (vivants, hors DELETED) — voir PhysicalLocationService.toDto. */
+    private long nombreDocuments;
+
+    /** LIBRE, TYPE_UNIQUE ou DOSSIER — voir LocationModeContrainte. Sans effet si storagePoint=false. */
+    private String modeContrainte;
+
+    /** Renseigné seulement si modeContrainte=TYPE_UNIQUE. */
+    private Long typeDocumentAccepteId;
+    private String typeDocumentAccepteNom;
+
+    /** Renseigné seulement si modeContrainte=DOSSIER. */
+    private Long dossierId;
+    private String dossierNom;
+
     private UUID parentId;
     private Long uniteOrganisationnelleId;
 

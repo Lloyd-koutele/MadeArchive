@@ -1,0 +1,54 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   THÈME — variables de couleur de toute l'application.
+   Extrait de global.css (10/2026) pour que changer de thème se fasse en
+   éditant UN SEUL fichier : ces mêmes noms de variable sont déjà référencés
+   (via var(--xxx, ...)) dans la quasi-totalité des fichiers CSS du projet —
+   changer une valeur ici suffit à la propager partout, sans toucher à rien
+   d'autre.
+
+   Palette actuelle : couleurs de https://esp.sn/ (bleu nuit + bleu ciel),
+   extraites des styles calculés réels du site (pas une estampillation
+   approximative) :
+     - rgb(29,39,105)  = #1D2769 — bleu nuit dominant (bandeaux, titres)
+     - rgb(20,28,47)   = #141C2F — bleu nuit plus sombre
+     - rgb(64,84,178)  = #4054B2 — bleu moyen
+     - rgb(6,174,253)  = #06AEFD — bleu ciel (bandeaux de mise en avant)
+     - rgb(239,240,245)= #EFF0F5 — surface claire teintée bleu
+     - rgb(105,114,125)= #69727D — texte secondaire gris-bleu
+
+   --success/--error restent volontairement INDÉPENDANTS de la charte —
+   ce sont des couleurs SÉMANTIQUES (statut actif/erreur), pas des couleurs
+   de marque : un badge "erreur" doit rester rouge même dans un thème bleu,
+   sans quoi un changement de thème rendrait les statuts moins lisibles.
+───────────────────────────────────────────────────────────────────────── */
+:root {
+    --white-choc:     #FFFFFF;   /* surface principale (fond de page, cartes) */
+    --cream:          #EFF0F5;   /* surface secondaire (survol, fonds alternés) */
+    --border:         #D7DBE8;   /* bordure douce */
+    --text-light:     #69727D;   /* texte secondaire */
+    --dark-choc:      #1D2769;   /* bleu nuit principal (titres, texte fort, fonds sombres) */
+    --dark-mid:       #141C2F;   /* bleu nuit plus sombre */
+    --dark-soft:      #4054B2;   /* bleu moyen (texte/fond adouci) */
+    --accent:         #06AEFD;   /* bleu ciel — accent/mise en avant */
+    --success:        #4A7C59;   /* sémantique — ne suit pas le thème, voir note ci-dessus */
+    --error:          #9B3A3A;   /* sémantique — ne suit pas le thème, voir note ci-dessus */
+    --shadow-sm:      0 1px 4px rgba(29,39,105,0.08);
+    --shadow-md:      0 4px 16px rgba(29,39,105,0.12);
+    --shadow-lg:      0 8px 32px rgba(29,39,105,0.16);
+    --radius:         10px;
+    --radius-sm:      6px;
+    --transition:     0.2s ease;
+
+    /* Triplets R,G,B (SANS rgba() autour) des couleurs ci-dessus — pour tout
+       endroit qui a besoin d'une OPACITÉ réglable (ombres, voiles, surbrillances
+       au survol) : rgba() ne sait pas lire une variable contenant un hex, elle a
+       besoin des 3 canaux séparés. Utilisation : rgba(var(--dark-choc-rgb), 0.5).
+       Doivent rester synchronisés à la main avec les hex ci-dessus à chaque
+       changement de thème (CSS ne sait pas calculer l'un à partir de l'autre). */
+    --dark-choc-rgb:  29, 39, 105;
+    --dark-mid-rgb:   20, 28, 47;
+    --dark-soft-rgb:  64, 84, 178;
+    --accent-rgb:     6, 174, 253;
+    --white-choc-rgb: 255, 255, 255;
+    --border-rgb:     215, 219, 232;
+}

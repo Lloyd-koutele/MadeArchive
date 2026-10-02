@@ -595,6 +595,8 @@ public class UniteOrganisationnelleService
         {
             throw new UONonVideException("Une UO avec le nom " + nom + "existe deja");
         }
+
+        verifierPasMemeNomQueParent(parentId, nomNormalise);
     }
 
     /** Même vérification que verifierNomUnique, en excluant l'UO qu'on est justement en train de renommer/déplacer. */
@@ -611,6 +613,31 @@ public class UniteOrganisationnelleService
         if (conflit)
         {
             throw new UONomDejeExistantException(nom);
+        }
+
+        verifierPasMemeNomQueParent(parentId, nomNormalise);
+    }
+
+    /**
+     * Une UO ne peut pas porter le même nom que son PARENT DIRECT — même
+     * règle déjà en place pour les Dossiers et les Emplacements physiques
+     * (voir DossierService/PhysicalLocationService.verifierNomUnique),
+     * reprise ici à l'identique pour les UO, après normalisation (casse,
+     * accents, espacement — voir NormalisationNoms), donc "Esp" et "esp "
+     * comptent comme le même nom. parentId == null (racine) : rien à
+     * comparer, jamais concerné par cette règle.
+     */
+    private void verifierPasMemeNomQueParent(Long parentId, String nomNormalise)
+    {
+        if (parentId == null)
+        {
+            return;
+        }
+        UniteOrganisationnelle parent = uoRepository.findById(parentId).orElse(null);
+        if (parent != null && NormalisationNoms.normaliser(parent.getNom()).equals(nomNormalise))
+        {
+            throw new BusinessException(
+                "Une UO ne peut pas porter le même nom que son parent direct (\"" + parent.getNom() + "\")");
         }
     }
 
@@ -1006,10 +1033,15 @@ public class UniteOrganisationnelleService
     /**
      * Utilisateurs "légitimes" comme membres d'un groupe d'accès (document ou
      * dossier privé) pour une UO donnée : ses membres actifs (voir
-     * getUtilisateursDeUO ci-dessus), plus tous les ADMIN globaux — rattachés
-     * à aucune UO, mais légitimes sur tout document/dossier par leur rôle.
-     * uoId nullable : un demandeur sans UO active (cas d'un ADMIN global, voir
-     * changerUOUtilisateur) n'a alors que les ADMIN comme candidats.
+     * getUtilisateursDeUO ci-dessus), les ADMIN_UO ayant autorité sur cette UO
+     * (elle-même ou un ancêtre — voir getAdminUOAvecAutoriteSur, même logique
+     * que pour les destinataires de notification : un admin_uo d'une UO
+     * parente a autorité sur les documents/dossiers de ses UO filles, donc un
+     * candidat légitime, pas seulement les membres de l'UO exacte), plus tous
+     * les ADMIN globaux — rattachés à aucune UO, mais légitimes sur tout
+     * document/dossier par leur rôle. uoId nullable : un demandeur sans UO
+     * active (cas d'un ADMIN global, voir changerUOUtilisateur) n'a alors que
+     * les ADMIN comme candidats.
      *
      * Règle PARTAGÉE entre trois appelants : GroupeAccessService et
      * DossierService.getUtilisateursDisponibles* (APRÈS la création d'un
@@ -1023,13 +1055,15 @@ public class UniteOrganisationnelleService
     public List<User> getCandidatsGroupeAcces(Long uoId, User currentUser)
     {
         // Map plutôt que Set/List : dédoublonne par id si un même utilisateur
-        // (ex. un ADMIN_UO admin ET membre de sa propre UO) apparaîtrait des
-        // deux côtés, tout en préservant un ordre stable.
+        // (ex. un ADMIN_UO admin ET membre de sa propre UO, ou un admin_uo
+        // d'ancêtre déjà remonté par getAdminUOAvecAutoriteSur) apparaîtrait
+        // plusieurs fois, tout en préservant un ordre stable.
         Map<UUID, User> candidats = new LinkedHashMap<>();
 
         if (uoId != null)
         {
             getUtilisateursDeUO(uoId, currentUser).forEach(u -> candidats.put(u.getId(), u));
+            getAdminUOAvecAutoriteSur(uoId).forEach(u -> candidats.put(u.getId(), u));
         }
 
         userRepository.findByRoleName(Role_Name.ADMIN)

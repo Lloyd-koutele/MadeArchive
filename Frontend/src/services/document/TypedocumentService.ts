@@ -7,17 +7,29 @@ export interface MetaDataDto {
     obligatoire: boolean;
 }
 
+/** Miroir de made.archive.entite.SortFinal (backend). */
+export type SortFinal = 'CONSERVER' | 'DETRUIRE' | 'TRIER';
+
 export interface TypeDocumentDto {
     id?: number;
     nom: string;
     metaData: MetaDataDto[];
     uoId: number;
     retentionYears: number | null;
-    periodGrace: number | null;
     /** true si des regex d'extraction OCR ont déjà été générées pour ce type. */
     regexGenerated?: boolean;
     /** Regex par champ, encodées en JSON (voir TypeDocument.extractionRegexJson côté serveur). */
     extractionRegexJson?: string | null;
+    /** CONSERVER (défaut) / DETRUIRE / TRIER — voir SortFinal. Gouverne ce qui
+     *  arrive à un document de ce type une fois en corbeille, délai de grâce
+     *  écoulé (voir modifierSortFinalTypeDocument pour la modifier après coup,
+     *  même si des documents sont déjà rattachés à ce type). */
+    sortFinal?: SortFinal;
+    /** Activité (plan de classement de l'UO) — null/absent = non classé. Se modifie via
+     *  rattacherTypeAActivite (PlanClassementService), pas via create/update. */
+    planClassementNoeudId?: number | null;
+    /** Chemin lisible, ex. "03 Finances › 03.2 Factures". */
+    activite?: string | null;
 }
 
 /**
@@ -109,6 +121,28 @@ export const getTypeDocumentsVisibles = async (uoId?: number | null): Promise<Ty
         const response = await api.get('/user/types-documents', {
             params: uoId ? { uoId } : {},
         });
+        return response.data;
+    } catch (error: any) {
+        throw error.response?.data?.message
+            ? new Error(error.response.data.message)
+            : error;
+    }
+};
+
+/**
+ * POST /api/editor/types-documents/{id}/sort-final
+ * Modifie le sort final d'un type — DÉLIBÉRÉMENT un endpoint à part, pas
+ * soumis au verrou "documents déjà rattachés" de updateTypeDocument (voir
+ * TypeDocumentService.modifierSortFinal côté serveur) : contrairement au nom
+ * ou aux métadonnées, c'est une décision de gouvernance purement tournée vers
+ * l'avenir, modifiable à tout moment même pour un type déjà en service.
+ */
+export const modifierSortFinalTypeDocument = async (id: number, sortFinal: SortFinal): Promise<TypeDocumentDto> => {
+    try {
+        // JSON.stringify explicite (pas juste la chaîne nue) : le @RequestBody String
+        // du serveur attend un littéral JSON valide ("CONSERVER", guillemets inclus) —
+        // axios ne sérialise PAS automatiquement une string déjà passée en body.
+        const response = await api.post(`/editor/types-documents/${id}/sort-final`, JSON.stringify(sortFinal));
         return response.data;
     } catch (error: any) {
         throw error.response?.data?.message

@@ -9,6 +9,7 @@ import Modal from "../Page/Modal";
 import Profile from "../Page/Profil";
 import AssignUOModal from "./AssignUOModal";
 import Corbeille from '../document/Corbeille';
+import UoActionsMenu from '../components/UoActionsMenu';
 import DossiersPanel from '../organisation/DossiersPanel';
 import ExportPanel from '../organisation/ExportPanel';
 import AuditLogPanel from './AuditLogPanel';
@@ -470,22 +471,11 @@ function AdminUoDashboard() {
                             <p className="uo-page-path">{currentUO.cheminComplet}</p>
                             <div className="uo-page-title-row">
                                 <h2 className="uo-page-title">{currentUO.nom}</h2>
-                                <div className="uo-page-title-actions">
-                                    <button
-                                        className="details-close-btn"
-                                        onClick={openRenameUOModal}
-                                        disabled={actionInProgress}
-                                    >
-                                        <i className="fa-solid fa-pen" /> Renommer
-                                    </button>
-                                    <button
-                                        className="details-close-btn uo-delete-btn"
-                                        onClick={handleSupprimerUO}
-                                        disabled={actionInProgress}
-                                    >
-                                        <i className="fa-solid fa-trash" /> Supprimer
-                                    </button>
-                                </div>
+                                <UoActionsMenu
+                                    onRenommer={openRenameUOModal}
+                                    onSupprimer={handleSupprimerUO}
+                                    disabled={actionInProgress}
+                                />
                             </div>
 
                             <div className="uo-tabs">
@@ -636,7 +626,7 @@ function AdminUoDashboard() {
                     )}
                 </Modal>
 
-                <Modal isOpen={isCreateUOModalOpen} onClose={handleCloseModal} title="Créer une UO enfant">
+                <Modal isOpen={isCreateUOModalOpen} onClose={handleCloseModal} title="Créer une UO">
                     <form onSubmit={handleCreateUO}>
                         <div className="form-field">
                             <input
