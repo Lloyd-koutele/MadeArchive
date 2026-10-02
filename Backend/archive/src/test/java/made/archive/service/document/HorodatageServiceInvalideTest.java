@@ -53,7 +53,7 @@ class HorodatageServiceInvalideTest
 
         return new HorodatageService(
             props, WebClient.builder(), documentRepository, notificationService,
-            userRepository, cacheManager);
+            userRepository, cacheManager, mock(made.archive.service.audit.AuditLogService.class));
     }
 
     @Test

@@ -1,0 +1,24 @@
+.doc-journal { margin-top: 1rem; border-top: 1px dashed var(--border); padding-top: 0.8rem; }
+.doc-journal-toggle {
+    background: none; border: none; cursor: pointer; font-weight: 700;
+    color: var(--dark-choc); padding: 0.2rem 0; font-size: 0.95rem;
+}
+.doc-journal-body { display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.5rem; }
+.doc-journal-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.doc-journal-controle, .doc-journal-vide { margin: 0; font-size: 0.85rem; color: var(--dark-mid); }
+.doc-journal-note { color: var(--text-light); }
+.doc-journal-liste { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.doc-journal-liste li {
+    display: grid; grid-template-columns: 9.5rem 1fr; gap: 0.1rem 0.8rem;
+    padding: 0.5rem 0.6rem; border-left: 3px solid var(--accent); background: var(--cream);
+    border-radius: var(--radius-sm); font-size: 0.85rem;
+}
+.doc-journal-liste li.doc-journal-echec { border-left-color: var(--error); }
+.doc-journal-date { color: var(--text-light); grid-row: span 3; }
+.doc-journal-action { font-weight: 700; color: var(--dark-choc); }
+.doc-journal-acteur { color: var(--dark-soft); word-break: break-all; }
+.doc-journal-desc { color: var(--dark-mid); }
+@media (max-width: 600px) {
+    .doc-journal-liste li { grid-template-columns: 1fr; }
+    .doc-journal-date { grid-row: auto; }
+}

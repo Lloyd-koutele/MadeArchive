@@ -1,0 +1,42 @@
+// Libellés français de TOUTES les actions du journal d'audit (miroir de made.archive.entite.AuditAction
+// côté serveur) — tenu à jour à la main. Une action absente retombe sur son nom brut (voir libelleAction).
+const LIBELLES: Record<string, string> = {
+    LOGIN_REUSSI: 'Connexion réussie', LOGIN_ECHOUE: 'Connexion échouée', LOGOUT: 'Déconnexion',
+    TOKEN_RAFRAICHI: 'Token rafraîchi', SESSION_INVALIDEE: 'Session invalidée', CONNEXION_DEVERROUILLEE: 'Connexion déverrouillée',
+    UTILISATEUR_CREE: 'Utilisateur créé', UTILISATEUR_MODIFIE: 'Utilisateur modifié', UTILISATEUR_BLOQUE: 'Utilisateur bloqué',
+    UTILISATEUR_REACTIVE: 'Utilisateur réactivé', UTILISATEUR_SUPPRESSION_DEMANDEE: 'Suppression d\'utilisateur demandée',
+    UTILISATEUR_SUPPRESSION_ANNULEE: 'Suppression d\'utilisateur annulée', UTILISATEUR_SUPPRIME: 'Utilisateur supprimé',
+    PROFIL_MODIFIE: 'Profil modifié',
+    UO_CREEE: 'UO créée', UO_MODIFIEE: 'UO modifiée', UO_SUPPRIMEE: 'UO supprimée', UO_RACINE_CHANGEE: 'UO déplacée vers la racine',
+    UO_MEMBRE_AJOUTE: 'Membre ajouté à une UO', UO_MEMBRE_RETIRE: 'Membre retiré d\'une UO', UO_MEMBRE_TRANSFERE: 'Membre transféré',
+    DOCUMENT_UPLOAD_REUSSI: 'Document archivé', DOCUMENT_UPLOAD_ECHOUE: 'Échec d\'archivage',
+    DOCUMENT_NOUVELLE_VERSION: 'Nouvelle version', DOCUMENT_CORRUPTION_DETECTEE: 'Corruption détectée',
+    DOCUMENT_SUPPRESSION_PLANIFIEE: 'Suppression planifiée', DOCUMENT_PLACE_CORBEILLE: 'Placé dans la corbeille',
+    DOCUMENT_RESTAURE_CORBEILLE: 'Restauré depuis la corbeille', DOCUMENT_SUPPRIME_DEFINITIVEMENT: 'Supprimé définitivement',
+    DOCUMENT_CONSULTE: 'Consulté', DOCUMENT_TELECHARGE: 'Téléchargé', DOCUMENT_RECHERCHE: 'Recherche effectuée',
+    DOCUMENT_VERIFICATION_PUBLIQUE: 'Vérification publique',
+    GROUPE_MEMBRE_AJOUTE: 'Membre ajouté au groupe d\'accès', GROUPE_MEMBRE_RETIRE: 'Membre retiré du groupe d\'accès',
+    TYPE_DOCUMENT_CREE: 'Type de document créé', TYPE_DOCUMENT_MODIFIE: 'Type de document modifié',
+    TYPE_DOCUMENT_REGEX_REINITIALISEE: 'Regex réinitialisées', TYPE_DOCUMENT_REGEX_MODIFIEE: 'Regex modifiées',
+    TYPE_DOCUMENT_SUPPRIME: 'Type de document supprimé', TYPE_DOCUMENT_SORT_FINAL_MODIFIE: 'Sort final modifié',
+    TYPE_DOCUMENT_ACTIVITE_MODIFIEE: 'Activité du type modifiée',
+    DOSSIER_CREE: 'Dossier créé', DOSSIER_MODIFIE: 'Dossier modifié', DOSSIER_TYPES_AJOUTES: 'Types ajoutés au dossier',
+    DOSSIER_TYPE_RETIRE: 'Type retiré du dossier', DOSSIER_SUPPRIME: 'Dossier supprimé',
+    DOSSIER_ACCES_MODIFIE: 'Accès du dossier modifié', DOSSIER_DEPLACE: 'Dossier déplacé',
+    ATTESTATION_GENEREE: 'Attestation (QR) générée', ATTESTATION_CONSULTEE_PUBLIQUEMENT: 'Attestation consultée publiquement',
+    ATTESTATION_PURGEE: 'Attestation supprimée',
+    LOCATION_CREEE: 'Emplacement créé', LOCATION_MODIFIEE: 'Emplacement modifié', LOCATION_TYPE_CHANGE: 'Type d\'emplacement changé',
+    LOCATION_DESACTIVEE: 'Emplacement désactivé', LOCATION_REACTIVEE: 'Emplacement réactivé',
+    LOCATION_SUPPRIMEE: 'Emplacement supprimé', LOCATION_DEPLACEE: 'Emplacement déplacé',
+    DOCUMENT_EMPLACEMENT_MODIFIE: 'Emplacement physique modifié', DOCUMENT_METADATA_MODIFIEE: 'Métadonnées modifiées',
+    DOCUMENT_DOSSIER_MODIFIE: 'Dossier modifié', DOCUMENT_ACCES_MODIFIE: 'Accès modifié (public/privé)',
+    EXPORT_DOCUMENTS_DEMANDE: 'Export demandé', EXPORT_DOCUMENTS_PRIVES_INCLUS: 'Export incluant des documents privés',
+    EXPORT_TELECHARGE: 'Export téléchargé', FIXITY_CHECK_DEMANDE: 'Contrôle d\'intégrité demandé',
+    CHAINE_AUDIT_VERIFICATION_DEMANDEE: 'Vérification de la chaîne demandée',
+    DOCUMENT_HORODATE: 'Horodatage RFC 3161 obtenu', DOCUMENT_JOURNAL_EXPORTE: 'Journal du document exporté',
+    PLAN_CLASSEMENT_NOEUD_CREE: 'Activité ajoutée au plan', PLAN_CLASSEMENT_NOEUD_MODIFIE: 'Activité modifiée',
+    PLAN_CLASSEMENT_NOEUD_DEPLACE: 'Activité déplacée', PLAN_CLASSEMENT_NOEUD_SUPPRIME: 'Activité supprimée',
+};
+
+export const libelleAction = (action: string | null | undefined): string =>
+    action ? (LIBELLES[action] ?? action) : '—';
