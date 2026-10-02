@@ -4,6 +4,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import made.archive.config.HorodatageProperties;
 import made.archive.config.RedisCacheConfig;
+import made.archive.entite.AuditAction;
+import made.archive.entite.AuditCible;
 import made.archive.entite.Document;
 import made.archive.entite.DocumentStatus;
 import made.archive.entite.NotificationType;
@@ -11,6 +13,7 @@ import made.archive.entite.Role_Name;
 import made.archive.entite.User;
 import made.archive.repository.DocumentRepository;
 import made.archive.repository.UserRepository;
+import made.archive.service.audit.AuditLogService;
 import made.archive.service.notification.NotificationService;
 import org.bouncycastle.asn1.cmp.PKIStatus;
 import org.bouncycastle.tsp.TSPAlgorithms;
@@ -67,6 +70,7 @@ public class HorodatageService
     private final NotificationService notificationService;
     private final UserRepository userRepository;
     private final CacheManager cacheManager;
+    private final AuditLogService auditLogService;
 
     private static final List<DocumentStatus> STATUTS_EXCLUS =
         List.of(DocumentStatus.DELETED, DocumentStatus.CORBEILLE);
@@ -232,6 +236,7 @@ public class HorodatageService
             doc.setHorodatageToken(resultat.token());
             doc.setHorodatageDate(resultat.date());
             documentRepository.save(doc);
+            journaliserHorodatage(doc, resultat.date(), false);
             return;
         }
 
@@ -249,6 +254,17 @@ public class HorodatageService
             log.warn("[Horodatage] Notification d'échec (best-effort) non envoyée pour {} : {}",
                 documentId, e.getMessage());
         }
+    }
+
+    /** Trace dans le journal (donc dans le journal de cycle de vie du document) l'obtention du jeton. */
+    private void journaliserHorodatage(Document doc, Instant date, boolean repriseDifferee)
+    {
+        auditLogService.log(null, AuditAction.DOCUMENT_HORODATE, AuditCible.DOCUMENT,
+            doc.getId().toString(),
+            doc.getUniteOrganisationnelle() != null ? doc.getUniteOrganisationnelle().getId() : null,
+            "Jeton d'horodatage RFC 3161 obtenu (heure certifiée " + date + ")"
+                + (repriseDifferee ? " — reprise différée après un échec initial" : ""),
+            true);
     }
 
     /**
@@ -290,6 +306,7 @@ public class HorodatageService
             doc.setHorodatageToken(resultat.token());
             doc.setHorodatageDate(resultat.date());
             documentRepository.save(doc);
+            journaliserHorodatage(doc, resultat.date(), true);
             reussis++;
 
             try

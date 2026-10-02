@@ -5,7 +5,11 @@ import java.util.UUID;
 
 import made.archive.entite.AuditAction;
 import made.archive.entite.JournalAudit;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
 /**
@@ -34,4 +38,14 @@ public interface JournalAuditRepository
     /** Toute la plage chaînée, dans l'ordre — pour la vérification à la
      *  demande (voir AuditChainService.verifierChaine). */
     List<JournalAudit> findByChainHashIsNotNullOrderByIdAsc();
+
+    /**
+     * Journal de cycle de vie d'UN document : ses propres entrées (cible DOCUMENT) + celles de son groupe
+     * d'accès (cible GROUPE_ACCES — ajout/retrait de membres, qui changent qui peut le voir). Plus
+     * récent d'abord. groupeId vaut "" si le document n'a pas de groupe (aucune entrée ne correspond).
+     */
+    @Query("SELECT j FROM JournalAudit j WHERE (j.cibleType = made.archive.entite.AuditCible.DOCUMENT AND j.cibleId = :docId) "
+         + "OR (j.cibleType = made.archive.entite.AuditCible.GROUPE_ACCES AND j.cibleId = :groupeId) "
+         + "ORDER BY j.horodatage DESC, j.id DESC")
+    Page<JournalAudit> findJournalDocument(@Param("docId") String docId, @Param("groupeId") String groupeId, Pageable pageable);
 }

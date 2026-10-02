@@ -8,6 +8,7 @@ import made.archive.entite.AuditAction;
 import made.archive.entite.AuditCible;
 import made.archive.security.UserDetailsImpl;
 import made.archive.service.audit.AuditChainService;
+import made.archive.util.AuditLogExportFormatter;
 import made.archive.service.audit.AuditLogService;
 import made.archive.service.organisation.UniteOrganisationnelleService;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -117,7 +118,7 @@ public class AuditLogController
             uoAutorisees, acteurId, action, cibleType, null, dateDebut, dateFin, texte);
 
         boolean formatLog = "log".equalsIgnoreCase(format);
-        String contenu = formatLog ? versLogTexte(logs) : versCsv(logs);
+        String contenu = formatLog ? AuditLogExportFormatter.versLogTexte(logs) : AuditLogExportFormatter.versCsv(logs);
         byte[] octets = contenu.getBytes(StandardCharsets.UTF_8);
 
         String extension = formatLog ? "log" : "csv";
@@ -161,63 +162,5 @@ public class AuditLogController
             resultat.isChaineIntacte());
 
         return ResponseEntity.ok(resultat);
-    }
-
-    private static final DateTimeFormatter FORMAT_DATE_EXPORT =
-        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.systemDefault());
-
-    private String versCsv(List<AuditLogDto> logs)
-    {
-        StringBuilder sb = new StringBuilder();
-        sb.append('﻿'); // BOM UTF-8 — Excel affiche correctement les accents avec ça
-        sb.append("Date,Acteur,Role,IP,Action,TypeCible,IdCible,UO,Description,Succes,Details\n");
-
-        for (AuditLogDto l : logs)
-        {
-            sb.append(csv(FORMAT_DATE_EXPORT.format(l.getHorodatage()))).append(',')
-              .append(csv(l.getActeurEmail())).append(',')
-              .append(csv(l.getActeurRole())).append(',')
-              .append(csv(l.getAdresseIp())).append(',')
-              .append(csv(l.getAction() != null ? l.getAction().name() : null)).append(',')
-              .append(csv(l.getCibleType() != null ? l.getCibleType().name() : null)).append(',')
-              .append(csv(l.getCibleId())).append(',')
-              .append(csv(l.getUoId() != null ? l.getUoId().toString() : null)).append(',')
-              .append(csv(l.getDescription())).append(',')
-              .append(l.isSucces() ? "OUI" : "NON").append(',')
-              .append(csv(l.getDetails()))
-              .append('\n');
-        }
-
-        return sb.toString();
-    }
-
-    private String csv(String valeur)
-    {
-        if (valeur == null) return "";
-        boolean aEchapper = valeur.contains(",") || valeur.contains("\"") || valeur.contains("\n");
-        String echappe = valeur.replace("\"", "\"\"");
-        return aEchapper ? "\"" + echappe + "\"" : echappe;
-    }
-
-    private String versLogTexte(List<AuditLogDto> logs)
-    {
-        StringBuilder sb = new StringBuilder();
-        for (AuditLogDto l : logs)
-        {
-            sb.append('[').append(FORMAT_DATE_EXPORT.format(l.getHorodatage())).append("] ");
-            sb.append(l.getActeurEmail() != null ? l.getActeurEmail() : "anonyme");
-            if (l.getActeurRole() != null) sb.append(" (").append(l.getActeurRole()).append(')');
-            sb.append(" — ").append(l.getAction());
-            if (l.getCibleType() != null)
-            {
-                sb.append(" — ").append(l.getCibleType());
-                if (l.getCibleId() != null) sb.append('#').append(l.getCibleId());
-            }
-            sb.append(" — ").append(l.getDescription());
-            if (!l.isSucces()) sb.append(" [ÉCHEC]");
-            if (l.getAdresseIp() != null) sb.append(" — IP ").append(l.getAdresseIp());
-            sb.append('\n');
-        }
-        return sb.toString();
     }
 }

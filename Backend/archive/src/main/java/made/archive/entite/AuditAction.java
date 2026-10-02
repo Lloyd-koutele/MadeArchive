@@ -129,6 +129,12 @@ public enum AuditAction
     // ── Sort final (voir entite.SortFinal) ─────────────────────────────────────
     TYPE_DOCUMENT_SORT_FINAL_MODIFIE,
 
+    // ── Journal de cycle de vie d'un document (voir service.document.DocumentJournalService) ──
+    /** Jeton d'horodatage RFC 3161 obtenu pour ce document (à l'archivage ou à la reprise différée). */
+    DOCUMENT_HORODATE,
+    /** Export (CSV/.log) du journal de CE document par un utilisateur. */
+    DOCUMENT_JOURNAL_EXPORTE,
+
     // ── Plan de classement (voir entite.PlanClassementNoeud) ───────────────────
     PLAN_CLASSEMENT_NOEUD_CREE,
     PLAN_CLASSEMENT_NOEUD_MODIFIE,

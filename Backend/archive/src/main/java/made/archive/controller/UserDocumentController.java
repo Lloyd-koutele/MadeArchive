@@ -78,6 +78,7 @@ import java.util.UUID;
 public class UserDocumentController
 {
     private final DocumentService documentService;
+    private final made.archive.service.document.DocumentJournalService documentJournalService;
     private final DocumentAccessService documentAccessService;
     private final AttestationService attestationService;
     private final TypeDocumentService typeDocumentService;
@@ -712,6 +713,61 @@ public class UserDocumentController
         {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(buildError("INTERNAL_ERROR", "Erreur : " + e.getMessage()));
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Journal de cycle de vie d'un document — voir DocumentJournalService
+    // ═══════════════════════════════════════════════════════════════════
+
+    /** GET /api/user/docs/{id}/journal?page=&size= — historique du document, plus récent d'abord. */
+    @Secured({"ROLE_ADMIN", "ROLE_ADMIN_UO", "ROLE_EDITOR"})
+    @GetMapping("/docs/{id}/journal")
+    public ResponseEntity<?> getJournalDocument(
+        @PathVariable UUID id,
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(defaultValue = "25") int size,
+        @AuthenticationPrincipal UserDetails userDetails)
+    {
+        try
+        {
+            return ResponseEntity.ok(documentJournalService.consulter(id, page, size, userDetails));
+        }
+        catch (BusinessException e)
+        {
+            return ResponseEntity.badRequest().body(buildError("BUSINESS_ERROR", e.getMessage()));
+        }
+    }
+
+    /** GET /api/user/docs/{id}/journal/export?format=csv|log — même format que l'export du journal d'audit. */
+    @Secured({"ROLE_ADMIN", "ROLE_ADMIN_UO", "ROLE_EDITOR"})
+    @GetMapping("/docs/{id}/journal/export")
+    public ResponseEntity<?> exporterJournalDocument(
+        @PathVariable UUID id,
+        @RequestParam(defaultValue = "csv") String format,
+        @AuthenticationPrincipal UserDetails userDetails)
+    {
+        try
+        {
+            boolean formatLog = "log".equalsIgnoreCase(format);
+            List<made.archive.dto.AuditLogDto> entrees =
+                documentJournalService.exporter(id, formatLog ? "log" : "csv", userDetails);
+            String contenu = formatLog
+                ? made.archive.util.AuditLogExportFormatter.versLogTexte(entrees)
+                : made.archive.util.AuditLogExportFormatter.versCsv(entrees);
+            byte[] octets = contenu.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            String nom = "journal-document_" + id + "_" + java.time.LocalDate.now() + (formatLog ? ".log" : ".csv");
+
+            return ResponseEntity.ok()
+                .contentType(org.springframework.http.MediaType.parseMediaType(
+                    formatLog ? "text/plain; charset=UTF-8" : "text/csv; charset=UTF-8"))
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                    org.springframework.http.ContentDisposition.attachment().filename(nom).build().toString())
+                .body(octets);
+        }
+        catch (BusinessException e)
+        {
+            return ResponseEntity.badRequest().body(buildError("BUSINESS_ERROR", e.getMessage()));
         }
     }
 

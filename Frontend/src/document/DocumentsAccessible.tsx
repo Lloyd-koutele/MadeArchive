@@ -19,6 +19,8 @@ import DossierAttachSection from '../components/DossierAttachSection';
 import DeplacerDossierModal from '../components/DeplacerDossierModal';
 import EmplacementPhysiqueModal from '../components/EmplacementPhysiqueModal';
 import PdfViewer from '../components/PdfViewer';
+import DocumentJournal from '../components/DocumentJournal';
+import { hasRole } from '../auth/authService';
 import type { TypeDocumentDto as TypeDocumentEditorDto } from '../services/document/DocumentService';
 import MetaDataField from './MetadaField';
 import type { DocumentListItemDto, DocumentDetailDto } from '../services/document/DocumentService';
@@ -1536,6 +1538,11 @@ function DocumentDetailPanel({
                         </button>
                     )}
                 </div>
+            )}
+
+            {/* Journal réservé aux ADMIN, ADMIN_UO et EDITOR — le serveur le refuse aux autres (403/erreur). */}
+            {(hasRole('ADMIN') || hasRole('ADMIN_UO') || hasRole('EDITOR')) && (
+                <DocumentJournal documentId={detail.documentId} />
             )}
         </div>
     );

@@ -1056,3 +1056,55 @@ export const getDocumentsAccessibles = async (
         );
     }
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// JOURNAL DE CYCLE DE VIE D'UN DOCUMENT (/api/user/docs/{id}/journal)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Une entrée du journal — même forme que le journal d'audit (made.archive.dto.AuditLogDto). */
+export interface DocumentJournalEntreeDto {
+    id: number;
+    horodatage: string;
+    acteurEmail: string | null;
+    acteurRole: string | null;
+    /** Renseignée seulement pour un ADMIN/ADMIN_UO — null pour les autres. */
+    adresseIp: string | null;
+    action: string;
+    description: string;
+    succes: boolean;
+    details: string | null;
+}
+
+export interface DocumentJournalDto {
+    content: DocumentJournalEntreeDto[];
+    page: number;
+    size: number;
+    totalElements: number;
+    totalPages: number;
+    /** Dernier contrôle d'intégrité : seuls les ÉCHECS sont journalisés un par un. */
+    dernierControleLe: string | null;
+    dernierControleResultat: string | null;
+}
+
+/** GET /api/user/docs/{id}/journal — historique du document, plus récent d'abord. */
+export const getJournalDocument = async (id: string, page = 0, size = 25): Promise<DocumentJournalDto> => {
+    try {
+        return (await api.get(`/user/docs/${id}/journal`, { params: { page, size } })).data;
+    } catch (error: any) {
+        throw error.response?.data?.message
+            ? new Error(error.response.data.message)
+            : error;
+    }
+};
+
+/** GET /api/user/docs/{id}/journal/export — télécharge le journal entier (CSV ou .log). */
+export const exporterJournalDocument = async (id: string, format: 'csv' | 'log'): Promise<void> => {
+    try {
+        const response = await api.get(`/user/docs/${id}/journal/export`, { params: { format }, responseType: 'blob' });
+        triggerDownload(response.data, `journal-document_${id}.${format}`);
+    } catch (error: any) {
+        throw error.response?.data?.message
+            ? new Error(error.response.data.message)
+            : error;
+    }
+};
