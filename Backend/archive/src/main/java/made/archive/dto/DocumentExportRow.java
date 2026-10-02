@@ -1,9 +1,12 @@
 package made.archive.dto;
 
+import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
 import made.archive.entite.DocumentStatus;
+import made.archive.entite.SortFinal;
 import made.archive.entite.TypeAccess;
 
 /**
@@ -29,5 +32,17 @@ public record DocumentExportRow(
     Long uoId,
     String uoNom,
     String typeDocumentNom,
-    String dossierNom
+    String dossierNom,
+    Long dossierId,
+    Long planClassementNoeudId,
+    // Enrichissement (export "preuve" — voir DocumentExportGenerationService) :
+    // empreintes, signature, jeton RFC 3161 et règle de conservation du type.
+    String pdfaSha256,
+    String originalSha256,
+    String pkiSignature,
+    byte[] horodatageToken,
+    Instant horodatageDate,
+    LocalDate retentionUntil,
+    Long retentionYears,
+    SortFinal sortFinal
 ) {}

@@ -140,6 +140,7 @@ public class DocumentExportService
         job.setDocumentIds(documents.stream().map(Document::getId).toList());
         job.setIncludePriveNonMembre(requete.isIncludePriveNonMembre());
         job.setSeparateProjects(requete.isSeparateProjects());
+        job.setFormat(requete.getFormat() != null ? requete.getFormat() : made.archive.entite.ExportFormat.ZIP_CSV);
         job.setExcludeCorbeille(requete.isExcludeCorbeille());
         job.setMotif(requete.getMotif());
         job.setDocumentsTotal(documents.size());

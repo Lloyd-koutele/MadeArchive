@@ -20,6 +20,7 @@ import made.archive.entite.AuditCible;
 import made.archive.entite.Document;
 import made.archive.entite.MetaData;
 import made.archive.entite.Retention;
+import made.archive.entite.SortFinal;
 import made.archive.entite.TypeDocument;
 import made.archive.entite.UniteOrganisationnelle;
 import made.archive.entite.User;
@@ -426,7 +427,15 @@ public class TypeDocumentService
                 retention.setRetentionYears(null);
                 retention.setPeriodGrace(null);
             }
-    
+
+            SortFinal sortFinalDemande = parseSortFinal(dto.getSortFinal());
+            if (sortFinalDemande == null)
+            {
+                throw new BusinessException("Sort final invalide — valeurs acceptées : "
+                    + java.util.Arrays.toString(SortFinal.values()));
+            }
+            retention.setSortFinal(sortFinalDemande);
+
             TypeDocument typeDocument = new TypeDocument();
             typeDocument.setNom(dto.getNom());
             typeDocument.setUser(currentUser);
@@ -672,6 +681,69 @@ public class TypeDocumentService
         dto.setNom(typeDocument.getNom());
         dto.setUoId(typeDocument.getUniteOrganisationnelle().getId());
         return dto;
+    }
+
+    /**
+     * Modifie le sort final (CONSERVER/DETRUIRE/TRIER — voir entite.SortFinal)
+     * d'un type de document — DÉLIBÉRÉMENT un endpoint à part, PAS soumis au
+     * verrou hasLinkedDocuments de updateTypeDocument (voir Javadoc plus haut) :
+     * contrairement au nom ou aux métadonnées, le sort final est une décision de
+     * gouvernance purement tournée vers l'avenir — elle ne touche jamais une date
+     * déjà calculée sur un document existant (Document.retentionUntil), donc rien
+     * n'empêche de la revoir à tout moment, y compris pour un type déjà utilisé
+     * (le cas le plus courant en pratique : c'est précisément pour les types déjà
+     * en service que cette décision a besoin d'être prise ou changée).
+     */
+    @Transactional
+    public TypeDocumentDto modifierSortFinal(Long id, String sortFinalDemande, User currentUser)
+    {
+        TypeDocument typeDocument = typeDocumentRepository.findById(id)
+            .orElseThrow(() -> new BusinessException("Type de document non trouvé avec l'ID: " + id));
+
+        if (!uniteOrganisationnelleService.estEditeurDeUO(
+                typeDocument.getUniteOrganisationnelle().getId(), currentUser))
+        {
+            throw new AccessDeniedException("Vous n'avez pas l'autorisation de modifier ce type de document");
+        }
+
+        SortFinal nouveauSortFinal = parseSortFinal(sortFinalDemande);
+        if (nouveauSortFinal == null)
+        {
+            throw new BusinessException("Sort final invalide — valeurs acceptées : "
+                + java.util.Arrays.toString(SortFinal.values()));
+        }
+
+        Retention retention = typeDocument.getRetention();
+        SortFinal ancienSortFinal = retention.getSortFinal();
+        retention.setSortFinal(nouveauSortFinal);
+        typeDocumentRepository.save(typeDocument);
+
+        auditLogService.log(currentUser, AuditAction.TYPE_DOCUMENT_SORT_FINAL_MODIFIE, AuditCible.TYPE_DOCUMENT,
+            id.toString(), typeDocument.getUniteOrganisationnelle().getId(),
+            "Sort final du type \"" + typeDocument.getNom() + "\" changé de " + ancienSortFinal
+                + " à " + nouveauSortFinal, true,
+            Map.of("sortFinal", Map.of("avant", String.valueOf(ancienSortFinal), "apres", nouveauSortFinal.name())));
+
+        TypeDocumentDto dto = typeDocumentMapper.toDto(typeDocument);
+        return dto;
+    }
+
+    /** null (pas d'erreur) si non fourni — createTypeDocument applique alors le
+     *  défaut CONSERVER déjà porté par Retention.sortFinal elle-même. */
+    private SortFinal parseSortFinal(String valeur)
+    {
+        if (valeur == null || valeur.isBlank())
+        {
+            return SortFinal.CONSERVER;
+        }
+        try
+        {
+            return SortFinal.valueOf(valeur.trim().toUpperCase());
+        }
+        catch (IllegalArgumentException e)
+        {
+            return null;
+        }
     }
 
     /**

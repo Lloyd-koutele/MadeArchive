@@ -38,7 +38,11 @@ import made.archive.service.organisation.UniteOrganisationnelleService;
  * RedisCacheConfig.CACHE_FIXITY_COOLDOWN) — peu importe qui déclenche, la
  * fenêtre est partagée. Si une demande porte sur plusieurs types/UO, TOUS
  * doivent être libres pour que la demande soit acceptée ; ceux déjà en
- * cooldown sont listés dans le message d'erreur.
+ * cooldown sont listés dans le message d'erreur. Remis en place après un
+ * essai sans cooldown : nécessaire pour la sécurité/performance du système
+ * en pleine charge (le passage lui-même est séquentiel, voir
+ * FixityCheckService.verifyAndSave — un admin_uo qui redéclenche en boucle
+ * peut sinon saturer le service).
  *
  * L'exécution elle-même est @Async (potentiellement longue — voir
  * FixityCheckService, aucun traitement par lot) : la requête HTTP répond

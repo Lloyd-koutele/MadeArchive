@@ -5,7 +5,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(44, 26, 14, 0.55);
+    background: rgba(var(--dark-choc-rgb), 0.55);
     backdrop-filter: blur(2px);
     animation: session-guard-fade-in 0.2s ease;
 }

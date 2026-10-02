@@ -30,6 +30,14 @@ public class TypeDocumentMapper
         if (entity.getRetention() != null) {
             dto.setRetentionYears(entity.getRetention().getRetentionYears());
             dto.setPeriodGrace(entity.getRetention().getPeriodGrace());
+            dto.setSortFinal(entity.getRetention().getSortFinal() != null
+                ? entity.getRetention().getSortFinal().name() : null);
+        }
+
+        if (entity.getPlanClassementNoeud() != null) {
+            dto.setPlanClassementNoeudId(entity.getPlanClassementNoeud().getId());
+            dto.setActivite(made.archive.service.organisation.PlanClassementService
+                .chemin(entity.getPlanClassementNoeud()));
         }
 
         // Mapper les MetaDatas

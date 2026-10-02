@@ -5,12 +5,31 @@ import {
     mettreAJourArborescence,
     changerTypeStockage,
 } from '../services/organisation/PhysicalLocationService';
-import type { PhysicalLocationTreeNodeDto, PhysicalLocationNodeDto } from '../services/organisation/PhysicalLocationService';
+import type { PhysicalLocationTreeNodeDto, PhysicalLocationNodeDto, LocationModeContrainte } from '../services/organisation/PhysicalLocationService';
+import { getTypeDocumentsByUO } from '../services/document/TypedocumentService';
+import type { TypeDocumentDto } from '../services/document/TypedocumentService';
+import { getArbreDossiers } from '../services/organisation/DossierService';
+import DossierTreePicker from './DossierTreePicker';
 import { useNotify } from '../notifications/NotificationProvider';
 // .pl-form/.pl-form-actions — mêmes styles que l'ancien formulaire simple,
 // réutilisés tels quels. .tb-*/.tbo-* : styles propres à l'arbre de
 // brouillon (voir PhysicalLocationsPanel.css).
 import '../Style/organisation/PhysicalLocationsPanel.css';
+
+/** Nœud EXISTANT ciblé par un raccourci "Capacité"/"Choisir" — assez
+ *  d'info pour préremplir le modal dédié (voir PhysicalLocationsPanel,
+ *  ouvrirCapacite/ouvrirContrainte) sans redemander un PhysicalLocationNodeDto
+ *  complet, indisponible pour un descendant (seule la racine le porte, voir
+ *  EmplacementTreeModalProps.existingNode). */
+export interface CibleEditionExistante {
+    id: string;
+    name: string;
+    nombreDocuments: number;
+    capaciteMax: number | null;
+    modeContrainte: LocationModeContrainte;
+    typeDocumentAccepteId: number | null;
+    dossierId: number | null;
+}
 
 /**
  * Nœud de brouillon local — jamais envoyé tel quel, converti en
@@ -21,20 +40,36 @@ import '../Style/organisation/PhysicalLocationsPanel.css';
  * description ici — jugée superflue/encombrante pour ce constructeur
  * d'arborescence, retirée de l'interface (reste modifiable individuellement
  * via l'ancien formulaire simple si jamais utile).
+ *
+ * capaciteMax/modeContrainte/typeDocumentId/dossierId : UNIQUEMENT
+ * éditables pour un NOUVEAU nœud storagePoint=true (id absent) — pour un
+ * nœud EXISTANT, ces réglages se changent via les actions dédiées du panneau
+ * (definirCapaciteEmplacement/definirContrainteEmplacement), jamais ici.
  */
 interface DraftNode {
     key: string;
     id?: string;
     name: string;
     storagePoint: boolean;
+    capaciteMax: number | null;
+    modeContrainte: LocationModeContrainte;
+    typeDocumentId: number | null;
+    dossierId: number | null;
+    /** Uniquement significatif pour un nœud EXISTANT (voir onEditCapacite/
+     *  onEditContrainte) — 0 pour un nouveau nœud, jamais encore de documents. */
+    nombreDocuments: number;
     children: DraftNode[];
 }
 
 const nouvelleKey = () =>
     (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `n${Date.now()}-${Math.random()}`;
 
-const noeudVide = (): DraftNode =>
-    ({ key: nouvelleKey(), name: '', storagePoint: true, children: [] });
+const noeudVide = (): DraftNode => ({
+    key: nouvelleKey(), name: '', storagePoint: true,
+    capaciteMax: null, modeContrainte: 'LIBRE', typeDocumentId: null, dossierId: null,
+    nombreDocuments: 0,
+    children: [],
+});
 
 /** Convertit récursivement l'arbre RÉEL (lecture) en brouillon éditable. */
 const versDraftExistant = (n: PhysicalLocationNodeDto): DraftNode => ({
@@ -42,6 +77,11 @@ const versDraftExistant = (n: PhysicalLocationNodeDto): DraftNode => ({
     id: n.id,
     name: n.name,
     storagePoint: n.storagePoint,
+    capaciteMax: n.capaciteMax,
+    modeContrainte: n.modeContrainte,
+    typeDocumentId: n.typeDocumentAccepteId,
+    dossierId: n.dossierId,
+    nombreDocuments: n.nombreDocuments,
     children: n.children.map(versDraftExistant),
 });
 
@@ -66,6 +106,17 @@ function aUnNomManquant(node: DraftNode): boolean {
     return !node.name.trim() || node.children.some(aUnNomManquant);
 }
 
+/** true si un NOUVEAU point de stockage a un mode TYPE_UNIQUE/DOSSIER sans
+ *  avoir choisi le type/dossier correspondant — validation avant envoi (le
+ *  serveur la refait de toute façon, mais autant l'attraper tout de suite). */
+function aUneContrainteIncomplete(node: DraftNode): boolean {
+    const incomplete = !node.id && node.storagePoint
+        && (node.modeContrainte === 'LIBRE'
+            || (node.modeContrainte === 'TYPE_UNIQUE' && node.typeDocumentId == null)
+            || (node.modeContrainte === 'DOSSIER' && node.dossierId == null));
+    return incomplete || node.children.some(aUneContrainteIncomplete);
+}
+
 function compterNoeuds(node: DraftNode): number {
     return 1 + node.children.reduce((total, c) => total + compterNoeuds(c), 0);
 }
@@ -75,6 +126,10 @@ function versRequeteNode(n: DraftNode): PhysicalLocationTreeNodeDto {
         id: n.id,
         name: n.name.trim(),
         storagePoint: n.storagePoint,
+        capaciteMax: n.capaciteMax,
+        modeContrainte: n.modeContrainte,
+        typeDocumentId: n.typeDocumentId,
+        dossierId: n.dossierId,
         children: n.children.map(versRequeteNode),
     };
 }
@@ -90,6 +145,15 @@ interface EmplacementTreeModalProps {
     parentLabel?: string | null;
     /** mode="update" — nœud cliqué + sa descendance actuelle (déjà en mémoire, pas de re-fetch de l'arbre). */
     existingNode?: PhysicalLocationNodeDto;
+    /** mode="update" uniquement — raccourcis "Capacité"/"Choisir" affichés sur
+     *  CHAQUE nœud EXISTANT de l'organigramme (racine ET descendants —
+     *  capacité/contrainte ne sont pas éditables en brouillon pour un nœud
+     *  déjà en base, voir Javadoc du composant) : ferment ce modal et ouvrent
+     *  le modal dédié correspondant pour le nœud cliqué, au lieu de laisser
+     *  l'utilisateur chercher les boutons ailleurs dans la liste. Absents
+     *  (undefined) en mode="create". */
+    onEditCapacite?: (cible: CibleEditionExistante) => void;
+    onEditContrainte?: (cible: CibleEditionExistante) => void;
     /** Racine créée/mise à jour (avec sa descendance) — permet à l'appelant de
      *  réagir au résultat sans re-fetch (ex. ImportDocuments présélectionne
      *  l'emplacement tout juste créé dans son <select>). */
@@ -115,9 +179,11 @@ interface EmplacementTreeModalProps {
  *   l'emplacement pour de futurs documents), il n'a pas de sens de le
  *   laisser en brouillon jusqu'à "Enregistrer" comme un simple renommage.
  *   Il n'est PAS supprimable depuis ce modal — supprimer reste le bouton
- *   dédié, avec sa confirmation.
+ *   dédié, avec sa confirmation. Capacité/contrainte d'un nœud EXISTANT se
+ *   modifient via les raccourcis dédiés (onEditCapacite/onEditContrainte),
+ *   jamais en brouillon ici (voir EmplacementNodeCard).
  */
-function EmplacementTreeModal({ isOpen, onClose, uoId, mode, parentId = null, parentLabel = null, existingNode, onSaved }: EmplacementTreeModalProps) {
+function EmplacementTreeModal({ isOpen, onClose, uoId, mode, parentId = null, parentLabel = null, existingNode, onEditCapacite, onEditContrainte, onSaved }: EmplacementTreeModalProps) {
     const notify = useNotify();
     const [root, setRoot] = useState<DraftNode | null>(null);
     const [saving, setSaving] = useState(false);
@@ -125,11 +191,32 @@ function EmplacementTreeModal({ isOpen, onClose, uoId, mode, parentId = null, pa
     // recap : rien ne se replie/disparaît, tout l'arbre reste affiché.
     const [focusedKey, setFocusedKey] = useState<string | null>(null);
 
+    // Types de documents / dossiers de l'UO — pour le sélecteur du mode
+    // "Type unique"/"Dossier" (voir EmplacementNodeCard), et pour savoir s'il
+    // faut désactiver ces modes quand l'UO n'a encore ni type ni dossier :
+    // sans ça, l'utilisateur pouvait choisir "Un seul type de document" avec
+    // rien à sélectionner dans la liste, bloqué seulement à l'enregistrement
+    // avec une erreur peu claire. Chargé une fois par ouverture, pas par nœud.
+    const [typesUO, setTypesUO] = useState<TypeDocumentDto[]>([]);
+    const [aDesDossiers, setADesDossiers] = useState(true);
+    useEffect(() => {
+        if (!isOpen) return;
+        getTypeDocumentsByUO(uoId).then(setTypesUO).catch(() => setTypesUO([]));
+        getArbreDossiers(uoId).then(d => setADesDossiers(d.length > 0)).catch(() => setADesDossiers(false));
+    }, [isOpen, uoId]);
+
     useEffect(() => {
         if (!isOpen) return;
 
         if (mode === 'create') {
-            const r = noeudVide();
+            // La racine d'une NOUVELLE arborescence ne peut jamais être un
+            // point de stockage — elle doit toujours être un nœud chemin
+            // (retour utilisateur 10/2026) : un emplacement physique part
+            // forcément d'un conteneur organisationnel (bâtiment, salle...),
+            // jamais directement d'une boîte isolée à la racine de l'UO.
+            // Verrouillé aussi dans EmplacementNodeCard (handleToggleType),
+            // pas seulement ici au départ.
+            const r = { ...noeudVide(), storagePoint: false };
             setRoot(r);
             setFocusedKey(r.key);
             return;
@@ -145,6 +232,11 @@ function EmplacementTreeModal({ isOpen, onClose, uoId, mode, parentId = null, pa
                 id: existingNode.id,
                 name: existingNode.name,
                 storagePoint: existingNode.storagePoint,
+                capaciteMax: existingNode.capaciteMax,
+                modeContrainte: existingNode.modeContrainte,
+                typeDocumentId: existingNode.typeDocumentAccepteId,
+                dossierId: existingNode.dossierId,
+                nombreDocuments: existingNode.nombreDocuments,
                 children: existingNode.children.map(versDraftExistant),
             };
             setRoot(r);
@@ -160,6 +252,10 @@ function EmplacementTreeModal({ isOpen, onClose, uoId, mode, parentId = null, pa
         if (!root) return;
         if (aUnNomManquant(root)) {
             notify.error('Chaque nœud doit avoir un nom');
+            return;
+        }
+        if (aUneContrainteIncomplete(root)) {
+            notify.error('Choisissez un type de document ou un dossier pour chaque point de stockage');
             return;
         }
         setSaving(true);
@@ -200,6 +296,11 @@ function EmplacementTreeModal({ isOpen, onClose, uoId, mode, parentId = null, pa
                                 <EmplacementNodeCard
                                     node={root}
                                     isRoot
+                                    uoId={uoId}
+                                    typesUO={typesUO}
+                                    aDesDossiers={aDesDossiers}
+                                    onEditCapacite={onEditCapacite}
+                                    onEditContrainte={onEditContrainte}
                                     focusedKey={focusedKey}
                                     onFocus={setFocusedKey}
                                     onPatch={handlePatch}
@@ -232,9 +333,17 @@ function EmplacementTreeModal({ isOpen, onClose, uoId, mode, parentId = null, pa
  * visible porte ses propres actions (+ enfant à côté du badge, supprimer si
  * applicable).
  */
-function EmplacementNodeCard({ node, isRoot, focusedKey, onFocus, onPatch, onAddChild, onRemove }: {
+function EmplacementNodeCard({ node, isRoot, uoId, typesUO, aDesDossiers, onEditCapacite, onEditContrainte, focusedKey, onFocus, onPatch, onAddChild, onRemove }: {
     node: DraftNode;
     isRoot: boolean;
+    uoId: number;
+    typesUO: TypeDocumentDto[];
+    aDesDossiers: boolean;
+    /** Raccourcis "Modifier" — fournis par le parent en mode="update"
+     *  uniquement (voir Javadoc EmplacementTreeModal), propagés à chaque
+     *  niveau de l'organigramme. */
+    onEditCapacite?: (cible: CibleEditionExistante) => void;
+    onEditContrainte?: (cible: CibleEditionExistante) => void;
     focusedKey: string | null;
     onFocus: (key: string) => void;
     onPatch: (key: string, patch: Partial<DraftNode>) => void;
@@ -248,11 +357,38 @@ function EmplacementNodeCard({ node, isRoot, focusedKey, onFocus, onPatch, onAdd
     // supprime jamais depuis ce modal (voir Javadoc du composant).
     const supprimable = !isRoot && !estExistant;
     const peutDevenirStockage = node.children.length === 0;
+    // La racine d'une arborescence qu'on est en train de créer ne peut
+    // jamais devenir un point de stockage (retour utilisateur 10/2026) —
+    // forcée "chemin" dès l'initialisation (voir useEffect mode="create"
+    // plus haut), verrouillée ici pour que rien ne permette de revenir en
+    // arrière. Un nœud racine EXISTANT (mode="update") n'est pas concerné :
+    // il a pu être créé avant cette règle, ou la règle serveur sur les
+    // nœuds existants (changerTypeStockage) suffit déjà à le protéger.
+    const racineNouvelleVerrouillee = isRoot && !estExistant;
     const type = node.storagePoint ? 'stockage' : 'chemin';
     // Le changement de type d'un nœud EXISTANT part vers le serveur tout de
     // suite (voir Javadoc du composant) — ce spinner local évite un double
     // clic pendant l'aller-retour.
     const [convertingType, setConvertingType] = useState(false);
+    // Capacité/contrainte d'un NOUVEAU point de stockage — mêmes champs que
+    // pour un nœud existant (onEditCapacite/onEditContrainte), mais ouverts
+    // en local (rien à sauvegarder côté serveur avant "Créer"/"Enregistrer" :
+    // pas encore d'id à passer à definirCapacite/definirContrainte). Chaque
+    // carte de nœud a ses propres modaux — plusieurs nouveaux points de
+    // stockage dans le même brouillon ne se marchent pas dessus.
+    const [capaciteModalOpen, setCapaciteModalOpen] = useState(false);
+    const [contrainteModalOpen, setContrainteModalOpen] = useState(false);
+    // Descripteur envoyé à onEditCapacite/onEditContrainte pour CE nœud —
+    // uniquement pertinent si estExistant (id garanti dans ce cas).
+    const cibleEdition: CibleEditionExistante | null = estExistant ? {
+        id: node.id!,
+        name: node.name,
+        nombreDocuments: node.nombreDocuments,
+        capaciteMax: node.capaciteMax,
+        modeContrainte: node.modeContrainte,
+        typeDocumentAccepteId: node.typeDocumentId,
+        dossierId: node.dossierId,
+    } : null;
 
     // Un seul contrôle de type — pill colorée (icône + libellé texte, jamais
     // l'icône seule : trop ambiguë à cette échelle, voir recap) — toujours
@@ -260,6 +396,7 @@ function EmplacementNodeCard({ node, isRoot, focusedKey, onFocus, onPatch, onAdd
     // le reste à "Créer"/"Enregistrer") ou d'un nœud existant (appel
     // immédiat à changerTypeStockage, voir Javadoc du composant).
     const handleToggleType = async () => {
+        if (racineNouvelleVerrouillee) return;
         if (!node.storagePoint && !peutDevenirStockage) return;
         if (!estExistant) {
             onPatch(node.key, { storagePoint: !node.storagePoint });
@@ -276,11 +413,13 @@ function EmplacementNodeCard({ node, isRoot, focusedKey, onFocus, onPatch, onAdd
             setConvertingType(false);
         }
     };
-    const pillTitle = node.storagePoint
-        ? 'Point de stockage — cliquer pour passer en chemin'
-        : peutDevenirStockage
-            ? 'Nœud chemin — cliquer pour passer en stockage'
-            : 'Nœud chemin — impossible de passer en stockage (a des enfants)';
+    const pillTitle = racineNouvelleVerrouillee
+        ? 'La racine d\'un nouvel emplacement est toujours un nœud chemin'
+        : node.storagePoint
+            ? 'Point de stockage — cliquer pour passer en chemin'
+            : peutDevenirStockage
+                ? 'Nœud chemin — cliquer pour passer en stockage'
+                : 'Nœud chemin — impossible de passer en stockage (a des enfants)';
 
     return (
         <div className="tbo-branch-content">
@@ -303,13 +442,13 @@ function EmplacementNodeCard({ node, isRoot, focusedKey, onFocus, onPatch, onAdd
 
                 <div className="tbo-card-controls">
                     <button type="button" className="tbo-type-pill clickable"
-                        disabled={convertingType || (!node.storagePoint && !peutDevenirStockage)}
+                        disabled={convertingType || racineNouvelleVerrouillee || (!node.storagePoint && !peutDevenirStockage)}
                         title={pillTitle} onClick={handleToggleType}>
                         {convertingType ? <i className="fa-solid fa-spinner fa-spin" /> : (node.storagePoint ? 'Stockage' : 'Chemin')}
                     </button>
                     {!node.storagePoint && (
-                        <button type="button" className="tbo-footer-btn" title="Ajouter un enfant" onClick={() => onAddChild(node.key)}>
-                            <i className="fa-solid fa-plus" /> Enfant
+                        <button type="button" className="tbo-footer-btn" title="Ajouter un emplacement" onClick={() => onAddChild(node.key)}>
+                            <i className="fa-solid fa-plus" /> Emplacement
                         </button>
                     )}
                     {supprimable && (
@@ -318,6 +457,131 @@ function EmplacementNodeCard({ node, isRoot, focusedKey, onFocus, onPatch, onAdd
                         </button>
                     )}
                 </div>
+
+                {/* Capacité + contrainte d'acceptation d'un NOUVEAU point de
+                    stockage — mêmes deux boutons "Capacité"/"Contrainte" que
+                    pour un nœud existant (voir bloc estExistant ci-dessous),
+                    ouvrant chacun un modal local (rien envoyé au serveur avant
+                    "Créer", voir DraftNode) plutôt qu'un panneau toujours
+                    déployé dans la carte — évite en particulier que le
+                    sélecteur de dossier (arbre complet avec recherche) ne
+                    fasse déborder la petite carte. */}
+                {node.storagePoint && !estExistant && (
+                    <div className="tbo-constraint-summary" onClick={e => e.stopPropagation()}>
+                        <p>
+                            {node.capaciteMax != null ? `${node.capaciteMax} document(s) max.` : 'Illimitée'}
+                            {' — '}
+                            {node.modeContrainte === 'LIBRE' && 'contrainte à définir'}
+                            {node.modeContrainte === 'TYPE_UNIQUE' && (
+                                typesUO.find(t => t.id === node.typeDocumentId)?.nom ?? 'type — à choisir'
+                            )}
+                            {node.modeContrainte === 'DOSSIER' && (node.dossierId ? 'dossier choisi' : 'dossier — à choisir')}
+                        </p>
+                        <div className="tbo-summary-actions">
+                            <button type="button" className="tbo-footer-btn" onClick={() => setCapaciteModalOpen(true)}>
+                                <i className="fa-solid fa-pen" /> Capacité
+                            </button>
+                            <button type="button" className="tbo-footer-btn" onClick={() => setContrainteModalOpen(true)}>
+                                <i className="fa-solid fa-pen" /> Choisir
+                            </button>
+                        </div>
+
+                        {capaciteModalOpen && (
+                            <Modal isOpen onClose={() => setCapaciteModalOpen(false)} title={`Capacité — "${node.name || 'nouveau nœud'}"`}>
+                                <div className="pl-form">
+                                    <label>
+                                        <p style={{ marginBottom: '0.4rem' }}>Nombre maximal de documents — laisser vide pour aucune limite.</p>
+                                        <input
+                                            type="number"
+                                            min={1}
+                                            placeholder="Illimitée"
+                                            value={node.capaciteMax ?? ''}
+                                            onChange={(e) => onPatch(node.key, {
+                                                capaciteMax: e.target.value === '' ? null : Math.max(1, Number(e.target.value)),
+                                            })}
+                                        />
+                                    </label>
+                                    <div className="pl-form-actions">
+                                        <button type="button" className="sidebar-btn" onClick={() => setCapaciteModalOpen(false)}>OK</button>
+                                    </div>
+                                </div>
+                            </Modal>
+                        )}
+
+                        {contrainteModalOpen && (
+                            <Modal isOpen onClose={() => setContrainteModalOpen(false)} title={`Contrainte — "${node.name || 'nouveau nœud'}"`}>
+                                <div className="pl-form">
+                                    <div className="tbo-constraint-panel" style={{ borderTop: 'none', paddingTop: 0 }}>
+                                        <label className="tbo-constraint-field">
+                                            <span>Accepte</span>
+                                            <select
+                                                value={node.modeContrainte}
+                                                onChange={(e) => onPatch(node.key, {
+                                                    modeContrainte: e.target.value as DraftNode['modeContrainte'],
+                                                    typeDocumentId: null,
+                                                    dossierId: null,
+                                                })}
+                                            >
+                                                <option value="LIBRE" disabled hidden>— Choisir —</option>
+                                                <option value="TYPE_UNIQUE" disabled={typesUO.length === 0}>
+                                                    Type de document{typesUO.length === 0 ? ' (aucun type existant)' : ''}
+                                                </option>
+                                                <option value="DOSSIER" disabled={!aDesDossiers}>
+                                                    Dossier{!aDesDossiers ? ' (aucun dossier existant)' : ''}
+                                                </option>
+                                            </select>
+                                        </label>
+                                        {node.modeContrainte === 'TYPE_UNIQUE' && (
+                                            <select
+                                                className="tbo-constraint-field"
+                                                value={node.typeDocumentId ?? ''}
+                                                onChange={(e) => onPatch(node.key, { typeDocumentId: e.target.value ? Number(e.target.value) : null })}
+                                            >
+                                                <option value="">— Choisir un type —</option>
+                                                {typesUO.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
+                                            </select>
+                                        )}
+                                        {node.modeContrainte === 'DOSSIER' && (
+                                            <DossierTreePicker
+                                                uoId={uoId}
+                                                value={node.dossierId}
+                                                onChange={(id) => onPatch(node.key, { dossierId: id })}
+                                            />
+                                        )}
+                                    </div>
+                                    <div className="pl-form-actions">
+                                        <button type="button" className="sidebar-btn" onClick={() => setContrainteModalOpen(false)}>OK</button>
+                                    </div>
+                                </div>
+                            </Modal>
+                        )}
+                    </div>
+                )}
+
+                {node.storagePoint && estExistant && (
+                    <div className="tbo-constraint-summary" onClick={e => e.stopPropagation()}>
+                        <p>
+                            {node.modeContrainte === 'LIBRE' && 'Accepte tout document'}
+                            {node.modeContrainte === 'TYPE_UNIQUE' && 'Type unique accepté'}
+                            {node.modeContrainte === 'DOSSIER' && 'Dossier unique accepté'}
+                            {node.capaciteMax != null && ` — ${node.capaciteMax} document(s) max.`}
+                        </p>
+                        {cibleEdition && (onEditCapacite || onEditContrainte) && (
+                            <div className="tbo-summary-actions">
+                                {onEditCapacite && (
+                                    <button type="button" className="tbo-footer-btn" onClick={() => onEditCapacite(cibleEdition)}>
+                                        <i className="fa-solid fa-pen" /> Capacité
+                                    </button>
+                                )}
+                                {onEditContrainte && (
+                                    <button type="button" className="tbo-footer-btn" onClick={() => onEditContrainte(cibleEdition)}>
+                                        <i className="fa-solid fa-pen" /> Choisir
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
             {node.children.length > 0 && (
                 <div className="tbo-children" style={{ gridTemplateColumns: `repeat(${node.children.length}, 1fr)` }}>
@@ -326,6 +590,11 @@ function EmplacementNodeCard({ node, isRoot, focusedKey, onFocus, onPatch, onAdd
                             <EmplacementNodeCard
                                 node={c}
                                 isRoot={false}
+                                uoId={uoId}
+                                typesUO={typesUO}
+                                aDesDossiers={aDesDossiers}
+                                onEditCapacite={onEditCapacite}
+                                onEditContrainte={onEditContrainte}
                                 focusedKey={focusedKey}
                                 onFocus={onFocus}
                                 onPatch={onPatch}

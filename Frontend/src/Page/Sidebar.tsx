@@ -86,9 +86,12 @@ function Sidebar({ title, children, onTitleClick }: SidebarProps) {
     const panelLabel  = PANEL_LABELS[roleAffiche] ?? (title ? `${title} Panel` : 'Panel');
     const initiale    = PANEL_INITIALES[roleAffiche] ?? panelLabel.charAt(0).toUpperCase();
 
-    // L'UO n'est affichée que pour les éditeurs et les utilisateurs : un ADMIN est
-    // global et un ADMIN_UO navigue déjà dans son arbre, la ligne serait redondante.
-    const afficheUO = roleAffiche === 'EDITOR' || roleAffiche === 'USER';
+    // Affichée pour tout rôle rattaché à UNE UO précise — jamais pour un ADMIN
+    // global, qui n'en a pas. Pour ADMIN_UO, c'est bien SA propre UO (via
+    // getMyUO() ci-dessous), pas celle en cours de navigation dans l'arbre
+    // (currentUOId côté AdminUoDashboard) : l'arbre peut se déplacer sur une
+    // UO descendante sans que ça change qui administre le compte.
+    const afficheUO = roleAffiche === 'EDITOR' || roleAffiche === 'USER' || roleAffiche === 'ADMIN_UO';
 
     // undefined = en cours de chargement, null = aucune UO rattachée
     const [uoNom, setUoNom] = useState<string | null | undefined>(undefined);

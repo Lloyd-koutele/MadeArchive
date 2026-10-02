@@ -1,26 +1,8 @@
+/* Variables de couleur — voir theme.css, SEUL fichier à éditer pour changer
+   de thème (toutes deux chargées ici avant le reste : @import doit précéder
+   toute autre règle dans un fichier CSS). */
+@import "./theme.css";
 @import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=DM+Sans:wght@300;400;500&display=swap");
-
-/* ─────────────────────────────────────────
-   VARIABLES — Charte chocolat
-───────────────────────────────────────── */
-:root {
-    --white-choc:     #FDF8F3;   /* blanc chocolat chaud */
-    --cream:          #F5EDE0;   /* crème */
-    --border:         #E8D9C5;   /* bordure douce */
-    --text-light:     #9E8878;   /* texte secondaire */
-    --dark-choc:      #2C1A0E;   /* chocolat noir principal */
-    --dark-mid:       #3D2512;   /* chocolat mid */
-    --dark-soft:      #5C3D2E;   /* chocolat adouci */
-    --accent:         #8B5E3C;   /* accent brun */
-    --success:        #4A7C59;
-    --error:          #9B3A3A;
-    --shadow-sm:      0 1px 4px rgba(44,26,14,0.08);
-    --shadow-md:      0 4px 16px rgba(44,26,14,0.12);
-    --shadow-lg:      0 8px 32px rgba(44,26,14,0.16);
-    --radius:         10px;
-    --radius-sm:      6px;
-    --transition:     0.2s ease;
-}
 
 /* ─────────────────────────────────────────
    CONVENTION — Seuils de rupture (breakpoints)
@@ -104,10 +86,10 @@ header {
     width: 100%;
     z-index: 1000;
     padding: 0 2rem;
-    background-color: rgba(44, 26, 14, 0.85);
+    background-color: rgba(var(--dark-choc-rgb), 0.85);
     -webkit-backdrop-filter: blur(8px);
     backdrop-filter: blur(8px);
-    border-bottom: 1px solid rgba(253,248,243,0.1);
+    border-bottom: 1px solid rgba(var(--white-choc-rgb),0.1);
 }
 
 /* ─────────────────────────────────────────
@@ -171,19 +153,19 @@ header {
 .action-button:hover {
     background-color: var(--cream);
     border-color: var(--cream);
-    box-shadow: 0 0 0 3px rgba(253,248,243,0.25);
+    box-shadow: 0 0 0 3px rgba(var(--white-choc-rgb),0.25);
 }
 
 .action-button.pro {
     background-color: transparent;
     color: var(--white-choc);
-    border: 1.5px solid rgba(253,248,243,0.6);
+    border: 1.5px solid rgba(var(--white-choc-rgb),0.6);
 }
 
 .action-button.pro:hover {
-    background-color: rgba(253,248,243,0.12);
+    background-color: rgba(var(--white-choc-rgb),0.12);
     border-color: var(--white-choc);
-    box-shadow: 0 0 0 3px rgba(253,248,243,0.15);
+    box-shadow: 0 0 0 3px rgba(var(--white-choc-rgb),0.15);
 }
 
 /* ─────────────────────────────────────────
@@ -209,14 +191,14 @@ main section h2 {
     color: var(--white-choc);
     font-size: 2.8rem;
     font-weight: 700;
-    text-shadow: 1px 2px 8px rgba(44,26,14,0.5);
+    text-shadow: 1px 2px 8px rgba(var(--dark-choc-rgb),0.5);
     margin-bottom: 15px;
 }
 
 main section p {
-    color: rgba(253,248,243,0.9);
+    color: rgba(var(--white-choc-rgb),0.9);
     font-size: 1.1rem;
-    text-shadow: 1px 1px 4px rgba(44,26,14,0.4);
+    text-shadow: 1px 1px 4px rgba(var(--dark-choc-rgb),0.4);
 }
 
 /* ─────────────────────────────────────────
@@ -229,12 +211,12 @@ main section p {
     right: 2rem;
     top: 60px;
     width: 220px;
-    background: rgba(44, 26, 14, 0.95);
+    background: rgba(var(--dark-choc-rgb), 0.95);
     border-radius: var(--radius);
     overflow: hidden;
     transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     padding: 0 1rem;
-    border: 1px solid rgba(253,248,243,0.1);
+    border: 1px solid rgba(var(--white-choc-rgb),0.1);
 }
 
 .burger-menu.open { height: 340px; }
@@ -255,7 +237,7 @@ main section p {
 
 .divider {
     height: 1px;
-    background-color: rgba(253,248,243,0.15);
+    background-color: rgba(var(--white-choc-rgb),0.15);
     width: 80%;
     margin: 0.5rem auto 1rem auto;
 }
@@ -278,7 +260,7 @@ main section p {
    plutôt que morceau par morceau.
 ───────────────────────────────────────── */
 @media (max-width: 768px) {
-    header { background-color: rgba(44,26,14,0.95); }
+    header { background-color: rgba(var(--dark-choc-rgb),0.95); }
     .navbar .links,
     .navbar .buttons { display: none; }
     .navbar .burger-menu-button { display: block; }

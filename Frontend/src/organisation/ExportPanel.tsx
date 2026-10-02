@@ -6,7 +6,7 @@ import {
     getStatutExport,
     telechargerExport,
 } from '../services/document/DocumentExportService';
-import type { ExportApercuDocumentDto, ExportJobStatutDto } from '../services/document/DocumentExportService';
+import type { ExportApercuDocumentDto, ExportJobStatutDto, ExportFormat } from '../services/document/DocumentExportService';
 import { getSousArbre } from '../services/organisation/UOService';
 import { getTypeDocumentsVisibles } from '../services/document/TypedocumentService';
 import { getDossiersDeUO } from '../services/organisation/DossierService';
@@ -66,6 +66,7 @@ function ExportPanel({ isOpen, onClose, uos, defaultUoId }: ExportPanelProps) {
 
     // ── Options de fond ──────────────────────────────────────────────────
     const [separateProjects, setSeparateProjects] = useState(false);
+    const [format, setFormat] = useState<ExportFormat>('ZIP_CSV');
     const [excludeCorbeille, setExcludeCorbeille] = useState(true);
     const [includePriveNonMembre, setIncludePriveNonMembre] = useState(false);
     const [motif, setMotif] = useState('');
@@ -231,6 +232,7 @@ function ExportPanel({ isOpen, onClose, uos, defaultUoId }: ExportPanelProps) {
             const statut = await lancerExport({
                 uoIds,
                 docIds,
+                format,
                 separateProjects,
                 excludeCorbeille,
                 includePriveNonMembre: estAdmin && includePriveNonMembre,
@@ -307,13 +309,26 @@ function ExportPanel({ isOpen, onClose, uos, defaultUoId }: ExportPanelProps) {
                 </div>
 
                 <label className="export-option">
+                    Format :{' '}
+                    <select
+                        className="filter-input"
+                        value={format}
+                        onChange={e => setFormat(e.target.value as ExportFormat)}
+                        disabled={jobEnCours}
+                        aria-label="Format de l'export"
+                    >
+                        <option value="ZIP_CSV">ZIP + manifest.csv (empreintes, jetons d'horodatage, signatures)</option>
+                        <option value="SEDA">Paquet SEDA 2.1 (manifest.xml + content/)</option>
+                    </select>
+                </label>
+                <label className="export-option">
                     <input
                         type="checkbox"
                         checked={separateProjects}
                         onChange={e => setSeparateProjects(e.target.checked)}
                         disabled={jobEnCours}
                     />
-                    Séparer par dossier dans le ZIP
+                    Séparer par dossier (dans le ZIP ou l'arborescence SEDA)
                 </label>
                 <label className="export-option">
                     <input

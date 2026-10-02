@@ -16,6 +16,9 @@ public class ExportLancerRequestDto
     private List<Long> uoIds;
     private List<UUID> docIds;
     private boolean separateProjects;
+
+    /** ZIP_CSV (défaut si absent) ou SEDA — voir entite.ExportFormat. */
+    private made.archive.entite.ExportFormat format = made.archive.entite.ExportFormat.ZIP_CSV;
     private boolean excludeCorbeille;
 
     /** Réservé à ROLE_ADMIN — inclut les documents PRIVÉS dont le demandeur

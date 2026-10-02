@@ -18,6 +18,13 @@ public class DocumentAccessFilterDto
     private Long      typeDocumentId;
 
     /**
+     * Filtre par activité du plan de classement : documents dont le TYPE est
+     * rattaché à ce nœud OU à l'un de ses descendants. Calculé côté base (type ->
+     * nœud), jamais dans l'index Meilisearch. Ne contourne pas la visibilité réelle.
+     */
+    private Long      planClassementNoeudId;
+
+    /**
      * Restreint aux documents rattachés à un dossier précis (ex. onglet
      * "Types de documents" d'un dossier, une fois un type ouvert). Combiné en
      * AND avec les autres filtres — en particulier la visibilité réelle
@@ -25,6 +32,14 @@ public class DocumentAccessFilterDto
      * n'est pas membre de son groupe, même en connaissant le dossierId.
      */
     private Long      dossierId;
+
+    /**
+     * Restreint aux documents rattachés à un emplacement physique précis (ex.
+     * "Voir les documents" d'un nœud de stockage, voir PhysicalLocationsPanel).
+     * Même principe que dossierId : combiné en AND, ne contourne jamais la
+     * visibilité réelle calculée plus bas.
+     */
+    private java.util.UUID physicalLocationId;
 
     /**
      * Restreint à une UO précise (ex. navigation dans l'arbre côté Admin/Admin_UO)

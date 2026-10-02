@@ -20,6 +20,15 @@ public interface TypeDocumentRepository extends JpaRepository<TypeDocument, Long
 
     boolean existsByDocumentsNotEmptyAndId(Long id);
 
+    boolean existsByPlanClassementNoeudId(Long noeudId);
+
+    /** [noeudId, nombre de types rattachés] pour tous les nœuds d'une UO — un seul SELECT groupé. */
+    @org.springframework.data.jpa.repository.Query(
+        "SELECT t.planClassementNoeud.id, COUNT(t) FROM TypeDocument t " +
+        "WHERE t.planClassementNoeud IS NOT NULL AND t.uniteOrganisationnelle.id = :uoId " +
+        "GROUP BY t.planClassementNoeud.id")
+    List<Object[]> countParNoeudPourUo(@org.springframework.data.repository.query.Param("uoId") Long uoId);
+
     /** Types dont la regex n'a jamais abouti — voir RegexGenerationService.retenterEchecs
      *  (reprise différée, LLM injoignable ou pas encore configuré au moment du premier essai). */
     List<TypeDocument> findByRegexGeneratedFalse();

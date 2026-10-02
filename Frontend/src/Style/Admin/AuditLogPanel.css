@@ -29,15 +29,15 @@
     align-items: center;
     gap: 0.45rem;
     padding: 0.5rem 0.65rem;
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.55), rgba(253, 248, 243, 0.32));
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.55), rgba(var(--white-choc-rgb), 0.32));
     backdrop-filter: blur(24px) saturate(180%);
     -webkit-backdrop-filter: blur(24px) saturate(180%);
     border: 1px solid rgba(255, 255, 255, 0.6);
     border-radius: 999px;
     box-shadow:
-        0 8px 28px rgba(44, 26, 14, 0.10),
+        0 8px 28px rgba(var(--dark-choc-rgb), 0.10),
         inset 0 1px 0 rgba(255, 255, 255, 0.8),
-        inset 0 -1px 0 rgba(232, 217, 197, 0.35);
+        inset 0 -1px 0 rgba(var(--border-rgb), 0.35);
 }
 
 /* Répartition de la ligne : selects élastiques, dates fixes, recherche prioritaire */
@@ -78,7 +78,7 @@
 .audit-log-filters .form-field-input:focus {
     background: var(--white-choc, #FDF8F3);
     border-color: var(--accent, #8B5E3C);
-    box-shadow: 0 0 0 3px rgba(139, 94, 60, 0.14);
+    box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.14);
 }
 
 .audit-log-filters .up-select {
@@ -107,8 +107,8 @@
     border-radius: 999px;
     background: linear-gradient(135deg, var(--dark-choc, #2C1A0E), var(--dark-mid, #3D2512));
     box-shadow:
-        0 3px 10px rgba(44, 26, 14, 0.24),
-        inset 0 1px 0 rgba(253, 248, 243, 0.18);
+        0 3px 10px rgba(var(--dark-choc-rgb), 0.24),
+        inset 0 1px 0 rgba(var(--white-choc-rgb), 0.18);
 }
 
 .audit-log-filters .audit-log-reset-btn {
@@ -195,7 +195,7 @@
 }
 
 .audit-log-row:hover {
-    background: rgba(139, 94, 60, 0.06);
+    background: rgba(var(--accent-rgb), 0.06);
 }
 
 .audit-log-detail-row td {

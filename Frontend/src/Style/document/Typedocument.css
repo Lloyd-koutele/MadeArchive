@@ -172,7 +172,7 @@
     border-radius: 50%;
     background: var(--white-choc);
     transition: transform var(--transition);
-    box-shadow: 0 1px 3px rgba(44,26,14,0.2);
+    box-shadow: 0 1px 3px rgba(var(--dark-choc-rgb),0.2);
 }
 
 .td-toggle input:checked ~ .td-toggle-track .td-toggle-thumb {
@@ -271,8 +271,36 @@
     font-size: 0.78rem;
     letter-spacing: 0.8px;
     text-transform: uppercase;
-    color: rgba(253,248,243,0.7);
+    color: rgba(var(--white-choc-rgb),0.7);
     white-space: nowrap;
+}
+
+/* Tableau "Types de documents" (.td-types-table, propre à cette page — pas
+   .td-table seule, partagée par d'autres tableaux comme AuditLogPanel/
+   PhysicalLocationsPanel dont les en-têtes ne doivent pas bouger) :
+   en-têtes centrés plutôt qu'alignés à gauche par défaut — y compris
+   "Actions", dont la colonne absorbe toute la largeur restante et dont le
+   libellé collé à l'extrême droite (alignement simple "right") faisait trop
+   excentré. Les BOUTONS de la colonne Actions, eux, restent alignés à droite
+   (.td-col-actions ci-dessous, qui ne vise QUE la cellule du corps). */
+.td-types-table.td-table thead th {
+    text-align: center;
+}
+
+/* Données du corps centrées sous ces mêmes en-têtes (nom, rétention,
+   nombre de champs...) — même raisonnement, propre à ce tableau. */
+.td-types-table.td-table tbody td {
+    text-align: center;
+}
+
+/* Colonne Actions de CE tableau : sans largeur explicite, c'est elle qui
+   absorbe toute la largeur restante — les boutons du corps collent au coin
+   droit plutôt que de rester plaqués à gauche avec un grand vide après eux.
+   Classe dédiée plutôt que ":last-child" sur .td-table : cette classe CSS
+   est partagée par d'autres tableaux dont la dernière colonne n'est pas une
+   colonne Actions. */
+.td-col-actions {
+    text-align: right;
 }
 
 .td-table tbody tr {
@@ -315,6 +343,15 @@
     gap: 0.4rem;
     flex-wrap: nowrap;
     align-items: center;
+}
+
+/* .td-actions est repris tel quel par d'autres tableaux (DocumentsAccessible,
+   Corbeille, DossiersPanel, MesDocumentsEditor) — centré scopé à .td-col-actions
+   (propre à ce tableau-ci) pour ne pas déplacer leurs boutons sans qu'on l'ait
+   demandé. Centré plutôt que flex-end : aligné sous l'en-tête "ACTIONS",
+   lui-même centré (voir .td-types-table.td-table thead th ci-dessus). */
+.td-col-actions .td-actions {
+    justify-content: center;
 }
 
 .td-delete-btn {
@@ -648,7 +685,7 @@
     height: 81.5%;
     background: var(--accent);
     border-radius: 10px;
-    box-shadow: 0 6px 16px rgba(44, 26, 14, 0.14);
+    box-shadow: 0 6px 16px rgba(var(--dark-choc-rgb), 0.14);
 }
 
 .td-folder-sheet {
@@ -660,7 +697,7 @@
     height: 54%;
     background: var(--white-choc);
     border-radius: 6px;
-    box-shadow: 0 3px 10px rgba(44, 26, 14, 0.10);
+    box-shadow: 0 3px 10px rgba(var(--dark-choc-rgb), 0.10);
     padding: 9% 8%;
     display: flex;
     flex-direction: column;
@@ -723,16 +760,15 @@
     border-radius: 50%;
     background: var(--white-choc);
     border: 1px solid var(--border);
-    box-shadow: 0 1px 4px rgba(44, 26, 14, 0.18);
+    box-shadow: 0 1px 4px rgba(var(--dark-choc-rgb), 0.18);
 }
 
 /* ─── Colonnes masquées à taille réduite (liste) ───
    Sous 1100px (même seuil que Admin/UserTable.css et AuditLogPanel.css) :
-   ne garde que Nom / Rétention / Actions. Grâce et Métadonnées restent
-   consultables via "Voir" — classes dédiées plutôt qu'un nth-child fragile
-   si l'ordre des colonnes change un jour. */
+   ne garde que Nom / Rétention / Actions. Métadonnées reste consultable
+   via "Voir" — classe dédiée plutôt qu'un nth-child fragile si l'ordre des
+   colonnes change un jour. */
 @media (max-width: 1100px) {
-    .td-col-grace,
     .td-col-meta { display: none; }
 }
 

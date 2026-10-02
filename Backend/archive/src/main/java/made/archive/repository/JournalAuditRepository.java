@@ -1,5 +1,6 @@
 package made.archive.repository;
 
+import java.util.List;
 import java.util.UUID;
 
 import made.archive.entite.AuditAction;
@@ -22,4 +23,15 @@ public interface JournalAuditRepository
      * référencé ailleurs — documents, dossiers, exports...).
      */
     boolean existsByActeurIdAndAction(UUID acteurId, AuditAction action);
+
+    /** Entrées pas encore chaînées — voir AuditChainService.calculerChainage. */
+    List<JournalAudit> findByChainHashIsNullOrderByIdAsc();
+
+    /** Dernière entrée déjà chaînée (le "bout" actuel de la chaîne), ou null
+     *  si la chaîne n'a encore jamais été amorcée. */
+    JournalAudit findTopByChainHashIsNotNullOrderByIdDesc();
+
+    /** Toute la plage chaînée, dans l'ordre — pour la vérification à la
+     *  demande (voir AuditChainService.verifierChaine). */
+    List<JournalAudit> findByChainHashIsNotNullOrderByIdAsc();
 }

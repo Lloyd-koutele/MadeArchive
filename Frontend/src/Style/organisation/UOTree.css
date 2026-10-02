@@ -15,7 +15,7 @@
 .uo-tree-heading {
     font-size: 0.68rem;
     font-weight: 600;
-    color: rgba(253,248,243,0.3);
+    color: rgba(var(--white-choc-rgb),0.3);
     letter-spacing: 1.2px;
     text-transform: uppercase;
     padding: 0.9rem 0.85rem 0.3rem;
@@ -40,7 +40,7 @@
 .uo-tree-toggle {
     background: none;
     border: none;
-    color: rgba(253,248,243,0.5);
+    color: rgba(var(--white-choc-rgb),0.5);
     font-size: 0.7rem;
     cursor: pointer;
     padding: 0;
@@ -53,7 +53,7 @@
     background: none;
     border: none;
     text-align: left;
-    color: rgba(253,248,243,0.75);
+    color: rgba(var(--white-choc-rgb),0.75);
     font-family: 'DM Sans', sans-serif;
     font-size: 0.87rem;
     cursor: pointer;
@@ -64,7 +64,7 @@
 }
 
 .uo-tree-label:hover {
-    background: rgba(253,248,243,0.08);
+    background: rgba(var(--white-choc-rgb),0.08);
     color: var(--cream);
 }
 

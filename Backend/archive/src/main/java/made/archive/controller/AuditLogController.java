@@ -3,9 +3,11 @@ package made.archive.controller;
 import lombok.RequiredArgsConstructor;
 import made.archive.dto.AuditLogDto;
 import made.archive.dto.AuditLogPageDto;
+import made.archive.dto.ChaineAuditVerificationDto;
 import made.archive.entite.AuditAction;
 import made.archive.entite.AuditCible;
 import made.archive.security.UserDetailsImpl;
+import made.archive.service.audit.AuditChainService;
 import made.archive.service.audit.AuditLogService;
 import made.archive.service.organisation.UniteOrganisationnelleService;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -43,6 +45,7 @@ public class AuditLogController
 {
     private final AuditLogService auditLogService;
     private final UniteOrganisationnelleService uniteOrganisationnelleService;
+    private final AuditChainService auditChainService;
 
     @Secured({"ROLE_ADMIN", "ROLE_ADMIN_UO"})
     @GetMapping
@@ -129,6 +132,35 @@ public class AuditLogController
                 ContentDisposition.attachment().filename(nomFichier).build().toString())
             .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(octets.length))
             .body(octets);
+    }
+
+    /**
+     * GET /api/admin_uo/audit-logs/chaine/verification
+     *
+     * Vérifie l'intégrité de la chaîne du journal d'audit (voir AuditChainService)
+     * — ADMIN voit toute rupture détectée, ADMIN_UO ne voit que celles de son UO
+     * + sous-arbre (ruptureHorsPerimetre signale, sans détail, que le reste de la
+     * chaîne est aussi vérifiée même si invisible pour lui). Le CALCUL, lui,
+     * traverse toujours la chaîne entière quel que soit l'appelant — une
+     * vérification partielle n'a pas de sens cryptographique (voir la Javadoc
+     * d'AuditChainService.verifierChaine).
+     */
+    @Secured({"ROLE_ADMIN", "ROLE_ADMIN_UO"})
+    @GetMapping("/chaine/verification")
+    public ResponseEntity<ChaineAuditVerificationDto> verifierChaine(
+        @AuthenticationPrincipal UserDetailsImpl currentUser)
+    {
+        Set<Long> uoAutorisees = uniteOrganisationnelleService.getUoIdsSousAutorite(currentUser.getUser());
+        ChaineAuditVerificationDto resultat = auditChainService.verifierChaine(uoAutorisees);
+
+        auditLogService.log(currentUser.getUser(), AuditAction.CHAINE_AUDIT_VERIFICATION_DEMANDEE,
+            null, null, null,
+            "Vérification de la chaîne du journal d'audit demandée — "
+                + resultat.getNombreEntreesChainees() + " entrée(s) chaînée(s) contrôlée(s), "
+                + (resultat.isChaineIntacte() ? "aucune rupture détectée" : resultat.getRuptures().size() + " rupture(s) détectée(s)"),
+            resultat.isChaineIntacte());
+
+        return ResponseEntity.ok(resultat);
     }
 
     private static final DateTimeFormatter FORMAT_DATE_EXPORT =

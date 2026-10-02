@@ -609,7 +609,8 @@ public class UserDocumentController
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // Corbeille — suppression volontaire, 3 jours de grâce, restaurable
+    // Corbeille — suppression volontaire, délai de grâce unique (voir
+    // DocumentService.DELAI_GRACE_CORBEILLE_JOURS), restaurable
     // ═══════════════════════════════════════════════════════════════════
 
     /**
@@ -628,7 +629,9 @@ public class UserDocumentController
         try
         {
             documentService.envoyerCorbeille(id, userDetails);
-            return ResponseEntity.ok(java.util.Map.of("message", "Document envoyé à la corbeille, suppression définitive dans 3 jours"));
+            return ResponseEntity.ok(java.util.Map.of("message",
+                "Document envoyé à la corbeille, suppression définitive dans "
+                    + DocumentService.DELAI_GRACE_CORBEILLE_JOURS + " jours"));
         }
         catch (BusinessException e)
         {
@@ -643,23 +646,62 @@ public class UserDocumentController
     }
 
     /**
-     * POST /api/user/docs/{id}/restaurer
+     * POST /api/user/docs/{id}/restaurer?renouvelerRetention=
      *
      * Restaure un document depuis la corbeille — voir
      * DocumentService.restaurerDepuisCorbeille. Réservé à un éditeur ayant
      * accès au document (un admin/admin_uo peut consulter la corbeille mais
-     * pas restaurer).
+     * pas restaurer). renouvelerRetention (défaut false) : à passer à true
+     * seulement après confirmation explicite de l'éditeur, quand
+     * retentionYearsDuType du document (voir DocumentDetailDto) a été utilisé
+     * pour lui annoncer la nouvelle échéance — le service renvoie une erreur
+     * métier si le retentionUntil du document est dépassé et que ce n'est
+     * pas true, plutôt que de restaurer silencieusement un document qui
+     * retomberait aussitôt en corbeille au prochain passage du job.
      */
     @Secured("ROLE_EDITOR")
     @PostMapping("/docs/{id}/restaurer")
     public ResponseEntity<?> restaurerDepuisCorbeille(
         @PathVariable UUID id,
+        @RequestParam(required = false, defaultValue = "false") boolean renouvelerRetention,
         @AuthenticationPrincipal UserDetails userDetails)
     {
         try
         {
-            documentService.restaurerDepuisCorbeille(id, userDetails);
+            documentService.restaurerDepuisCorbeille(id, renouvelerRetention, userDetails);
             return ResponseEntity.ok(java.util.Map.of("message", "Document restauré"));
+        }
+        catch (BusinessException e)
+        {
+            return ResponseEntity.badRequest()
+                .body(buildError("BUSINESS_ERROR", e.getMessage()));
+        }
+        catch (Exception e)
+        {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(buildError("INTERNAL_ERROR", "Erreur : " + e.getMessage()));
+        }
+    }
+
+    /**
+     * POST /api/user/docs/{id}/corbeille/supprimer-definitivement
+     *
+     * Suppression définitive immédiate — voir DocumentService.supprimerDefinitivementDepuisCorbeille.
+     * Seule issue pour un document dont le sort final (CONSERVER/TRIER) exclut
+     * la purge automatique après le délai de grâce : sans cette action, un tel
+     * document resterait en corbeille indéfiniment. Réservé à un éditeur ayant
+     * accès au document, délai de grâce déjà écoulé (sinon erreur métier).
+     */
+    @Secured("ROLE_EDITOR")
+    @PostMapping("/docs/{id}/corbeille/supprimer-definitivement")
+    public ResponseEntity<?> supprimerDefinitivementDepuisCorbeille(
+        @PathVariable UUID id,
+        @AuthenticationPrincipal UserDetails userDetails)
+    {
+        try
+        {
+            documentService.supprimerDefinitivementDepuisCorbeille(id, userDetails);
+            return ResponseEntity.ok(java.util.Map.of("message", "Document supprimé définitivement"));
         }
         catch (BusinessException e)
         {
@@ -777,6 +819,7 @@ public class UserDocumentController
         @RequestParam(required = false) String    statut,
         @RequestParam(required = false) Long      uoId,
         @RequestParam(required = false) Long      dossierId,
+        @RequestParam(required = false) Long      planClassementNoeudId,
         @RequestParam(defaultValue = "1")  int   page,
         @RequestParam(defaultValue = "10") int   size,
         @AuthenticationPrincipal UserDetails userDetails)
@@ -791,6 +834,7 @@ public class UserDocumentController
             filter.setStatut(statut);
             filter.setUoId(uoId);
             filter.setDossierId(dossierId);
+            filter.setPlanClassementNoeudId(planClassementNoeudId);
             filter.setPage(page);
             filter.setSize(size);
     

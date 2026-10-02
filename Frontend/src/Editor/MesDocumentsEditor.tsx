@@ -10,6 +10,9 @@ import { modifierAcces, modifierMetaDataDocument, getTypeDocumentById } from '..
 import ChangerAccesPanel from '../components/ChangerAccesPanel';
 import EmplacementPhysiqueSection from '../components/EmplacementPhysiqueSection';
 import DossierAttachSection from '../components/DossierAttachSection';
+import DeplacerDossierModal from '../components/DeplacerDossierModal';
+import EmplacementPhysiqueModal from '../components/EmplacementPhysiqueModal';
+import PdfViewer from '../components/PdfViewer';
 import type { TypeDocumentDto } from '../services/document/DocumentService';
 import MetaDataField from '../document/MetadaField';
 import {
@@ -21,7 +24,9 @@ import {
     streamPdfAAsBlob,
     getThumbnailBlob,
     envoyerDocumentCorbeille,
-    restaurerDocumentDepuisCorbeille
+    restaurerDocumentDepuisCorbeille,
+    retentionEstDepassee,
+    formaterNouvelleEcheanceRetention
 
  } from '../services/document/DocumentService';
 import type {
@@ -29,7 +34,11 @@ import type {
     DocumentListItemDto,
     DocumentDetailDto
 } from '../services/document/DocumentService';
+import { getMyUO } from '../services/organisation/UOService';
 import '../Style/Editor/Editor.css';
+// .td-row-selected (surbrillance carte/ligne sélectionnée) — le menu
+// contextuel (.dossier-context-menu*) vient déjà d'Editor.css ci-dessus.
+import '../Style/document/Typedocument.css';
 import { useNotify } from '../notifications/NotificationProvider';
 import { useConfirm } from '../notifications/ConfirmProvider';
 
@@ -137,17 +146,53 @@ function MesDocumentsEditor({
     const [listPages, setListPages]   = useState(1);
     const [listLoading, setListLoading] = useState(false);
 
-    // ── Sélection multiple — pour l'envoi en masse à la corbeille. Ne
-    // retient que des documents réellement gérables (peutGererCorbeille) ;
-    // vidée à chaque changement de dossier/page pour éviter une sélection
-    // fantôme sur des documents qui ne sont plus affichés. Les cases à
-    // cocher ne s'affichent QUE quand selectionModeActive est vrai — activé
-    // par un clic droit (PC) ou un appui prolongé (tactile) sur une ligne,
-    // jamais visible par défaut (voir la vue tableau plus bas). ─────────────
+    // ── Sélection multiple — Cmd/Ctrl+clic bascule, clic droit ouvre un menu
+    // contextuel (Déplacer / Changer l'emplacement physique / Supprimer),
+    // même mécanique que organisation/DossiersPanel.tsx et
+    // document/TypedocumentList.tsx (handleClickCard/handleContextMenuCard) :
+    // pas de case à cocher, pas de mode à activer/désactiver. Vidée à chaque
+    // changement de dossier/page pour éviter une sélection fantôme sur des
+    // documents qui ne sont plus affichés (voir loadDocuments). ─────────────
     const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
-    const [selectionModeActive, setSelectionModeActive] = useState(false);
     const [suppressionMasseEnCours, setSuppressionMasseEnCours] = useState(false);
-    const longPressTimer = useRef<number | null>(null);
+    const [contextMenu, setContextMenu] = useState<{ top: number; left: number; centre: boolean } | null>(null);
+    const [isDeplacerOpen, setIsDeplacerOpen] = useState(false);
+    const [isEmplacementModalOpen, setIsEmplacementModalOpen] = useState(false);
+
+    // Échap — efface la sélection en cours et ferme le menu contextuel s'il
+    // est ouvert, même convention que DossiersPanel. Cmd/Ctrl+A — sélectionne
+    // tous les documents actuellement affichés (page courante), SAUF si le
+    // focus est dans un champ de saisie (recherche, dates...) : on laisse
+    // alors le raccourci natif du navigateur sélectionner le texte du champ.
+    useEffect(() => {
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                setSelectedDocIds(new Set());
+                setContextMenu(null);
+                return;
+            }
+            const cible = e.target as HTMLElement;
+            const champTexte = cible.tagName === 'INPUT' || cible.tagName === 'TEXTAREA' || cible.isContentEditable;
+            if (!champTexte && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') {
+                e.preventDefault();
+                setSelectedDocIds(new Set(documents.map(d => d.documentId)));
+            }
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [documents]);
+
+    // ── UO de l'éditeur — non disponible autrement ici jusqu'à présent, voir
+    // ImportDocuments.tsx qui résout déjà sa propre UO de la même façon.
+    // Nécessaire pour les modales de déplacement (arbre de dossiers, liste
+    // des emplacements physiques) : DossierTreePicker/getEmplacementsDisponibles
+    // ont besoin d'un uoId, jamais fourni par ce composant (toujours "sa
+    // propre UO" pour un éditeur, contrairement à DocumentsAccessible.tsx qui
+    // peut recevoir un uoId explicite depuis Admin/Admin UO). ────────────────
+    const [uoIdEditeur, setUoIdEditeur] = useState<number | null>(null);
+    useEffect(() => {
+        getMyUO().then((uo: { id?: number } | null) => setUoIdEditeur(uo?.id ?? null)).catch(() => setUoIdEditeur(null));
+    }, []);
 
     // ── Menu "..." compact (vue liste, écran réduit uniquement — voir
     // Editor.css) : regroupe Détail, Télécharger, Nouvelle version et
@@ -304,7 +349,6 @@ function MesDocumentsEditor({
             setPreviews(prev => { Object.values(prev).forEach(url => URL.revokeObjectURL(url)); return {}; });
             setPreviewsEchec(new Set());
             setSelectedDocIds(new Set());
-            setSelectionModeActive(false);
         } catch (err: any) {
             notify.error(err.message ?? 'Erreur chargement documents');
         } finally {
@@ -518,7 +562,7 @@ function MesDocumentsEditor({
 
     const handleEnvoyerCorbeille = async (documentId: string) => {
         if (!(await confirm(
-            'Envoyer ce document à la corbeille ? Il sera supprimé définitivement dans 3 jours — '
+            'Envoyer ce document à la corbeille ? Il sera supprimé définitivement dans 6 jours — '
             + 'vous pourrez le restaurer avant cette échéance.'
         ))) return;
 
@@ -535,10 +579,28 @@ function MesDocumentsEditor({
         }
     };
 
+    /** Seul appelant : DocumentDetailPanel.onRestaurer, toujours pour le
+     *  document actuellement affiché — voir handleRestaurer de Corbeille.tsx
+     *  pour la même logique de confirmation. */
     const handleRestaurerCorbeille = async (documentId: string) => {
+        const depassee = retentionEstDepassee(detail?.retentionUntil);
+        if (depassee) {
+            const nouvelle = formaterNouvelleEcheanceRetention(detail?.retentionYearsType);
+            const accepte = await confirm({
+                title: 'Rétention dépassée',
+                message: `La date de rétention de ce document est dépassée (${formatDate(detail?.retentionUntil ?? null)}). `
+                    + (nouvelle
+                        ? `Le restaurer avec une nouvelle rétention de ${nouvelle.annees} an${nouvelle.annees > 1 ? 's' : ''} `
+                            + `(jusqu'au ${nouvelle.dateAffichee}) ?`
+                        : `Son type de document n'a pas de limite de rétention — le restaurer sans limite ?`),
+                confirmLabel: 'Restaurer',
+            });
+            if (!accepte) return;
+        }
+
         setSuppressionLoading(true);
         try {
-            await restaurerDocumentDepuisCorbeille(documentId);
+            await restaurerDocumentDepuisCorbeille(documentId, depassee);
             await openDetailById(documentId);
             loadFolders();
             if (activeFolder) loadDocuments(activeFolder, listPage);
@@ -555,7 +617,7 @@ function MesDocumentsEditor({
     // rouvre pas le détail : juste rafraîchir la liste sur place.
     const handleEnvoyerCorbeilleRapide = async (doc: DocumentListItemDto) => {
         if (!(await confirm(
-            `Envoyer "${doc.titre}" à la corbeille ? Il sera supprimé définitivement dans 3 jours — `
+            `Envoyer "${doc.titre}" à la corbeille ? Il sera supprimé définitivement dans 6 jours — `
             + 'vous pourrez le restaurer avant cette échéance.'
         ))) return;
 
@@ -578,61 +640,68 @@ function MesDocumentsEditor({
         setSelectedDocIds(prev => {
             const next = new Set(prev);
             if (next.has(documentId)) next.delete(documentId); else next.add(documentId);
-            // Plus rien coché → on quitte le mode sélection tout seul, pas
-            // besoin de rester avec des cases vides à l'écran.
-            if (next.size === 0) setSelectionModeActive(false);
             return next;
         });
     };
 
-    // Coche/décoche tous les documents sélectionnables de la page courante —
-    // seuls ceux avec peutGererCorbeille peuvent être envoyés à la corbeille,
-    // les autres ne sont jamais inclus dans la sélection.
-    const toggleSelectAllDocs = () => {
-        const selectionnables = documents.filter(d => d.peutGererCorbeille).map(d => d.documentId);
-        setSelectedDocIds(prev => {
-            const toutCoche = selectionnables.length > 0 && selectionnables.every(id => prev.has(id));
-            if (toutCoche) setSelectionModeActive(false);
-            return toutCoche ? new Set() : new Set(selectionnables);
-        });
+    /** Clic normal = rien (ouvre déjà l'aperçu PDF via son propre gestionnaire,
+     *  voir doc-grid-preview) ; Cmd/Ctrl+clic = bascule la sélection — même
+     *  logique que DossiersPanel.handleClickDossierCard /
+     *  TypeDocumentList.handleClickCard. */
+    const handleClickCard = (e: React.MouseEvent, documentId: string) => {
+        if (e.metaKey || e.ctrlKey) {
+            e.preventDefault();
+            toggleDocSelection(documentId);
+            return;
+        }
+        if (selectedDocIds.size > 0) {
+            setSelectedDocIds(new Set());
+        }
     };
 
-    // Active le mode sélection (cases à cocher visibles) — déclenché par un
-    // clic droit ou un appui prolongé sur une ligne, jamais par défaut.
-    const activateSelectionMode = (documentId: string) => {
-        setSelectionModeActive(true);
-        setSelectedDocIds(prev => new Set(prev).add(documentId));
+    /** Clic droit — sélectionne SEULEMENT la carte/ligne cliquée si elle
+     *  n'était pas déjà dans la sélection courante, même logique que
+     *  DossiersPanel.handleContextMenuDossier. En vue GRILLE seulement, ouvre
+     *  en plus le petit menu (Déplacer/Changer l'emplacement/Supprimer) —
+     *  posé directement au point de clic pour une sélection unique (comme un
+     *  menu contextuel natif), centré à l'écran pour une sélection multiple
+     *  (pas de carte unique à désigner). En vue LISTE, la barre de sélection
+     *  déjà affichée suffit — pas de menu flottant en plus, qui la
+     *  recouvrait et encombrait l'écran. */
+    const handleContextMenuCard = (e: React.MouseEvent, documentId: string) => {
+        e.preventDefault();
+        const dejaSelectionne = selectedDocIds.has(documentId);
+        if (!dejaSelectionne) {
+            setSelectedDocIds(new Set([documentId]));
+        }
+        if (docsViewMode !== 'grid') return;
+        const tailleSelection = dejaSelectionne ? selectedDocIds.size : 1;
+        if (tailleSelection > 1) {
+            setContextMenu({ top: 0, left: 0, centre: true });
+        } else {
+            setContextMenu({ top: e.clientY, left: e.clientX, centre: false });
+        }
     };
 
     const annulerSelection = () => {
         setSelectedDocIds(new Set());
-        setSelectionModeActive(false);
     };
 
-    const LONG_PRESS_MS = 500;
-
-    const handleRowTouchStart = (documentId: string) => {
-        if (longPressTimer.current) window.clearTimeout(longPressTimer.current);
-        longPressTimer.current = window.setTimeout(() => {
-            activateSelectionMode(documentId);
-            longPressTimer.current = null;
-        }, LONG_PRESS_MS);
-    };
-
-    const handleRowTouchEnd = () => {
-        if (longPressTimer.current) {
-            window.clearTimeout(longPressTimer.current);
-            longPressTimer.current = null;
-        }
-    };
+    // Sous-ensemble de la sélection RÉELLEMENT gérable (même prédicat serveur
+    // que peutGererCorbeille pour peutModifierDossier/peutModifierEmplacement,
+    // voir DocumentService côté serveur — les trois sont interchangeables) —
+    // un Cmd+clic peut désormais sélectionner N'IMPORTE QUEL document affiché,
+    // contrairement à l'ancienne case à cocher qui n'existait que sur les
+    // documents gérables.
+    const docsSelectionnesGerables = documents.filter(d => selectedDocIds.has(d.documentId) && d.peutGererCorbeille);
 
     const handleEnvoyerCorbeilleMasse = async () => {
-        const ids = Array.from(selectedDocIds);
+        const ids = docsSelectionnesGerables.map(d => d.documentId);
         if (ids.length === 0) return;
 
         if (!(await confirm(
             `Envoyer ${ids.length} document${ids.length > 1 ? 's' : ''} à la corbeille ? `
-            + `Ils seront supprimés définitivement dans 3 jours — vous pourrez les restaurer avant cette échéance.`
+            + `Ils seront supprimés définitivement dans 6 jours — vous pourrez les restaurer avant cette échéance.`
         ))) return;
 
         setSuppressionMasseEnCours(true);
@@ -771,12 +840,14 @@ function MesDocumentsEditor({
                                     onKeyDown={e => e.key === 'Enter' && openFolder(folder)}
                                     aria-label={`Ouvrir le dossier ${folder.typeDocumentNom}`}
                                 >
-                                    {/* Bouton "+" */}
+                                    {/* Bouton "+" — même terminologie "Archiver" que
+                                        DossiersPanel.folder-quick-add-btn (icône "+"
+                                        conservée, seul le libellé change). */}
                                     <button
                                         className="folder-add-btn"
                                         onClick={e => openUploadForFolder(folder, e)}
-                                        aria-label={`Ajouter un document de type ${folder.typeDocumentNom}`}
-                                        title="Ajouter un document"
+                                        aria-label={`Archiver un document de type ${folder.typeDocumentNom}`}
+                                        title="Archiver ici"
                                     >
                                         <i className="fa-solid fa-plus" />
                                     </button>
@@ -864,7 +935,7 @@ function MesDocumentsEditor({
                             <span>Chargement du document...</span>
                         </div>
                     ) : pdfBlobUrl ? (
-                        <iframe src={pdfBlobUrl} className="pdf-viewer-iframe" title="Lecteur PDF" />
+                        <PdfViewer url={pdfBlobUrl} className="pdf-viewer-iframe" />
                     ) : (
                         <div className="td-empty"><p>Impossible de charger le document.</p></div>
                     )}
@@ -876,6 +947,52 @@ function MesDocumentsEditor({
     // ─────────────────────────────────────────────────────────────────────────
     // RENDU — Vue Liste (documents d'un dossier)
     // ─────────────────────────────────────────────────────────────────────────
+
+    // ── Menu contextuel (clic droit sur une carte, vue GRILLE seulement — voir
+    // handleContextMenuCard, qui ne l'ouvre jamais en vue liste). Overlay plein
+    // écran transparent pour fermer au clic/clic-droit ailleurs, comme un menu
+    // contextuel natif. Ancré juste au-dessus de la carte pour une sélection
+    // unique (dossier-context-menu-anchored, voir Editor.css) ; centré à
+    // l'écran pour une sélection multiple (dossier-context-menu-centre) —
+    // aucune carte unique à désigner dans ce cas. ───────────────────────────
+    const contextMenuJsx = contextMenu && (
+        <div
+            className="dossier-context-menu-overlay"
+            onClick={() => setContextMenu(null)}
+            onContextMenu={e => { e.preventDefault(); setContextMenu(null); }}
+        >
+            <div
+                className={`dossier-context-menu doc-context-menu ${contextMenu.centre ? 'dossier-context-menu-centre' : 'dossier-context-menu-anchored'}`}
+                style={contextMenu.centre ? undefined : { top: contextMenu.top, left: contextMenu.left }}
+                onClick={e => e.stopPropagation()}
+            >
+                <button
+                    type="button"
+                    disabled={docsSelectionnesGerables.length === 0}
+                    onClick={() => { setContextMenu(null); setIsDeplacerOpen(true); }}
+                >
+                    <i className="fa-solid fa-folder-tree" />
+                    Déplacer{docsSelectionnesGerables.length > 1 ? ` (${docsSelectionnesGerables.length})` : ''}
+                </button>
+                <button
+                    type="button"
+                    disabled={docsSelectionnesGerables.length === 0}
+                    onClick={() => { setContextMenu(null); setIsEmplacementModalOpen(true); }}
+                >
+                    <i className="fa-solid fa-map-location-dot" />
+                    Changer l'emplacement physique{docsSelectionnesGerables.length > 1 ? ` (${docsSelectionnesGerables.length})` : ''}
+                </button>
+                <button
+                    type="button"
+                    disabled={docsSelectionnesGerables.length === 0 || suppressionMasseEnCours}
+                    onClick={() => { setContextMenu(null); handleEnvoyerCorbeilleMasse(); }}
+                >
+                    <i className="fa-solid fa-trash" />
+                    Supprimer{docsSelectionnesGerables.length > 1 ? ` (${docsSelectionnesGerables.length})` : ''}
+                </button>
+            </div>
+        </div>
+    );
 
     return (
         <div className="mes-docs-wrapper">
@@ -919,9 +1036,11 @@ function MesDocumentsEditor({
                     </button>
                 </div>
 
-                {/* Bouton ajouter dans ce dossier */}
+                {/* Bouton archiver dans ce type — même icône/libellé que
+                    DossiersPanel ("Archiver dans ce dossier"), pour une
+                    terminologie cohérente entre les deux panneaux. */}
                 <button
-                    className="breadcrumb-add-btn"
+                    className="breadcrumb-add-btn breadcrumb-archive-btn"
                     onClick={() => {
                         if (activeFolder) {
                             setVersionSource(null);
@@ -929,9 +1048,11 @@ function MesDocumentsEditor({
                             setIsUploadOpen(true);
                         }
                     }}
+                    aria-label="Archiver ici"
+                    title="Archiver ici"
                 >
-                    <i className="fa-solid fa-plus" />
-                    Ajouter
+                    <i className="fa-solid fa-box-archive" />
+                    Archiver
                 </button>
             </div>
 
@@ -997,10 +1118,14 @@ function MesDocumentsEditor({
                 </button>
             </form>
 
-            {/* ── Barre de sélection multiple — n'apparaît que si au moins un
-                document est coché. ────────────────────────────────────────── */}
-            {selectedDocIds.size > 0 && (
-                <div className="selection-toolbar">
+            {/* ── Barre de sélection multiple — vue LISTE seulement (n'apparaît
+                que si au moins un document est sélectionné, Cmd/Ctrl+clic ou
+                clic droit, voir handleClickCard/handleContextMenuCard). En
+                vue GRILLE, ces mêmes actions vivent dans le petit menu
+                contextuel ancré à la carte (contextMenuJsx) — les deux
+                affichés en même temps encombraient l'écran, voir historique. */}
+            {docsViewMode === 'list' && selectedDocIds.size > 0 && (
+                <div className="selection-toolbar selection-toolbar-compact">
                     <span className="selection-toolbar-count">
                         {selectedDocIds.size} document{selectedDocIds.size > 1 ? 's' : ''} sélectionné{selectedDocIds.size > 1 ? 's' : ''}
                     </span>
@@ -1013,9 +1138,25 @@ function MesDocumentsEditor({
                     </button>
                     <button
                         type="button"
+                        className="action-button"
+                        onClick={() => setIsDeplacerOpen(true)}
+                        disabled={docsSelectionnesGerables.length === 0}
+                    >
+                        <i className="fa-solid fa-folder-tree" /> Déplacer
+                    </button>
+                    <button
+                        type="button"
+                        className="action-button"
+                        onClick={() => setIsEmplacementModalOpen(true)}
+                        disabled={docsSelectionnesGerables.length === 0}
+                    >
+                        <i className="fa-solid fa-map-location-dot" /> Changer l'emplacement physique
+                    </button>
+                    <button
+                        type="button"
                         className="action-button delete"
                         onClick={handleEnvoyerCorbeilleMasse}
-                        disabled={suppressionMasseEnCours}
+                        disabled={suppressionMasseEnCours || docsSelectionnesGerables.length === 0}
                     >
                         {suppressionMasseEnCours
                             ? <><i className="fa-solid fa-spinner fa-spin" /> Envoi…</>
@@ -1050,27 +1191,25 @@ function MesDocumentsEditor({
                 </div>
             ) : docsViewMode === 'grid' ? (
                 <>
-                    <div className="documents-grid">
+                    <div
+                        className="documents-grid"
+                        onClick={e => { if (e.target === e.currentTarget) setSelectedDocIds(new Set()); }}
+                    >
                         {documents.map(doc => (
-                            <div key={doc.documentId} className="doc-grid-card">
+                            <div
+                                key={doc.documentId}
+                                className={`doc-grid-card ${selectedDocIds.has(doc.documentId) ? 'td-row-selected' : ''}`}
+                                onClick={e => handleClickCard(e, doc.documentId)}
+                                onContextMenu={e => handleContextMenuCard(e, doc.documentId)}
+                            >
                                 <div
                                     className="doc-grid-preview"
-                                    onClick={() => openPdfViewer(doc)}
+                                    onClick={e => { if (e.metaKey || e.ctrlKey) return; openPdfViewer(doc); }}
                                     role="button"
                                     tabIndex={0}
                                     onKeyDown={e => e.key === 'Enter' && openPdfViewer(doc)}
                                     aria-label={`Lire ${doc.titre}`}
                                 >
-                                    {doc.peutGererCorbeille && (
-                                        <input
-                                            type="checkbox"
-                                            className="doc-grid-select"
-                                            checked={selectedDocIds.has(doc.documentId)}
-                                            onClick={e => e.stopPropagation()}
-                                            onChange={() => toggleDocSelection(doc.documentId)}
-                                            aria-label={`Sélectionner ${doc.titre}`}
-                                        />
-                                    )}
                                     {previews[doc.documentId] ? (
                                         <img
                                             src={previews[doc.documentId]}
@@ -1181,23 +1320,6 @@ function MesDocumentsEditor({
                         <table className="td-table">
                             <thead>
                                 <tr>
-                                    {selectionModeActive && (
-                                        <th className="td-select-col">
-                                            {documents.some(d => d.peutGererCorbeille) && (
-                                                <input
-                                                    type="checkbox"
-                                                    checked={
-                                                        documents.some(d => d.peutGererCorbeille)
-                                                        && documents.filter(d => d.peutGererCorbeille).every(d => selectedDocIds.has(d.documentId))
-                                                    }
-                                                    onChange={toggleSelectAllDocs}
-                                                    onClick={e => e.stopPropagation()}
-                                                    aria-label="Tout sélectionner"
-                                                    title="Tout sélectionner"
-                                                />
-                                            )}
-                                        </th>
-                                    )}
                                     <th>Titre</th>
                                     {/* Masquées sur écran réduit (voir Editor.css) — ne restent
                                         que Titre / Rétention / Actions, le reste redevient
@@ -1210,33 +1332,18 @@ function MesDocumentsEditor({
                                 </tr>
                             </thead>
                             <tbody>
-                                {/* Cases à cocher jamais visibles par défaut — seulement après
-                                    un clic droit ou un appui prolongé sur une ligne (voir
-                                    activateSelectionMode). Double-clic pour lire un document,
-                                    plus d'icône "œil" dédiée. */}
+                                {/* Cmd/Ctrl+clic = sélection multiple, clic droit = menu contextuel
+                                    (Déplacer / Changer l'emplacement physique / Supprimer), voir
+                                    handleClickCard/handleContextMenuCard. Double-clic pour lire un
+                                    document, plus d'icône "œil" dédiée. */}
                                 {documents.map(doc => (
                                     <tr
                                         key={doc.documentId}
-                                        className={selectionModeActive ? 'td-row-selectable' : undefined}
+                                        className={selectedDocIds.has(doc.documentId) ? 'td-row-selected' : undefined}
                                         onDoubleClick={() => openPdfViewer(doc)}
-                                        onClick={() => { if (selectionModeActive) toggleDocSelection(doc.documentId); }}
-                                        onContextMenu={e => { e.preventDefault(); activateSelectionMode(doc.documentId); }}
-                                        onTouchStart={() => handleRowTouchStart(doc.documentId)}
-                                        onTouchEnd={handleRowTouchEnd}
-                                        onTouchMove={handleRowTouchEnd}
+                                        onClick={e => handleClickCard(e, doc.documentId)}
+                                        onContextMenu={e => handleContextMenuCard(e, doc.documentId)}
                                     >
-                                        {selectionModeActive && (
-                                            <td className="td-select-col" onClick={e => e.stopPropagation()}>
-                                                {doc.peutGererCorbeille && (
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={selectedDocIds.has(doc.documentId)}
-                                                        onChange={() => toggleDocSelection(doc.documentId)}
-                                                        aria-label={`Sélectionner ${doc.titre}`}
-                                                    />
-                                                )}
-                                            </td>
-                                        )}
                                         <td className="td-nom">
                                             {doc.titre}
                                             <VersionBadge label={doc.versionLabel} />
@@ -1459,6 +1566,35 @@ function MesDocumentsEditor({
                     precedentDocument={versionSource}
                 />
             </Modal>
+
+            {contextMenuJsx}
+
+            {uoIdEditeur != null && (
+                <>
+                    <DeplacerDossierModal
+                        isOpen={isDeplacerOpen}
+                        onClose={() => setIsDeplacerOpen(false)}
+                        uoId={uoIdEditeur}
+                        documents={docsSelectionnesGerables}
+                        onSuccess={() => {
+                            annulerSelection();
+                            loadFolders();
+                            if (activeFolder) loadDocuments(activeFolder, listPage);
+                        }}
+                    />
+                    <EmplacementPhysiqueModal
+                        isOpen={isEmplacementModalOpen}
+                        onClose={() => setIsEmplacementModalOpen(false)}
+                        uoId={uoIdEditeur}
+                        documentIds={docsSelectionnesGerables.map(d => d.documentId)}
+                        onSuccess={() => {
+                            annulerSelection();
+                            loadFolders();
+                            if (activeFolder) loadDocuments(activeFolder, listPage);
+                        }}
+                    />
+                </>
+            )}
         </div>
     );
 }
@@ -1614,9 +1750,9 @@ function DocumentDetailPanel({
                 <strong>Version :</strong> {detail.version}
             </div>
 
-            <EmplacementPhysiqueSection detail={detail} onUpdated={onEmplacementChange} />
+            <EmplacementPhysiqueSection detail={detail} />
 
-            <DossierAttachSection detail={detail} onUpdated={onEmplacementChange} />
+            <DossierAttachSection detail={detail} />
 
             {detail.pdfaSha256 && (
                 <div className="details-row">

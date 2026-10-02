@@ -42,6 +42,14 @@ public class DocumentDetailDto
     /** Date de suppression définitive programmée — non-null uniquement quand status == "CORBEILLE". */
     private LocalDate suppressionPrevueLe;
 
+    /** Durée de rétention (en années) configurée sur le TYPE de ce document —
+     *  null si ce type n'a pas de limite de rétention. Utilisée côté client
+     *  uniquement pour informer l'éditeur, au moment de restaurer un document
+     *  dont retentionUntil est déjà dépassé, de la durée qu'aurait la
+     *  nouvelle échéance s'il choisit de la renouveler (voir
+     *  DocumentService.restaurerDepuisCorbeille). */
+    private Long retentionYearsType;
+
     /** true si l'utilisateur consultant peut envoyer ce document à la corbeille, ou
      *  le restaurer s'il y est déjà — voir DocumentService.envoyerCorbeille/
      *  restaurerDepuisCorbeille (éditeur ayant accès normal au document, pas
@@ -78,6 +86,10 @@ public class DocumentDetailDto
      *  (même règle que peutModifierEmplacement, ET jamais true si le document hérite
      *  de la confidentialité d'un dossier PRIVÉ — voir DocumentService.modifierAcces). */
     private boolean peutModifierAcces;
+
+    /** Activité (plan de classement de l'UO) héritée du TYPE de ce document, ex.
+     *  "03 Finances › 03.2 Factures". Null = type non classé. */
+    private String activite;
 
     @Data
     @Builder

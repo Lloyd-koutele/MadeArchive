@@ -8,6 +8,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import made.archive.exception.AccessDeniedException;
@@ -79,14 +80,22 @@ public class PhysicalLocationLectureController
         }
     }
 
+    /**
+     * typeDocumentId/dossierId (optionnels) filtrent par compatibilité — voir
+     * PhysicalLocationService.getEmplacementsDisponibles. Omis = comportement
+     * historique (tous les points de stockage actifs, sans filtrage).
+     */
     @Secured("ROLE_EDITOR")
     @GetMapping("/uo/{uoId}/disponibles")
     public ResponseEntity<?> getEmplacementsDisponibles(@PathVariable Long uoId,
+                                                          @RequestParam(required = false) Long typeDocumentId,
+                                                          @RequestParam(required = false) Long dossierId,
                                                           @AuthenticationPrincipal UserDetailsImpl principal)
     {
         try
         {
-            return ResponseEntity.ok(service.getEmplacementsDisponibles(uoId, principal.getUser()));
+            return ResponseEntity.ok(
+                service.getEmplacementsDisponibles(uoId, typeDocumentId, dossierId, principal.getUser()));
         }
         catch (AccessDeniedException e)
         {

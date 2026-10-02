@@ -1,0 +1,15 @@
+.pc-panel { display: flex; flex-direction: column; gap: 1rem; }
+.pc-intro { color: var(--text-light); margin: 0; font-size: 0.9rem; }
+.pc-tree { list-style: none; margin: 0; padding-left: 0; }
+.pc-tree .pc-tree { padding-left: 1.4rem; border-left: 1px dashed var(--border); margin-left: 0.6rem; }
+.pc-node-row {
+    display: flex; align-items: center; gap: 0.6rem; padding: 0.4rem 0.6rem;
+    border-radius: var(--radius-sm); flex-wrap: wrap;
+}
+.pc-node-row:hover { background: var(--cream); }
+.pc-code { font-weight: 700; color: var(--dark-choc); min-width: 3rem; }
+.pc-libelle { flex: 1 1 12rem; color: var(--dark-mid); }
+.pc-count { font-size: 0.8rem; color: var(--text-light); }
+.pc-actions { display: flex; gap: 0.3rem; }
+.pc-empty { color: var(--text-light); padding: 1rem 0; }
+.pc-form { display: flex; flex-direction: column; gap: 0.8rem; }

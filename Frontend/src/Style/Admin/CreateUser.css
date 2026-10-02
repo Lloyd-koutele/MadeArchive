@@ -54,7 +54,7 @@
 
 .form-field-input:focus {
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(139,94,60,0.12);
+    box-shadow: 0 0 0 3px rgba(var(--accent-rgb),0.12);
     background: var(--white-choc);
 }
 
@@ -149,7 +149,7 @@
 
 .form-submit-btn:hover {
     background: var(--dark-mid);
-    box-shadow: 0 0 0 3px rgba(44,26,14,0.12);
+    box-shadow: 0 0 0 3px rgba(var(--dark-choc-rgb),0.12);
 }
 
 /* Responsive */

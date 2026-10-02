@@ -8,7 +8,7 @@
     position: relative;
     background: none;
     border: none;
-    color: rgba(253, 248, 243, 0.75);
+    color: rgba(var(--white-choc-rgb), 0.75);
     font-size: 1.05rem;
     cursor: pointer;
     padding: 0.4rem 0.5rem;
@@ -18,7 +18,7 @@
 
 .notif-bell-button:hover {
     color: var(--white-choc);
-    background: rgba(253, 248, 243, 0.08);
+    background: rgba(var(--white-choc-rgb), 0.08);
 }
 
 .notif-bell-badge {
@@ -67,7 +67,7 @@
     justify-content: space-between;
     padding: 0.65rem 0.85rem;
     font-weight: 600;
-    border-bottom: 1px solid rgba(44, 26, 14, 0.1);
+    border-bottom: 1px solid rgba(var(--dark-choc-rgb), 0.1);
 }
 
 .notif-mark-all-btn {
@@ -91,7 +91,7 @@
 .notif-bell-empty {
     padding: 1.5rem 1rem;
     text-align: center;
-    color: rgba(44, 26, 14, 0.5);
+    color: rgba(var(--dark-choc-rgb), 0.5);
     font-size: 0.85rem;
 }
 
@@ -103,18 +103,18 @@
     padding: 0.65rem 0.85rem;
     background: none;
     border: none;
-    border-bottom: 1px solid rgba(44, 26, 14, 0.06);
+    border-bottom: 1px solid rgba(var(--dark-choc-rgb), 0.06);
     text-align: left;
     cursor: pointer;
     transition: background var(--transition);
 }
 
 .notif-item:hover {
-    background: rgba(139, 94, 60, 0.08);
+    background: rgba(var(--accent-rgb), 0.08);
 }
 
 .notif-item-unread {
-    background: rgba(139, 94, 60, 0.05);
+    background: rgba(var(--accent-rgb), 0.05);
 }
 
 .notif-item i {
@@ -140,7 +140,7 @@
 
 .notif-item-date {
     font-size: 0.7rem;
-    color: rgba(44, 26, 14, 0.5);
+    color: rgba(var(--dark-choc-rgb), 0.5);
 }
 
 .notif-item-dot {

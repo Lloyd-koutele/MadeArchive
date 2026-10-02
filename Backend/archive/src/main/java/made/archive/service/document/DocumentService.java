@@ -93,30 +93,18 @@ public class DocumentService
     private final made.archive.repository.GroupeAccessRepository groupeAccessRepository;
     private final MeilisearchService meilisearchService;
     private final made.archive.repository.AttestationRepository attestationRepository;
+    private final DocumentRetentionService documentRetentionService;
 
     private static final String INDEX_NAME        = "documents";
 
-    /**
-     * Statuts à exclure de tout listage/recherche NORMAL — tombstoné
-     * (DELETED) et mis de côté volontairement (CORBEILLE, voir
-     * envoyerCorbeille). Seule la corbeille elle-même (DocumentAccessService
-     * .getDocumentsCorbeille) montre les documents CORBEILLE.
-     */
+    
     private static final List<DocumentStatus> STATUTS_EXCLUS_LECTURE =
         List.of(DocumentStatus.DELETED, DocumentStatus.CORBEILLE);
 
-    // ═══════════════════════════════════════════════════════════════════
-    // 1. DOSSIERS — grille de types avec compteurs
-    // ═══════════════════════════════════════════════════════════════════
+    public static final long DELAI_GRACE_CORBEILLE_JOURS = 6;
 
-    /**
-     * Retourne les types de documents utilisés par l'éditeur connecté,
-     * avec le nombre de documents par type.
-     * Limité à FOLDER_PAGE_SIZE (10) par défaut.
-     * Filtrage supplémentaire par nom de type possible (recherche locale).
-     *
-     * Source : BD uniquement.
-     */
+    // 1. DOSSIERS — grille de types avec compteurs
+    
     @Transactional(readOnly = true)
     public List<DocumentFolderDto> getMesFolders(UserDetails userDetails)
     {
@@ -135,22 +123,8 @@ public class DocumentService
             .collect(Collectors.toList());
     }
 
-    // ═══════════════════════════════════════════════════════════════════
     // 2. LISTE — documents d'un type, paginés depuis la BD
-    // ═══════════════════════════════════════════════════════════════════
-
-    /**
-     * Retourne les documents de l'éditeur connecté pour un type donné.
-     * Pagination BD, tri par date de création décroissante.
-     * Exclut les documents DELETED.
-     *
-     * dateDebut/dateFin optionnels — filtre sur la date d'archivage
-     * (createAt), même borne inclusive que DocumentAccessService (début de
-     * journée / fin de journée) pour un comportement cohérent entre "Mes
-     * documents" et "Documents accessibles".
-     *
-     * Source : BD uniquement.
-     */
+    
     @Transactional(readOnly = true)
     public DocumentPageDto getMesDocumentsByType(
         Long typeDocumentId,
@@ -202,28 +176,8 @@ public class DocumentService
             .build();
     }
 
-    // ═══════════════════════════════════════════════════════════════════
     // 3. RECHERCHE HYBRIDE — Meilisearch (IDs) → BD (données)
-    // ═══════════════════════════════════════════════════════════════════
 
-    /**
-     * Recherche full-text via Meilisearch, puis charge les documents
-     * depuis la BD par leurs IDs.
-     *
-     * Filtre optionnel typeDocumentId : restreint la recherche à un type.
-     * Le filtre uploadedBy est toujours appliqué côté BD (sécurité).
-     *
-     * dateDebut/dateFin optionnels — voir getMesDocumentsByType. Sur la
-     * branche Meilisearch (query non vide), appliqués en mémoire APRÈS le
-     * chargement BD par IDs (comme le filtre uploadedById juste en dessous,
-     * déjà dans ce style) : le total renvoyé peut alors être légèrement
-     * inférieur à la page Meilisearch demandée si des résultats tombent hors
-     * de la période — limite déjà présente sur ce chemin avant ce filtre.
-     *
-     * Si query est vide : délègue à getMesDocumentsByType() ou liste tous
-     * (dateDebut/dateFin ignorés dans ce dernier cas, hors périmètre — pas
-     * de sélecteur de dates sur la vue "tous mes documents").
-     */
     @Transactional(readOnly = true)
     public DocumentPageDto rechercher(
         String query,
@@ -283,24 +237,14 @@ public class DocumentService
             .build();
     }
 
-    // ═══════════════════════════════════════════════════════════════════
     // 4. DÉTAIL — métadonnées complètes d'un document
-    // ═══════════════════════════════════════════════════════════════════
 
-    /**
-     * Retourne le détail complet d'un document avec ses métadonnées.
-     * Vérifie que l'utilisateur connecté est bien l'uploadeur.
-     */
     @Transactional(readOnly = true)
     public DocumentDetailDto getDetail(UUID documentId, UserDetails userDetails)
     {
         User user     = resolveUser(userDetails);
         Document doc  = resolveDocument(documentId, user);
 
-        // Un document corrompu envoyé à la corbeille garde CORRUPTED dans
-        // statutAvantCorbeille (voir Document.statutAvantCorbeille) — sa
-        // raison de corruption doit rester affichée (badge), pas disparaître
-        // simplement parce que son status affiché est devenu CORBEILLE.
         boolean estOuEtaitCorrompu = doc.getStatus() == DocumentStatus.CORRUPTED
             || doc.getStatutAvantCorbeille() == DocumentStatus.CORRUPTED;
         String corruptionRaison = estOuEtaitCorrompu
@@ -327,6 +271,10 @@ public class DocumentService
             .corruptionRaison(corruptionRaison)
             .statutAvantCorbeille(doc.getStatutAvantCorbeille() != null ? doc.getStatutAvantCorbeille().name() : null)
             .suppressionPrevueLe(doc.getSuppressionPrevueLe())
+            .activite(made.archive.service.organisation.PlanClassementService
+                .chemin(doc.getTypeDocument().getPlanClassementNoeud()))
+            .retentionYearsType(doc.getTypeDocument().getRetention() != null
+                ? doc.getTypeDocument().getRetention().getRetentionYears() : null)
             .peutGererCorbeille(estEditeur(user) && getUtilisateursAyantAcces(doc).stream()
                 .anyMatch(u -> u.getId().equals(user.getId())))
             .metaData(doc.getData().stream()
@@ -354,17 +302,8 @@ public class DocumentService
             .build();
     }
 
-    // ═══════════════════════════════════════════════════════════════════
     // 5. VISUALISATION — streamer le PDF/A inline (pour le lecteur PDF)
-    // ═══════════════════════════════════════════════════════════════════
-
-    /**
-     * Retourne les bytes du PDF/A pour affichage inline dans le navigateur.
-     * Content-Type : application/pdf
-     * Le contrôleur pose Content-Disposition: inline.
-     *
-     * Vérifie que l'utilisateur est bien l'uploadeur avant de streamer.
-     */
+    
     @Transactional(readOnly = true)
     public byte[] streamPdfAForView(UUID documentId, UserDetails userDetails)
     {
@@ -379,32 +318,11 @@ public class DocumentService
         return downloadFromStorage(doc.getStorageKey(), documentId, "PDF/A view");
     }
 
-    // ═══════════════════════════════════════════════════════════════════
     // 5bis. MINIATURE (vues en grille) — générée et mise en cache une fois
-    // ═══════════════════════════════════════════════════════════════════
 
     private static final String THUMBNAIL_PREFIX = "thumbnails/";
     private static final int    THUMBNAIL_WIDTH  = 320;
 
-    /**
-     * Miniature JPEG (1re page) d'un document, pour les vues en grille.
-     *
-     * Pense pour un catalogue destiné à grandir vers des milliards de
-     * documents : contrairement à streamPdfAForView (PDF/A ENTIER, rasterisé
-     * côté client par pdf.js — voir l'ancien PdfThumbnail.ts), le coût de
-     * génération n'est payé qu'UNE SEULE FOIS par document, ici, côté
-     * serveur (PDFBox, déjà une dépendance — voir OcrService/Tika) ; le
-     * résultat (quelques Ko) est mis en cache chiffré dans MinIO
-     * (thumbnails/{id}.jpg) et simplement relu ensuite — chaque affichage
-     * suivant, quel que soit le nombre de documents à l'écran, ne coûte
-     * plus qu'une lecture d'objet MinIO minuscule, jamais un téléchargement
-     * + déchiffrement + parsing PDF complet répété à chaque rendu de grille.
-     *
-     * Pas d'audit DOCUMENT_CONSULTE ici, volontairement — contrairement à
-     * streamPdfAForView : une miniature en grille n'est pas une
-     * "consultation" du document au sens métier/légal, juste un aperçu
-     * visuel ; auditer chaque scroll de grille noierait le journal.
-     */
     @Transactional(readOnly = true)
     public byte[] getThumbnail(UUID documentId, UserDetails userDetails)
     {
@@ -421,9 +339,6 @@ public class DocumentService
             }
             catch (Exception e)
             {
-                // Cache illisible (objet corrompu/tronqué...) — on retombe
-                // sur une régénération complète ci-dessous plutôt que
-                // d'échouer, le cache n'est qu'une optimisation.
                 log.warn("[DocumentService] Miniature en cache illisible pour {}, régénération : {}",
                     documentId, e.getMessage());
             }
@@ -439,10 +354,6 @@ public class DocumentService
         }
         catch (Exception e)
         {
-            // Best-effort : un échec d'écriture du cache ne doit jamais faire
-            // échouer l'affichage de la miniature elle-même (ex. bucket
-            // momentanément indisponible) — juste régénérée à nouveau au
-            // prochain appel.
             log.warn("[DocumentService] Échec mise en cache de la miniature pour {} : {}",
                 documentId, e.getMessage());
         }
@@ -450,14 +361,6 @@ public class DocumentService
         return thumbnail;
     }
 
-    /**
-     * Rasterise la première page d'un PDF en JPEG via PDFBox — équivalent
-     * côté serveur de l'ancien renderPdfFirstPageThumbnail (pdf.js, client).
-     * Exception volontairement PAS une BusinessException (réservée aux refus
-     * d'accès dans resolveDocument) : un PDF illisible ici est une erreur
-     * technique (500), pas un refus d'autorisation (403) — le contrôleur
-     * distingue les deux.
-     */
     private byte[] rasterizePremierePage(byte[] pdfBytes, int targetWidth)
     {
         try (org.apache.pdfbox.pdmodel.PDDocument pdf =
@@ -484,14 +387,8 @@ public class DocumentService
         }
     }
 
-    // ═══════════════════════════════════════════════════════════════════
     // 6. TÉLÉCHARGEMENT PDF/A — Content-Disposition: attachment
-    // ═══════════════════════════════════════════════════════════════════
 
-    /**
-     * Retourne les bytes du PDF/A pour téléchargement.
-     * Le contrôleur pose Content-Disposition: attachment; filename=...
-     */
     @Transactional(readOnly = true)
     public byte[] downloadPdfA(UUID documentId, UserDetails userDetails)
     {
@@ -517,12 +414,7 @@ public class DocumentService
         return sanitizeFilename(doc.getTitre()) + "_pdfa.pdf";
     }
 
-    /**
-     * Résout un document pour la génération d'une attestation d'archivage —
-     * exactement les mêmes règles d'accès que consulter/télécharger (voir
-     * resolveDocument), pas ouvert à tout le monde : réservé à qui a
-     * normalement accès au document. Utilisé par AttestationService.
-     */
+    
     @Transactional(readOnly = true)
     public Document resolveDocumentPourAttestation(UUID documentId, UserDetails userDetails)
     {
@@ -530,32 +422,12 @@ public class DocumentService
         return resolveDocument(documentId, user);
     }
 
-    /**
-     * Bytes du PDF/A archivé, pour AttestationPublicController
-     * (/{token}/document/view) — le document a déjà été résolu via un jeton
-     * d'attestation valide (voir AttestationService.resolveDocumentPourToken),
-     * AUCUNE vérification de confidentialité ici contrairement à
-     * downloadPdfA/streamPdfAForView : décision produit assumée, le QR
-     * imprimé sur l'attestation donne accès au fichier original même pour un
-     * document PRIVÉ. Consultation UNIQUEMENT (pas de pendant "download" —
-     * revu le 09/2026, jamais de téléchargement du fichier depuis cette
-     * source publique).
-     */
     @Transactional(readOnly = true)
     public byte[] lireBytesPdfAViaAttestation(Document doc)
     {
         return downloadFromStorage(doc.getStorageKey(), doc.getId(), "PDF/A via attestation publique");
     }
 
-    /**
-     * Comme resolveDocument, mais ne lève JAMAIS — Optional.empty() si
-     * introuvable OU si l'utilisateur n'y a pas accès, plutôt qu'une
-     * BusinessException. Pour une vérification "best-effort" où l'absence de
-     * visibilité ne doit jamais être signalée comme une erreur — voir
-     * DocumentOcrService (avertissement de document similaire) : silence
-     * total si l'appelant n'a pas accès, jamais le moindre indice qu'un
-     * document existe.
-     */
     @Transactional(readOnly = true)
     public Optional<Document> resolveDocumentSiVisible(UUID documentId, User user)
     {
@@ -569,31 +441,8 @@ public class DocumentService
         }
     }
 
-    // ═══════════════════════════════════════════════════════════════════
-    // 7. CORBEILLE — suppression volontaire (3 jours de grâce, restaurable)
-    // ═══════════════════════════════════════════════════════════════════
+    // 7. CORBEILLE — suppression volontaire (délai de grâce unique, voir DELAI_GRACE_CORBEILLE_JOURS, restaurable)
 
-    /**
-     * Envoie un document à la corbeille — N'IMPORTE QUEL document non déjà
-     * DELETED/CORBEILLE (plus seulement un corrompu, voir historique :
-     * l'ancien planifierSuppression était restreint à CORRUPTED). Réservé à
-     * un ÉDITEUR de la liste d'accès normale du document (voir
-     * getUtilisateursAyantAcces), pas seulement l'uploadeur — un document
-     * dont l'uploadeur a quitté l'UO ne doit pas rester bloqué indéfiniment
-     * si d'autres éditeurs y ont légitimement accès. Jamais un admin seul,
-     * même avec autorité sur l'UO : "seulement côté éditeur", comme pour
-     * modifierMetaData/modifierEmplacementPhysique/modifierDossierDocument.
-     *
-     * Le statut d'origine est conservé dans statutAvantCorbeille (un document
-     * CORROMPU envoyé à la corbeille redevient CORROMPU à la restauration,
-     * badge inclus — voir Document.statutAvantCorbeille). Pendant les 3
-     * jours, le document reste consultable/téléchargeable par les mêmes
-     * profils que le circuit CORROMPU (resolveDocument), mais disparaît de
-     * tout listage/recherche normal (voir STATUTS_EXCLUS_LECTURE) — seule la
-     * corbeille elle-même (DocumentAccessService.getDocumentsCorbeille) le
-     * montre. DocumentRetentionService purge réellement une fois l'échéance
-     * atteinte (même mécanisme tombstone que la fin de rétention).
-     */
     @Transactional
     public void envoyerCorbeille(UUID documentId, UserDetails userDetails)
     {
@@ -621,7 +470,7 @@ public class DocumentService
         DocumentStatus statutOrigine = doc.getStatus();
         doc.setStatutAvantCorbeille(statutOrigine);
         doc.setStatus(DocumentStatus.CORBEILLE);
-        doc.setSuppressionPrevueLe(LocalDate.now().plusDays(3));
+        doc.setSuppressionPrevueLe(LocalDate.now().plusDays(DELAI_GRACE_CORBEILLE_JOURS));
         documentRepository.save(doc);
 
         auditLogService.log(user, AuditAction.DOCUMENT_PLACE_CORBEILLE, AuditCible.DOCUMENT,
@@ -632,15 +481,8 @@ public class DocumentService
             true);
     }
 
-    /**
-     * Restaure un document depuis la corbeille — même règle d'autorisation
-     * qu'envoyerCorbeille. Rend au document exactement son statut d'avant
-     * (voir Document.statutAvantCorbeille) : un document CORROMPU restauré
-     * redevient CORROMPU, pas ACTIVE — restaurer ne "répare" pas le fichier,
-     * seulement l'action de suppression est annulée.
-     */
     @Transactional
-    public void restaurerDepuisCorbeille(UUID documentId, UserDetails userDetails)
+    public void restaurerDepuisCorbeille(UUID documentId, boolean renouvelerRetention, UserDetails userDetails)
     {
         User user    = resolveUser(userDetails);
         Document doc = resolveDocument(documentId, user);
@@ -658,34 +500,65 @@ public class DocumentService
             throw new BusinessException("Ce document n'est pas dans la corbeille");
         }
 
+        boolean retentionDepassee = doc.getRetentionUntil() != null
+            && !doc.getRetentionUntil().isAfter(LocalDate.now());
+        if (retentionDepassee && !renouvelerRetention)
+        {
+            throw new BusinessException("La date de rétention de ce document est dépassée depuis le "
+                + doc.getRetentionUntil() + " — confirmez le renouvellement de la rétention pour le restaurer");
+        }
+
         DocumentStatus statutRestaure = doc.getStatutAvantCorbeille() != null
             ? doc.getStatutAvantCorbeille() : DocumentStatus.ACTIVE;
 
         doc.setStatus(statutRestaure);
         doc.setStatutAvantCorbeille(null);
         doc.setSuppressionPrevueLe(null);
+        if (retentionDepassee)
+        {
+            Long anneesRetention = doc.getTypeDocument().getRetention() != null
+                ? doc.getTypeDocument().getRetention().getRetentionYears() : null;
+            doc.setRetentionUntil(anneesRetention != null ? LocalDate.now().plusYears(anneesRetention) : null);
+        }
         documentRepository.save(doc);
 
         auditLogService.log(user, AuditAction.DOCUMENT_RESTAURE_CORBEILLE, AuditCible.DOCUMENT,
             doc.getId().toString(),
             doc.getUniteOrganisationnelle() != null ? doc.getUniteOrganisationnelle().getId() : null,
-            "Document \"" + doc.getTitre() + "\" restauré depuis la corbeille (statut " + statutRestaure + ")",
+            "Document \"" + doc.getTitre() + "\" restauré depuis la corbeille (statut " + statutRestaure + ")"
+                + (retentionDepassee ? " — rétention renouvelée jusqu'au " + doc.getRetentionUntil() : ""),
             true);
     }
 
-    // ═══════════════════════════════════════════════════════════════════
-    // 8. LOCALISATION PHYSIQUE — modification après coup
-    // ═══════════════════════════════════════════════════════════════════
-
     /**
-     * Modifie (ou retire, si physicalLocationId == null) l'emplacement
-     * physique d'un document — même règle d'autorisation que
-     * envoyerCorbeille : réservé à un ÉDITEUR de la liste d'accès
-     * normale du document (voir getUtilisateursAyantAcces), pas ouvert à un
-     * simple lecteur. L'emplacement choisi est validé par
-     * PhysicalLocationService.resolvePourRattachement (point de stockage
-     * ACTIF, même UO que le document).
+     * Suppression définitive immédiate, demandée par un éditeur, d'un document
+     * en CORBEILLE dont le sort final (CONSERVER/TRIER — voir entite.SortFinal)
+     * exclut la purge automatique du job planifié (voir
+     * DocumentRetentionService.purgeDocumentsCorbeille) : sans cette action, un
+     * tel document resterait en corbeille indéfiniment. Même autorisation que
+     * envoyerCorbeille/restaurerDepuisCorbeille (éditeur ayant accès au document) —
+     * les règles de délai de grâce et de sort final sont vérifiées par
+     * DocumentRetentionService.supprimerDefinitivementManuellement.
      */
+    @Transactional
+    public void supprimerDefinitivementDepuisCorbeille(UUID documentId, UserDetails userDetails)
+    {
+        User user    = resolveUser(userDetails);
+        Document doc = resolveDocument(documentId, user);
+
+        boolean autorise = estEditeur(user) && getUtilisateursAyantAcces(doc).stream()
+            .anyMatch(u -> u.getId().equals(user.getId()));
+        if (!autorise)
+        {
+            throw new BusinessException(
+                "Seul un éditeur ayant accès à ce document peut le supprimer définitivement");
+        }
+
+        documentRetentionService.supprimerDefinitivementManuellement(doc, user);
+    }
+
+    // 8. LOCALISATION PHYSIQUE — modification après coup
+    
     @Transactional
     public DocumentDetailDto modifierEmplacementPhysique(
         UUID documentId, UUID physicalLocationId, UserDetails userDetails)
@@ -724,27 +597,6 @@ public class DocumentService
         return getDetail(documentId, userDetails);
     }
 
-    /**
-     * Bascule PUBLIC ↔ PRIVÉ après coup — même règle d'autorisation que
-     * modifierEmplacementPhysique/modifierMetaData (éditeur de la liste
-     * d'accès normale du document).
-     *
-     * Un document rattaché à un dossier PRIVÉ hérite de sa confidentialité
-     * (voir DocumentUploadeService) et PARTAGE le GroupeAccess du dossier —
-     * son accès n'est donc jamais modifiable indépendamment ici, seulement
-     * via l'accès du dossier lui-même (DossierService.modifierAcces).
-     *
-     * PUBLIC → PRIVÉ : crée un NOUVEAU GroupeAccess (jamais un groupe
-     * partagé, contrairement au cas "hérite d'un dossier" ci-dessus), seedé
-     * avec l'auteur de la demande + les membres optionnellement fournis —
-     * même logique qu'à l'upload direct (DocumentUploadeService).
-     *
-     * PRIVÉ → PUBLIC : détache le groupe (document.groupe = null) sans le
-     * supprimer — aucun endroit de cette appli ne supprime jamais une ligne
-     * GroupeAccess (voir DocumentService.modifierDossierDocument, qui clone
-     * plutôt que de toucher au groupe existant) ; il devient simplement
-     * orphelin, conservé pour trace.
-     */
     @Transactional
     public DocumentDetailDto modifierAcces(
         UUID documentId, ChangerAccesRequestDto dto, UserDetails userDetails)
@@ -808,10 +660,6 @@ public class DocumentService
                 + " à " + dto.getAccess(),
             true);
 
-        // PUBLIC → PRIVÉ : révoque immédiatement le QR/lien public existant plutôt
-        // que d'attendre son expiration naturelle (2 jours — voir AttestationService).
-        // L'inverse (PRIVÉ → PUBLIC) ne touche pas à une attestation existante,
-        // qui continue son propre délai.
         if (ancienAcces == TypeAccess.PUBLIC && dto.getAccess() == TypeAccess.PRIVE)
         {
             purgerAttestationSiExiste(doc, "changement d'accès PUBLIC → PRIVÉ");
@@ -820,15 +668,6 @@ public class DocumentService
         return getDetail(documentId, userDetails);
     }
 
-    /**
-     * Purge immédiate de TOUTES les attestations actives d'un document (il
-     * peut y en avoir plusieurs — voir Javadoc de l'entité Attestation),
-     * hors du cycle normal d'expiration (voir
-     * AttestationService.purgerAttestationsExpirees), avec la même trace
-     * d'audit avant chaque suppression. N'appelle pas AttestationService
-     * pour éviter une dépendance circulaire (celui-ci dépend déjà de
-     * DocumentService) — accès direct au repository.
-     */
     private void purgerAttestationSiExiste(Document doc, String raisonAudit)
     {
         for (Attestation attestation : attestationRepository.findAllByDocumentId(doc.getId()))
@@ -839,56 +678,11 @@ public class DocumentService
                 "Attestation d'archivage purgée pour \"" + doc.getTitre() + "\" — " + raisonAudit,
                 true);
             attestationRepository.delete(attestation);
-        }
-    }
+        }}
 
-    // ═══════════════════════════════════════════════════════════════════
+    
     // 8b. DOSSIER — rattacher, migrer ou détacher un document après coup
-    // ═══════════════════════════════════════════════════════════════════
 
-    /**
-     * Change le dossier d'un document — même règle d'autorisation que
-     * modifierEmplacementPhysique/modifierMetaData (éditeur de la liste
-     * d'accès normale du document). nouveauDossierId == null détache le
-     * document de son dossier actuel ("le faire sortir du dossier") ;
-     * une valeur migre le document vers ce dossier (que celui-ci en ait
-     * déjà un ou non).
-     *
-     * Au détachement, si le document partageait encore le GroupeAccess de
-     * ce dossier (fusion antérieure ou héritage direct à l'upload — voir
-     * DocumentUploadeService), il reçoit sa propre copie indépendante,
-     * figée aux membres actuels : sans ça, il resterait exposé pour
-     * toujours à quiconque rejoint le groupe du dossier PLUS TARD, alors
-     * qu'il n'en fait plus partie.
-     *
-     * Deux gardes supplémentaires, propres au dossier CIBLE :
-     *   - même UO que le document (jamais un document migré hors de son UO) ;
-     *   - si le dossier cible est PRIVÉ, l'acteur doit être membre de son
-     *     groupe d'accès — sans quoi la confidentialité du dossier serait
-     *     contournable en y rattachant un document depuis l'extérieur.
-     *
-     * Aucune validation stricte contre les types attendus du dossier cible —
-     * un document d'un type hors-liste peut toujours être rattaché. En
-     * revanche, si son type n'y figure pas encore, il est ajouté
-     * automatiquement à Dossier.typesDocumentsAttendus (jamais retiré
-     * automatiquement au détachement — voir retirerTypeAttendu pour le
-     * retrait volontaire) : un document rattaché doit toujours être
-     * trouvable en parcourant son dossier, jamais orphelin de la navigation
-     * par types (voir DossiersPanel côté client, qui ne liste les documents
-     * que via ces dossiers de type).
-     *
-     * Document PRIVÉ rattaché à un dossier PRIVÉ dont le groupe diffère : le
-     * document.groupe ne change JAMAIS tout seul silencieusement — voir
-     * verifierFusionGroupe, appelée par le client AVANT cette méthode pour
-     * savoir s'il faut avertir l'éditeur. fusionnerGroupes doit valoir true
-     * pour que la fusion ait lieu ; sinon, un écart entre les deux groupes
-     * fait échouer l'appel plutôt que de fusionner sans confirmation. La
-     * fusion elle-même : les membres du groupe du document manquants dans
-     * celui du dossier y sont ajoutés (union), puis document.groupe pointe
-     * ensuite vers CE MÊME GroupeAccess que le dossier — un lien permanent,
-     * pas un instantané, exactement comme DocumentUploadeService le fait
-     * déjà pour un document uploadé directement dans un dossier privé.
-     */
     @Transactional
     public DocumentDetailDto modifierDossierDocument(
         UUID documentId, Long nouveauDossierId, boolean fusionnerGroupes, UserDetails userDetails)
@@ -908,19 +702,6 @@ public class DocumentService
 
         if (nouveauDossierId == null)
         {
-            // Si ce document partage encore le GroupeAccess de son dossier
-            // actuel (fusion antérieure, ou héritage direct à l'upload — voir
-            // DocumentUploadeService), le détachement doit rompre ce lien
-            // permanent : sans ça, le document resterait indéfiniment
-            // exposé à quiconque rejoint PLUS TARD le groupe du dossier,
-            // alors qu'il n'en fait plus partie. On lui donne donc sa PROPRE
-            // copie indépendante — figée aux membres actuels, jamais plus
-            // suivie par le dossier ensuite. Le document reste privé, avec
-            // exactement les mêmes personnes qui y avaient accès juste avant.
-            // Détail resté silencieux dans le journal — l'entrée
-            // DOCUMENT_DOSSIER_MODIFIE plus bas couvre déjà "détaché du
-            // dossier X" ; ce dédoublement de groupe n'est qu'un détail de
-            // mise en œuvre protégeant l'accès, pas un événement à part.
             if (ancien != null && ancien.getGroupe() != null && doc.getGroupe() != null
                 && doc.getGroupe().getId().equals(ancien.getGroupe().getId()))
             {
@@ -957,11 +738,6 @@ public class DocumentService
                 }
             }
 
-            // Import automatique du type dans les types attendus du dossier
-            // CIBLE, si absent — sans quoi le document rattaché n'aurait
-            // aucun dossier sous lequel apparaître en le parcourant (voir
-            // le javadoc ci-dessus). Ne s'applique qu'au dossier cible : un
-            // simple changement de dossier n'a pas à modifier l'ancien.
             TypeDocument type = doc.getTypeDocument();
             List<TypeDocument> typesAttendus = nouveau.getTypesDocumentsAttendus();
             boolean dejaPresent = typesAttendus != null
@@ -988,9 +764,6 @@ public class DocumentService
                     true);
             }
 
-            // Document privé rattaché à un dossier privé : deux groupes
-            // potentiellement différents (voir le javadoc ci-dessus). On ne
-            // fusionne jamais sans confirmation explicite du client.
             if (doc.getAccess() == TypeAccess.PRIVE && doc.getGroupe() != null
                 && nouveau.getAccess() == TypeAccess.PRIVE && nouveau.getGroupe() != null
                 && !doc.getGroupe().getId().equals(nouveau.getGroupe().getId()))
@@ -1019,9 +792,7 @@ public class DocumentService
                             + " (rattachement confirmé par l'éditeur)",
                         true);
                 }
-                // Lien permanent — pas une copie : le document partage désormais
-                // le même GroupeAccess que le dossier, comme à l'upload direct
-                // dans un dossier privé (voir DocumentUploadeService).
+
                 doc.setGroupe(nouveau.getGroupe());
             }
 
@@ -1041,14 +812,6 @@ public class DocumentService
         return getDetail(documentId, userDetails);
     }
 
-    /**
-     * Appelée par le client AVANT modifierDossierDocument, pour savoir s'il
-     * faut avertir l'éditeur qu'une fusion de groupes aura lieu — voir le
-     * javadoc de modifierDossierDocument. Lecture seule, aucun effet de bord.
-     * groupesDifferents reste false (aucun avertissement) si le document
-     * n'est pas privé, si le dossier cible ne l'est pas, ou si les deux
-     * groupes ont déjà exactement les mêmes membres.
-     */
     @Transactional(readOnly = true)
     public FusionGroupeCheckDto verifierFusionGroupe(UUID documentId, Long dossierId, UserDetails userDetails)
     {
@@ -1083,26 +846,8 @@ public class DocumentService
             .toList();
     }
 
-    // ═══════════════════════════════════════════════════════════════════
-    // 9. MÉTADONNÉES — modification après coup (valeurs uniquement, jamais
-    //    le fichier/titre/type)
-    // ═══════════════════════════════════════════════════════════════════
-
-    /**
-     * Remplace les valeurs de métadonnées d'un document — même règle
-     * d'autorisation que envoyerCorbeille/modifierEmplacementPhysique :
-     * réservé à un ÉDITEUR de la liste d'accès normale du document. Ne
-     * touche jamais au fichier, au titre ni au type — uniquement les
-     * DataType associés.
-     *
-     * Effet de bord important : si ce document est le SEUL document vivant
-     * de son type, les regex d'extraction OCR de ce type (si déjà générées)
-     * ont forcément été apprises à partir de CE document, et de rien
-     * d'autre — corriger ses métadonnées ici invalide donc automatiquement
-     * ces regex (voir TypeDocumentService.viderRegexAutomatiquement),
-     * plutôt que de laisser un admin découvrir plus tard, sans lien
-     * évident, que les suggestions restent mauvaises pour tout le monde.
-     */
+    // 9. MÉTADONNÉES — modification après coup (valeurs uniquement, jamais le fichier/titre/type)
+    
     @Transactional
     public DocumentDetailDto modifierMetaData(
         UUID documentId, List<DataTypeDto> nouvellesValeurs, UserDetails userDetails)
@@ -1152,10 +897,6 @@ public class DocumentService
             aEnregistrer.add(dataType);
         }
 
-        // Tous les champs obligatoires doivent être couverts par la requête,
-        // même ceux absents de nouvellesValeurs (pas seulement ceux présents
-        // avec une valeur vide) — sinon un client pourrait simplement omettre
-        // un champ obligatoire pour contourner la validation ci-dessus.
         Set<String> nomsRecus = nouvellesValeurs.stream()
             .map(DataTypeDto::getNom).collect(Collectors.toSet());
         for (MetaData meta : metaDataDefinies)
@@ -1191,13 +932,8 @@ public class DocumentService
         return getDetail(documentId, userDetails);
     }
 
-    // ═══════════════════════════════════════════════════════════════════
     // Helpers privés
-    // ═══════════════════════════════════════════════════════════════════
 
-    /**
-     * Liste tous les documents de l'éditeur, tous types confondus.
-     */
     private DocumentPageDto getTousMesDocuments(User user, int page, int size)
     {
         Pageable pageable = PageRequest.of(
@@ -1326,23 +1062,6 @@ public class DocumentService
             .orElseThrow(() -> new BusinessException("Utilisateur introuvable"));
     }
 
-    /**
-     * Résout un document en vérifiant que l'utilisateur y a droit :
-     *   - l'uploadeur a toujours accès, quel que soit le statut ;
-     *   - sinon, pour un document SAIN, quiconque a normalement accès (public
-     *     de son UO, ou membre du groupe privé) — quel que soit son rôle, voir
-     *     estVisibleNormalement ; c'est ce qui permet à un simple USER de
-     *     consulter/télécharger un document pour lequel il est autorisé, pas
-     *     seulement à son propre uploadeur (ROUTE FINALE de "USER consulte et
-     *     télécharge les documents auxquels il est autorisé") ;
-     *   - sinon, pour un document CORROMPU ou en CORBEILLE, restreint à
-     *     l'ADMIN/ADMIN_UO ayant autorité sur son UO (lecture — investigation
-     *     ou audit de la corbeille), ou à un ÉDITEUR de sa liste d'accès (voir
-     *     getUtilisateursAyantAcces) — qui peut en plus le restaurer/remplacer
-     *     (voir envoyerCorbeille/restaurerDepuisCorbeille/FixityCheckService) ;
-     *     un simple USER ne le voit plus dans aucun des deux cas, même s'il y
-     *     avait normalement accès.
-     */
     private Document resolveDocument(UUID documentId, User user)
     {
         Document doc = documentRepository.findById(documentId)
@@ -1381,12 +1100,6 @@ public class DocumentService
         return doc;
     }
 
-    /**
-     * Visibilité normale d'un document SAIN — même règle que
-     * DocumentAccessService (listes/recherche) : périmètre UO (null = ADMIN,
-     * pas de restriction ; ADMIN_UO = son UO + descendantes ; EDITOR/USER =
-     * leur propre UO) ET (PUBLIC, ou membre du GroupeAccess si PRIVÉ).
-     */
     private boolean estVisibleNormalement(Document doc, User user)
     {
         if (doc.getUniteOrganisationnelle() == null)
@@ -1409,15 +1122,6 @@ public class DocumentService
             .anyMatch(m -> m.getId().equals(user.getId()));
     }
 
-    /**
-     * Utilisateurs ayant accès à ce document — PUBLIC : tous les membres de
-     * son UO ; PRIVÉ : les membres de son GroupeAccess, que ce groupe soit
-     * propre au document ou hérité de son dossier privé (voir
-     * DocumentUploadeService — aucune différence de traitement nécessaire ici,
-     * document.access/document.groupe reflètent déjà correctement l'héritage).
-     * Utilisé pour la suppression d'un document corrompu, sa notification de
-     * corruption, et sa visibilité restreinte une fois corrompu.
-     */
     public List<User> getUtilisateursAyantAcces(Document document)
     {
         if (document.getAccess() == TypeAccess.PRIVE)
@@ -1454,6 +1158,8 @@ public class DocumentService
             .retentionUntil(doc.getRetentionUntil())
             .createAt(doc.getCreateAt())
             .versionLabel(DocumentVersionLabels.compute(doc))
+            .retentionYearsType(doc.getTypeDocument().getRetention() != null
+                ? doc.getTypeDocument().getRetention().getRetentionYears() : null)
             .peutGererCorbeille(peutGererCorbeille)
             .build();
     }

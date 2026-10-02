@@ -7,10 +7,24 @@ import {
     reactiverEmplacement,
     supprimerEmplacement,
     deplacerEmplacement,
+    definirCapaciteEmplacement,
+    definirContrainteEmplacement,
 } from '../services/organisation/PhysicalLocationService';
-import type { PhysicalLocationNodeDto } from '../services/organisation/PhysicalLocationService';
+import type { PhysicalLocationNodeDto, LocationModeContrainte } from '../services/organisation/PhysicalLocationService';
+import { getDocumentsAccessibles, getDocumentDetail, streamPdfAAsBlob } from '../services/document/DocumentService';
+import type { DocumentListItemDto } from '../services/document/DocumentService';
+import PdfViewer from '../components/PdfViewer';
+import { getTypeDocumentsByUO } from '../services/document/TypedocumentService';
+import type { TypeDocumentDto } from '../services/document/TypedocumentService';
+import { getArbreDossiers } from '../services/organisation/DossierService';
+import DossierTreePicker from './DossierTreePicker';
 import EmplacementTreeModal from './EmplacementTreeModal';
+import type { CibleEditionExistante } from './EmplacementTreeModal';
+import Modal from '../Page/Modal';
 import '../Style/organisation/PhysicalLocationsPanel.css';
+// .td-table/.status-tag/.doc-access-tag/.pagination — modale "Voir les
+// documents" en simple tableau (pas de vignettes PDF, juste lister/ouvrir).
+import '../Style/document/Typedocument.css';
 import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus';
 import { useNotify } from '../notifications/NotificationProvider';
 import { useConfirm } from '../notifications/ConfirmProvider';
@@ -32,6 +46,13 @@ interface PhysicalLocationsPanelProps {
      * échouer en 403 au clic.
      */
     mode?: 'gestion' | 'lecture';
+    /** "Ouvrir dans l'emplacement" (menu "..." d'un document, voir
+     *  ouvrirEmplacementDocument) — ce panneau n'a pas lui-même d'écran pour
+     *  afficher un document dans son dossier, donc il délègue la navigation
+     *  à l'appelant (EditorDasboard bascule sur l'onglet "Dossiers" et passe
+     *  cet id à DossiersPanel via initialDossierId). Absent = action non
+     *  proposée (ex. mode "lecture" — pas de menu d'actions du tout). */
+    onOuvrirDansDossier?: (dossierId: number, typeDocumentId: number) => void;
 }
 
 /**
@@ -45,7 +66,7 @@ type TreeModalState =
     | { open: true; mode: 'create'; parentId: string | null; parentLabel: string | null }
     | { open: true; mode: 'update'; node: PhysicalLocationNodeDto };
 
-function PhysicalLocationsPanel({ uoId, mode = 'lecture' }: PhysicalLocationsPanelProps) {
+function PhysicalLocationsPanel({ uoId, mode = 'lecture', onOuvrirDansDossier }: PhysicalLocationsPanelProps) {
     const notify = useNotify();
     const confirm = useConfirm();
     const estGestionnaire = mode === 'gestion';
@@ -54,6 +75,145 @@ function PhysicalLocationsPanel({ uoId, mode = 'lecture' }: PhysicalLocationsPan
     const [busyId, setBusyId] = useState<string | null>(null);
 
     const [treeModal, setTreeModal] = useState<TreeModalState>({ open: false });
+
+    // ── "Voir les documents" d'un point de stockage — simple liste, lecture
+    // seule, disponible dans les DEUX modes (même un ADMIN/ADMIN_UO en lecture
+    // seule peut consulter ce qu'un nœud contient). ──────────────────────────
+    const [docsModal, setDocsModal] = useState<{ open: boolean; node: PhysicalLocationNodeDto | null }>({ open: false, node: null });
+    const [docsModalDocs, setDocsModalDocs] = useState<DocumentListItemDto[]>([]);
+    const [docsModalLoading, setDocsModalLoading] = useState(false);
+    const [docsModalPage, setDocsModalPage] = useState(1);
+    const [docsModalTotalPages, setDocsModalTotalPages] = useState(1);
+
+    const chargerDocumentsDuNoeud = useCallback((node: PhysicalLocationNodeDto, page: number) => {
+        setDocsModalLoading(true);
+        getDocumentsAccessibles({ physicalLocationId: node.id, uoId, page, size: 10 })
+            .then(result => {
+                setDocsModalDocs(result.content);
+                setDocsModalTotalPages(result.totalPages);
+                setDocsModalPage(page);
+            })
+            .catch(() => setDocsModalDocs([]))
+            .finally(() => setDocsModalLoading(false));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [uoId]);
+
+    const ouvrirDocumentsDuNoeud = (node: PhysicalLocationNodeDto) => {
+        setDocsModal({ open: true, node });
+        chargerDocumentsDuNoeud(node, 1);
+    };
+
+    // ── Actions "..." par document dans la liste ci-dessus ("Voir les
+    // documents" d'un nœud) — deux raccourcis sans quitter l'écran : lire le
+    // document directement (notre lecteur PDF, voir PdfViewer), ou être
+    // amené à son VRAI emplacement dans l'app (son dossier, pas juste son nom
+    // isolé dans cette liste) — ce panneau n'a pas lui-même d'écran pour ça,
+    // il délègue à l'appelant (voir Javadoc onOuvrirDansDossier). ───────────
+    const [lectureDocModal, setLectureDocModal] = useState<{ open: boolean; url: string | null; titre: string | null }>({ open: false, url: null, titre: null });
+
+    const ouvrirEmplacementDocument = async (documentId: string) => {
+        if (!onOuvrirDansDossier) return;
+        try {
+            const detail = await getDocumentDetail(documentId);
+            if (detail.dossierId == null) {
+                notify.error("Ce document n'est rattaché à aucun dossier — pas d'écran dédié pour l'ouvrir ailleurs que dans cette liste.");
+                return;
+            }
+            onOuvrirDansDossier(detail.dossierId, detail.typeDocumentId);
+        } catch {
+            notify.error("Impossible d'ouvrir ce document dans son emplacement");
+        }
+    };
+
+    const ouvrirLectureDocument = async (doc: DocumentListItemDto) => {
+        try {
+            const url = await streamPdfAAsBlob(doc.documentId);
+            setLectureDocModal({ open: true, url, titre: doc.titre });
+        } catch {
+            notify.error("Impossible d'ouvrir ce document");
+        }
+    };
+
+    const fermerLectureDocument = () => {
+        if (lectureDocModal.url) URL.revokeObjectURL(lectureDocModal.url);
+        setLectureDocModal({ open: false, url: null, titre: null });
+    };
+
+    // ── Capacité maximale — modifiable à tout moment (voir Javadoc backend) ──
+    const [capaciteModal, setCapaciteModal] = useState<{ open: boolean; node: PhysicalLocationNodeDto | null }>({ open: false, node: null });
+    const [capaciteValeur, setCapaciteValeur] = useState('');
+    const [capaciteSaving, setCapaciteSaving] = useState(false);
+
+    const ouvrirCapacite = (node: PhysicalLocationNodeDto) => {
+        setCapaciteValeur(node.capaciteMax != null ? String(node.capaciteMax) : '');
+        setCapaciteModal({ open: true, node });
+    };
+
+    const handleDefinirCapacite = async () => {
+        if (!capaciteModal.node) return;
+        const valeur = capaciteValeur.trim() === '' ? null : Math.max(1, Number(capaciteValeur));
+        setCapaciteSaving(true);
+        try {
+            await definirCapaciteEmplacement(capaciteModal.node.id, valeur);
+            notify.success('Capacité mise à jour');
+            setCapaciteModal({ open: false, node: null });
+            charger();
+        } catch (err: any) {
+            notify.error(err.message ?? 'Erreur lors de la mise à jour de la capacité');
+        } finally {
+            setCapaciteSaving(false);
+        }
+    };
+
+    // ── Contrainte d'acceptation — seulement si le nœud est vide (voir
+    // Javadoc backend definirContrainte). ────────────────────────────────────
+    const [contrainteModal, setContrainteModal] = useState<{ open: boolean; node: PhysicalLocationNodeDto | null }>({ open: false, node: null });
+    const [contrainteMode, setContrainteMode] = useState<LocationModeContrainte>('LIBRE');
+    const [contrainteTypeId, setContrainteTypeId] = useState<number | null>(null);
+    const [contrainteDossierId, setContrainteDossierId] = useState<number | null>(null);
+    const [contrainteSaving, setContrainteSaving] = useState(false);
+    const [typesUO, setTypesUO] = useState<TypeDocumentDto[]>([]);
+    const [aDesDossiers, setADesDossiers] = useState(true);
+
+    useEffect(() => {
+        if (uoId == null) { setTypesUO([]); setADesDossiers(false); return; }
+        getTypeDocumentsByUO(uoId).then(setTypesUO).catch(() => setTypesUO([]));
+        getArbreDossiers(uoId).then(d => setADesDossiers(d.length > 0)).catch(() => setADesDossiers(false));
+    }, [uoId]);
+
+    const ouvrirContrainte = (node: PhysicalLocationNodeDto) => {
+        setContrainteMode(node.modeContrainte);
+        setContrainteTypeId(node.typeDocumentAccepteId);
+        setContrainteDossierId(node.dossierId);
+        setContrainteModal({ open: true, node });
+    };
+
+    const handleDefinirContrainte = async () => {
+        if (!contrainteModal.node) return;
+        if (contrainteMode === 'LIBRE') {
+            notify.error('Choisissez un type de document ou un dossier');
+            return;
+        }
+        if (contrainteMode === 'TYPE_UNIQUE' && contrainteTypeId == null) {
+            notify.error('Choisissez un type de document');
+            return;
+        }
+        if (contrainteMode === 'DOSSIER' && contrainteDossierId == null) {
+            notify.error('Choisissez un dossier');
+            return;
+        }
+        setContrainteSaving(true);
+        try {
+            await definirContrainteEmplacement(contrainteModal.node.id, contrainteMode, contrainteTypeId, contrainteDossierId);
+            notify.success('Contrainte mise à jour');
+            setContrainteModal({ open: false, node: null });
+            charger();
+        } catch (err: any) {
+            notify.error(err.message ?? 'Erreur lors de la mise à jour de la contrainte');
+        } finally {
+            setContrainteSaving(false);
+        }
+    };
 
     // ── Pliement/dépliement ──────────────────────────────────────────────
     const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -402,6 +562,9 @@ function PhysicalLocationsPanel({ uoId, mode = 'lecture' }: PhysicalLocationsPan
                                 onToggleType={handleToggleType}
                                 onToggleStatus={handleToggleStatus}
                                 onDelete={handleSupprimer}
+                                onViewDocuments={ouvrirDocumentsDuNoeud}
+                                onEditCapacite={ouvrirCapacite}
+                                onEditContrainte={ouvrirContrainte}
                                 onDragStart={handleDragStart}
                                 onDragEnd={handleDragEnd}
                                 onDragOver={handleDragOver}
@@ -428,9 +591,205 @@ function PhysicalLocationsPanel({ uoId, mode = 'lecture' }: PhysicalLocationsPan
                     parentId={treeModal.mode === 'create' ? treeModal.parentId : undefined}
                     parentLabel={treeModal.mode === 'create' ? treeModal.parentLabel : undefined}
                     existingNode={treeModal.mode === 'update' ? treeModal.node : undefined}
+                    onEditCapacite={treeModal.mode === 'update' ? (cible: CibleEditionExistante) => {
+                        setTreeModal({ open: false });
+                        // Descripteur minimal (id/name/nombreDocuments/capaciteMax/...)
+                        // suffisant pour ces modaux — voir CibleEditionExistante, qui vient
+                        // d'un nœud quelconque de l'organigramme (racine OU descendant), pas
+                        // forcément le PhysicalLocationNodeDto complet de treeModal.node.
+                        ouvrirCapacite(cible as PhysicalLocationNodeDto);
+                    } : undefined}
+                    onEditContrainte={treeModal.mode === 'update' ? (cible: CibleEditionExistante) => {
+                        setTreeModal({ open: false });
+                        ouvrirContrainte(cible as PhysicalLocationNodeDto);
+                    } : undefined}
                     onSaved={handleTreeModalSaved}
                 />
             )}
+
+            {/* ── "Voir les documents" d'un point de stockage — lecture seule ── */}
+            <Modal
+                isOpen={docsModal.open}
+                onClose={() => setDocsModal({ open: false, node: null })}
+                title={docsModal.node ? `Documents — "${docsModal.node.name}"` : 'Documents'}
+                size="large"
+            >
+                {docsModalLoading ? (
+                    <div className="td-loading"><i className="fa-solid fa-spinner fa-spin" /> Chargement…</div>
+                ) : docsModalDocs.length === 0 ? (
+                    <div className="td-empty"><p>Aucun document dans cet emplacement.</p></div>
+                ) : (
+                    <>
+                        <div className="td-table-container">
+                            <table className="td-table">
+                                <thead>
+                                    <tr>
+                                        <th>Titre</th>
+                                        <th>Type</th>
+                                        <th>Statut</th>
+                                        <th>Accès</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {docsModalDocs.map(doc => {
+                                        const menuId = `doc-${doc.documentId}`;
+                                        return (
+                                            <tr key={doc.documentId}>
+                                                <td className="td-nom">{doc.titre}</td>
+                                                <td>{doc.typeDocumentNom}</td>
+                                                <td>{doc.status}</td>
+                                                <td>{doc.access === 'PUBLIC' ? 'Public' : 'Privé'}</td>
+                                                <td>
+                                                    <div className="action-menu-wrapper">
+                                                        <button
+                                                            ref={(el) => { menuButtonRefs.current[menuId] = el; }}
+                                                            onClick={() => toggleMenu(menuId)}
+                                                            className="menu-toggle"
+                                                            aria-label="Plus d'actions"
+                                                            aria-expanded={openMenuId === menuId}
+                                                        >
+                                                            <i className="fa-solid fa-ellipsis" />
+                                                        </button>
+                                                        {openMenuId === menuId && menuPos && createPortal(
+                                                            <div
+                                                                ref={menuRef}
+                                                                className="action-menu"
+                                                                style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, transform: 'translateX(-100%)' }}
+                                                            >
+                                                                {onOuvrirDansDossier && (
+                                                                    <button onClick={() => { closeMenu(); ouvrirEmplacementDocument(doc.documentId); }} className="action-menu-item">
+                                                                        <i className="fa-solid fa-folder-open" /> Ouvrir dans l'emplacement
+                                                                    </button>
+                                                                )}
+                                                                <button onClick={() => { closeMenu(); ouvrirLectureDocument(doc); }} className="action-menu-item">
+                                                                    <i className="fa-solid fa-eye" /> Lire le document
+                                                                </button>
+                                                            </div>,
+                                                            document.body
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                        {docsModalTotalPages > 1 && (
+                            <div className="pagination">
+                                <button
+                                    className="pagination-btn pagination-nav"
+                                    onClick={() => docsModal.node && chargerDocumentsDuNoeud(docsModal.node, docsModalPage - 1)}
+                                    disabled={docsModalPage === 1 || docsModalLoading}
+                                >‹</button>
+                                <span className="pagination-btn pagination-active">{docsModalPage} / {docsModalTotalPages}</span>
+                                <button
+                                    className="pagination-btn pagination-nav"
+                                    onClick={() => docsModal.node && chargerDocumentsDuNoeud(docsModal.node, docsModalPage + 1)}
+                                    disabled={docsModalPage === docsModalTotalPages || docsModalLoading}
+                                >›</button>
+                            </div>
+                        )}
+                    </>
+                )}
+            </Modal>
+
+            {/* ── "Lire le document" — notre lecteur PDF maison, voir PdfViewer. ── */}
+            {lectureDocModal.open && (
+                <Modal
+                    isOpen
+                    onClose={fermerLectureDocument}
+                    title={lectureDocModal.titre ?? 'Document'}
+                    size="large"
+                >
+                    <PdfViewer url={lectureDocModal.url} className="import-preview-iframe" />
+                </Modal>
+            )}
+
+            {/* ── Capacité maximale — voir PhysicalLocationService.definirCapacite ── */}
+            <Modal
+                isOpen={capaciteModal.open}
+                onClose={() => setCapaciteModal({ open: false, node: null })}
+                title={capaciteModal.node ? `Capacité — "${capaciteModal.node.name}"` : 'Capacité'}
+            >
+                <div className="pl-form">
+                    <label>
+                        <p style={{ marginBottom: '0.4rem' }}>
+                            Nombre maximal de documents — laisser vide pour aucune limite.
+                            {capaciteModal.node && ` Actuellement ${capaciteModal.node.nombreDocuments} document(s).`}
+                        </p>
+                        <input
+                            type="number"
+                            min={1}
+                            placeholder="Illimitée"
+                            value={capaciteValeur}
+                            onChange={(e) => setCapaciteValeur(e.target.value)}
+                        />
+                    </label>
+                    <div className="pl-form-actions">
+                        <button type="button" className="sidebar-btn" disabled={capaciteSaving} onClick={handleDefinirCapacite}>
+                            {capaciteSaving ? <><i className="fa-solid fa-spinner fa-spin" /> Enregistrement…</> : 'Enregistrer'}
+                        </button>
+                    </div>
+                </div>
+            </Modal>
+
+            {/* ── Contrainte d'acceptation — uniquement si le nœud est vide ── */}
+            <Modal
+                isOpen={contrainteModal.open}
+                onClose={() => setContrainteModal({ open: false, node: null })}
+                title={contrainteModal.node ? `Contrainte — "${contrainteModal.node.name}"` : 'Contrainte'}
+            >
+                <div className="pl-form">
+                    {contrainteModal.node && contrainteModal.node.nombreDocuments > 0 ? (
+                        <p>Ce nœud contient déjà des documents — impossible de changer sa contrainte d'acceptation.</p>
+                    ) : (
+                        <>
+                            <div className="tbo-constraint-panel" style={{ borderTop: 'none', paddingTop: 0 }}>
+                                <label className="tbo-constraint-field" style={{ minWidth: '100%' }}>
+                                    <span>Accepte</span>
+                                    <select
+                                        value={contrainteMode}
+                                        onChange={(e) => {
+                                            setContrainteMode(e.target.value as LocationModeContrainte);
+                                            setContrainteTypeId(null);
+                                            setContrainteDossierId(null);
+                                        }}
+                                    >
+                                        <option value="LIBRE" disabled hidden>— Choisir —</option>
+                                        <option value="TYPE_UNIQUE" disabled={typesUO.length === 0}>
+                                            Type de document{typesUO.length === 0 ? ' (aucun type existant)' : ''}
+                                        </option>
+                                        <option value="DOSSIER" disabled={!aDesDossiers}>
+                                            Dossier{!aDesDossiers ? ' (aucun dossier existant)' : ''}
+                                        </option>
+                                    </select>
+                                </label>
+                                {contrainteMode === 'TYPE_UNIQUE' && (
+                                    <select
+                                        className="tbo-constraint-field"
+                                        style={{ minWidth: '100%' }}
+                                        value={contrainteTypeId ?? ''}
+                                        onChange={(e) => setContrainteTypeId(e.target.value ? Number(e.target.value) : null)}
+                                    >
+                                        <option value="">— Choisir un type —</option>
+                                        {typesUO.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
+                                    </select>
+                                )}
+                                {contrainteMode === 'DOSSIER' && (
+                                    <DossierTreePicker uoId={uoId} value={contrainteDossierId} onChange={setContrainteDossierId} />
+                                )}
+                            </div>
+                            <div className="pl-form-actions">
+                                <button type="button" className="sidebar-btn" disabled={contrainteSaving} onClick={handleDefinirContrainte}>
+                                    {contrainteSaving ? <><i className="fa-solid fa-spinner fa-spin" /> Enregistrement…</> : 'Enregistrer'}
+                                </button>
+                            </div>
+                        </>
+                    )}
+                </div>
+            </Modal>
         </div>
     );
 }
@@ -439,6 +798,7 @@ function PlNode({
     node, depth, estGestionnaire, busyId, draggedId, dragOverId,
     expanded, onToggleExpand, filterActive, visibleIds, matchIds,
     onAddChild, onEdit, onToggleType, onToggleStatus, onDelete,
+    onViewDocuments, onEditCapacite, onEditContrainte,
     onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop,
     openMenuId, menuPos, menuRef, menuButtonRefs, onToggleMenu, onCloseMenu,
 }: {
@@ -461,6 +821,9 @@ function PlNode({
     onToggleType: (node: PhysicalLocationNodeDto) => void;
     onToggleStatus: (node: PhysicalLocationNodeDto) => void;
     onDelete: (node: PhysicalLocationNodeDto) => void;
+    onViewDocuments: (node: PhysicalLocationNodeDto) => void;
+    onEditCapacite: (node: PhysicalLocationNodeDto) => void;
+    onEditContrainte: (node: PhysicalLocationNodeDto) => void;
     onDragStart: (e: React.DragEvent, id: string) => void;
     onDragEnd: () => void;
     onDragOver: (e: React.DragEvent, target: PhysicalLocationNodeDto | null) => void;
@@ -515,10 +878,31 @@ function PlNode({
                     <i className={`fa-solid ${node.storagePoint ? 'fa-box' : 'fa-diagram-project'}`} />
                     {node.storagePoint ? 'Stockage' : 'Chemin'}
                 </span>
+                {node.storagePoint && (
+                    <span
+                        className={`pl-occupation-tag ${node.capaciteMax != null && node.nombreDocuments >= node.capaciteMax ? 'plein' : ''}`}
+                        title={node.modeContrainte === 'TYPE_UNIQUE' ? `Type accepté : ${node.typeDocumentAccepteNom}`
+                            : node.modeContrainte === 'DOSSIER' ? `Dossier accepté : ${node.dossierNom}` : undefined}
+                    >
+                        {node.nombreDocuments}{node.capaciteMax != null ? `/${node.capaciteMax}` : ''}
+                        {node.modeContrainte !== 'LIBRE' && (
+                            <i className={`fa-solid ${node.modeContrainte === 'TYPE_UNIQUE' ? 'fa-tag' : 'fa-folder'}`} style={{ marginLeft: '0.3rem' }} />
+                        )}
+                    </span>
+                )}
                 <span className="pl-name">{node.name}</span>
                 {isInactive && <span className="pl-status-tag">Inactif</span>}
 
                 <div className="pl-actions">
+                    {/* "Voir les documents" — lecture seule, disponible dans les DEUX
+                        modes (même un ADMIN/ADMIN_UO peut consulter). */}
+                    {node.storagePoint && (
+                        <button title="Voir les documents" className="pl-actions-standalone"
+                            onClick={() => onViewDocuments(node)}>
+                            <i className="fa-solid fa-eye" />
+                        </button>
+                    )}
+
                     {/* Masqués sur écran réduit (voir PhysicalLocationsPanel.css,
                         .pl-actions-standalone) — repris à l'identique (mêmes icônes,
                         mêmes libellés, mêmes conditions) dans le menu "..." juste
@@ -532,6 +916,22 @@ function PlNode({
                                     onClick={() => onAddChild(node.id, node.name)} disabled={isBusy}>
                                     <i className="fa-solid fa-plus" />
                                 </button>
+                            )}
+                            {node.storagePoint && (
+                                <>
+                                    <button title="Modifier la capacité" className="pl-actions-standalone"
+                                        onClick={() => onEditCapacite(node)} disabled={isBusy}>
+                                        <i className="fa-solid fa-gauge-high" />
+                                    </button>
+                                    <button
+                                        title={node.nombreDocuments > 0
+                                            ? "Modifier la contrainte — impossible, nœud non vide"
+                                            : "Modifier la contrainte d'acceptation"}
+                                        className="pl-actions-standalone"
+                                        onClick={() => onEditContrainte(node)} disabled={isBusy || node.nombreDocuments > 0}>
+                                        <i className="fa-solid fa-filter" />
+                                    </button>
+                                </>
                             )}
                             <button title="Modifier" className="pl-actions-standalone"
                                 onClick={() => onEdit(node)} disabled={isBusy}>
@@ -559,9 +959,10 @@ function PlNode({
                     {/* Menu "..." compact — visible uniquement sous ~1100px, voir
                         PhysicalLocationsPanel.css. Reprend exactement les mêmes
                         actions/icônes/conditions que les boutons autonomes ci-dessus.
-                        Absent en mode "lecture" : rien à proposer, ADMIN/ADMIN_UO
-                        n'ont aucune action. */}
-                    {estGestionnaire && (
+                        Affiché même en mode "lecture" SI storagePoint (pour garder
+                        "Voir les documents" accessible sur petit écran) — mais sans
+                        aucune des entrées de gestion dans ce cas. */}
+                    {(estGestionnaire || node.storagePoint) && (
                         <div className="action-menu-wrapper pl-actions-compact">
                             <button
                                 ref={(el) => { menuButtonRefs.current[node.id] = el; }}
@@ -580,26 +981,49 @@ function PlNode({
                                     className="action-menu"
                                     style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, transform: 'translateX(-100%)' }}
                                 >
-                                    {!node.storagePoint && !isInactive && (
+                                    {node.storagePoint && (
+                                        <button onClick={() => { onCloseMenu(); onViewDocuments(node); }} className="action-menu-item">
+                                            <i className="fa-solid fa-eye" /> Voir les documents
+                                        </button>
+                                    )}
+                                    {estGestionnaire && !node.storagePoint && !isInactive && (
                                         <button onClick={() => { onCloseMenu(); onAddChild(node.id, node.name); }} className="action-menu-item">
                                             <i className="fa-solid fa-plus" /> Ajouter un enfant
                                         </button>
                                     )}
-                                    <button onClick={() => { onCloseMenu(); onEdit(node); }} className="action-menu-item">
-                                        <i className="fa-solid fa-pen" /> Modifier
-                                    </button>
-                                    <button onClick={() => { onCloseMenu(); onToggleType(node); }} className="action-menu-item">
-                                        <i className="fa-solid fa-shuffle" />{' '}
-                                        {node.storagePoint ? 'Convertir en chemin' : 'Convertir en stockage'}
-                                    </button>
-                                    <button onClick={() => { onCloseMenu(); onToggleStatus(node); }} className="action-menu-item">
-                                        <i className={`fa-solid ${isInactive ? 'fa-toggle-off' : 'fa-toggle-on'}`} />{' '}
-                                        {isInactive ? 'Réactiver' : 'Désactiver'}
-                                    </button>
-                                    <button onClick={() => { onCloseMenu(); onDelete(node); }} className="action-menu-item">
-                                        <i className="fa-solid fa-trash" />{' '}
-                                        {node.children.length > 0 ? 'Supprimer avec sa sous-arborescence' : 'Supprimer'}
-                                    </button>
+                                    {estGestionnaire && node.storagePoint && (
+                                        <>
+                                            <button onClick={() => { onCloseMenu(); onEditCapacite(node); }} className="action-menu-item">
+                                                <i className="fa-solid fa-gauge-high" /> Modifier la capacité
+                                            </button>
+                                            <button
+                                                onClick={() => { onCloseMenu(); onEditContrainte(node); }}
+                                                className="action-menu-item"
+                                                disabled={node.nombreDocuments > 0}
+                                            >
+                                                <i className="fa-solid fa-filter" /> Modifier la contrainte
+                                            </button>
+                                        </>
+                                    )}
+                                    {estGestionnaire && (
+                                        <>
+                                            <button onClick={() => { onCloseMenu(); onEdit(node); }} className="action-menu-item">
+                                                <i className="fa-solid fa-pen" /> Modifier
+                                            </button>
+                                            <button onClick={() => { onCloseMenu(); onToggleType(node); }} className="action-menu-item">
+                                                <i className="fa-solid fa-shuffle" />{' '}
+                                                {node.storagePoint ? 'Convertir en chemin' : 'Convertir en stockage'}
+                                            </button>
+                                            <button onClick={() => { onCloseMenu(); onToggleStatus(node); }} className="action-menu-item">
+                                                <i className={`fa-solid ${isInactive ? 'fa-toggle-off' : 'fa-toggle-on'}`} />{' '}
+                                                {isInactive ? 'Réactiver' : 'Désactiver'}
+                                            </button>
+                                            <button onClick={() => { onCloseMenu(); onDelete(node); }} className="action-menu-item">
+                                                <i className="fa-solid fa-trash" />{' '}
+                                                {node.children.length > 0 ? 'Supprimer avec sa sous-arborescence' : 'Supprimer'}
+                                            </button>
+                                        </>
+                                    )}
                                 </div>,
                                 document.body
                             )}
@@ -628,6 +1052,9 @@ function PlNode({
                             onToggleType={onToggleType}
                             onToggleStatus={onToggleStatus}
                             onDelete={onDelete}
+                            onViewDocuments={onViewDocuments}
+                            onEditCapacite={onEditCapacite}
+                            onEditContrainte={onEditContrainte}
                             onDragStart={onDragStart}
                             onDragEnd={onDragEnd}
                             onDragOver={onDragOver}

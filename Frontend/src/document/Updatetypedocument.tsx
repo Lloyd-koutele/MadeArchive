@@ -1,8 +1,10 @@
 // document/Updatetypedocument.tsx
 import React, { useState, useEffect } from 'react';
-import { updateTypeDocument } from '../services/document/TypedocumentService';
-import type { MetaDataDto, TypeDocumentDto } from '../services/document/TypedocumentService';
+import { updateTypeDocument, modifierSortFinalTypeDocument } from '../services/document/TypedocumentService';
+import type { MetaDataDto, SortFinal, TypeDocumentDto } from '../services/document/TypedocumentService';
 import TypeDocumentFormFields from './TypeDocumentFormFields';
+import { getPlanClassement, aplatirPlanClassement, rattacherTypeAActivite } from '../services/organisation/PlanClassementService';
+import type { PlanClassementOption } from '../services/organisation/PlanClassementService';
 import { useNotify } from '../notifications/NotificationProvider';
 import '../Style/document/Typedocument.css';
 
@@ -15,15 +17,25 @@ function UpdateTypeDocument({ initialData, onsuccess }: UpdateTypeDocumentProps)
     const notify = useNotify();
     const [nom, setNom] = useState('');
     const [retentionYears, setRetentionYears] = useState<number | null>(null);
-    const [periodGrace, setPeriodGrace] = useState<number | null>(null);
+    const [sortFinal, setSortFinal] = useState<SortFinal>('CONSERVER');
     const [metaData, setMetaData] = useState<MetaDataDto[]>([{ nom: '', obligatoire: false }]);
     const [isLoading, setIsLoading] = useState(false);
+    const [activites, setActivites] = useState<PlanClassementOption[]>([]);
+    const [activiteId, setActiviteId] = useState<number | null>(null);
+
+    useEffect(() => {
+        if (initialData?.uoId == null) return;
+        getPlanClassement(initialData.uoId)
+            .then(arbre => setActivites(aplatirPlanClassement(arbre)))
+            .catch(() => setActivites([]));
+    }, [initialData?.uoId]);
 
     useEffect(() => {
         if (initialData) {
             setNom(initialData.nom || '');
             setRetentionYears(initialData.retentionYears ?? null);
-            setPeriodGrace(initialData.periodGrace ?? null);
+            setSortFinal(initialData.sortFinal ?? 'CONSERVER');
+            setActiviteId(initialData.planClassementNoeudId ?? null);
             setMetaData(
                 initialData.metaData && initialData.metaData.length > 0
                     ? initialData.metaData.map(m => ({ id: m.id, nom: m.nom, obligatoire: m.obligatoire }))
@@ -50,21 +62,52 @@ function UpdateTypeDocument({ initialData, onsuccess }: UpdateTypeDocumentProps)
         if (!initialData.id) { notify.error("ID du type de document manquant"); return; }
 
         setIsLoading(true);
+
+        // Deux appels INDÉPENDANTS, pas un seul dto fusionné : updateTypeDocument
+        // est bloqué par le serveur si des documents sont déjà rattachés à ce type
+        // (voir TypeDocumentService.hasLinkedDocuments côté backend), mais le sort
+        // final doit rester modifiable MÊME dans ce cas (voir modifierSortFinal,
+        // endpoint dédié) — un échec de l'un ne doit jamais empêcher l'autre.
+        let succesPrincipal = true;
+        let succesSortFinal = true;
+
         try {
             const dto: TypeDocumentDto = {
                 nom: nom.trim(),
                 retentionYears,
-                periodGrace: retentionYears !== null ? periodGrace : null,
                 uoId: initialData.uoId, // inchangé — plus de déplacement via ce formulaire
                 metaData
             };
             await updateTypeDocument(initialData.id, dto);
+        } catch (err: any) {
+            succesPrincipal = false;
+            notify.error(err.message || "Erreur lors de la mise à jour");
+        }
+
+        if (sortFinal !== (initialData.sortFinal ?? 'CONSERVER')) {
+            try {
+                await modifierSortFinalTypeDocument(initialData.id, sortFinal);
+            } catch (err: any) {
+                succesSortFinal = false;
+                notify.error(err.message || "Erreur lors de la modification du sort final");
+            }
+        }
+
+        // Activité : appel dédié lui aussi — modifiable même si des documents sont rattachés au type.
+        let succesActivite = true;
+        if (activiteId !== (initialData.planClassementNoeudId ?? null)) {
+            try {
+                await rattacherTypeAActivite(initialData.id, activiteId);
+            } catch (err: any) {
+                succesActivite = false;
+                notify.error(err.message || "Erreur lors du changement d'activité");
+            }
+        }
+
+        setIsLoading(false);
+        if (succesPrincipal && succesSortFinal && succesActivite) {
             notify.success("Type de document mis à jour avec succès");
             setTimeout(() => onsuccess?.(), 1500);
-        } catch (err: any) {
-            notify.error(err.message || "Erreur lors de la mise à jour");
-        } finally {
-            setIsLoading(false);
         }
     };
 
@@ -75,7 +118,8 @@ function UpdateTypeDocument({ initialData, onsuccess }: UpdateTypeDocumentProps)
                     idPrefix="tdu"
                     nom={nom} onNomChange={setNom}
                     retentionYears={retentionYears} onRetentionYearsChange={setRetentionYears}
-                    periodGrace={periodGrace} onPeriodGraceChange={setPeriodGrace}
+                    sortFinal={sortFinal} onSortFinalChange={setSortFinal}
+                    activites={activites} activiteId={activiteId} onActiviteChange={setActiviteId}
                     metaData={metaData} onMetaDataChange={setMetaData}
                 />
                 <button type="submit" className="form-submit-btn td-submit" disabled={isLoading}>

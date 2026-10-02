@@ -93,12 +93,6 @@ function TypeDocumentDetail({ td }: TypeDocumentDetailProps) {
                         ? `${td.retentionYears} an${td.retentionYears > 1 ? 's' : ''}`
                         : 'Indéfinie'}
                 </div>
-                <div className="details-row">
-                    <strong>Période de grâce :</strong>{' '}
-                    {td.periodGrace != null
-                        ? `${td.periodGrace} jour${td.periodGrace > 1 ? 's' : ''}`
-                        : 'Indéfinie'}
-                </div>
             </div>
 
             {/* Métadonnées */}

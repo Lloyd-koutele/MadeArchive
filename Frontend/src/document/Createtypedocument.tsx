@@ -1,8 +1,10 @@
 // document/Createtypedocument.tsx
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createTypeDocument } from '../services/document/TypedocumentService';
-import type { MetaDataDto, TypeDocumentDto } from '../services/document/TypedocumentService';
+import type { MetaDataDto, SortFinal, TypeDocumentDto } from '../services/document/TypedocumentService';
 import TypeDocumentFormFields from './TypeDocumentFormFields';
+import { getPlanClassement, aplatirPlanClassement, rattacherTypeAActivite } from '../services/organisation/PlanClassementService';
+import type { PlanClassementOption } from '../services/organisation/PlanClassementService';
 import { useNotify } from '../notifications/NotificationProvider';
 import '../Style/document/Typedocument.css';
 
@@ -15,9 +17,17 @@ function CreateTypeDocument({ onsuccess, restrictToUO }: CreateTypeDocumentProps
     const notify = useNotify();
     const [nom, setNom] = useState('');
     const [retentionYears, setRetentionYears] = useState<number | null>(null);
-    const [periodGrace, setPeriodGrace] = useState<number | null>(30);
+    const [sortFinal, setSortFinal] = useState<SortFinal>('CONSERVER');
     const [metaData, setMetaData] = useState<MetaDataDto[]>([{ nom: '', obligatoire: false }]);
     const [isLoading, setIsLoading] = useState(false);
+    const [activites, setActivites] = useState<PlanClassementOption[]>([]);
+    const [activiteId, setActiviteId] = useState<number | null>(null);
+
+    useEffect(() => {
+        getPlanClassement(restrictToUO.id)
+            .then(arbre => setActivites(aplatirPlanClassement(arbre)))
+            .catch(() => setActivites([])); // non bloquant : le type se crée sans activité
+    }, [restrictToUO.id]);
 
     const validate = (): boolean => {
         if (!nom.trim()) { notify.error("Le nom du type de document est obligatoire"); return false; }
@@ -40,15 +50,23 @@ function CreateTypeDocument({ onsuccess, restrictToUO }: CreateTypeDocumentProps
             const dto: TypeDocumentDto = {
                 nom: nom.trim(),
                 retentionYears,
-                periodGrace: retentionYears !== null ? periodGrace : null,
+                sortFinal,
                 uoId: restrictToUO.id,
                 metaData: metaData.map(m => ({ nom: m.nom.trim(), obligatoire: m.obligatoire || false }))
             };
-            await createTypeDocument(dto);
+            const cree = await createTypeDocument(dto);
+            if (activiteId != null && cree.id != null) {
+                try {
+                    await rattacherTypeAActivite(cree.id, activiteId);
+                } catch (err: any) {
+                    notify.error(`Type créé, mais activité non rattachée : ${err.message}`);
+                }
+            }
             notify.success("Type de document créé avec succès");
             setNom('');
             setRetentionYears(null);
-            setPeriodGrace(30);
+            setSortFinal('CONSERVER');
+            setActiviteId(null);
             setMetaData([{ nom: '', obligatoire: false }]);
             setTimeout(() => onsuccess?.(), 1500);
         } catch (err: any) {
@@ -67,7 +85,8 @@ function CreateTypeDocument({ onsuccess, restrictToUO }: CreateTypeDocumentProps
                     idPrefix="td"
                     nom={nom} onNomChange={setNom}
                     retentionYears={retentionYears} onRetentionYearsChange={setRetentionYears}
-                    periodGrace={periodGrace} onPeriodGraceChange={setPeriodGrace}
+                    sortFinal={sortFinal} onSortFinalChange={setSortFinal}
+                    activites={activites} activiteId={activiteId} onActiviteChange={setActiviteId}
                     metaData={metaData} onMetaDataChange={setMetaData}
                 />
                 <button type="submit" className="form-submit-btn td-submit" disabled={isLoading}>

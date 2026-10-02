@@ -6,12 +6,35 @@ import api from "../api";
 
 export type LocationStatus = 'ACTIVE' | 'INACTIVE';
 
+/**
+ * Contrainte d'acceptation d'un point de stockage — voir LocationModeContrainte
+ * côté backend. Sans effet sur un nœud chemin (storagePoint=false).
+ *   - LIBRE : comportement historique, aucune contrainte.
+ *   - TYPE_UNIQUE : n'accepte que des documents d'UN SEUL type de document.
+ *   - DOSSIER : n'accepte que des documents rattachés à UN SEUL dossier
+ *     (appartenance DIRECTE uniquement) — PLUSIEURS nœuds peuvent pointer
+ *     vers le même dossier (dossier volumineux réparti sur plusieurs
+ *     "boîtes"), le choix entre elles reste manuel.
+ */
+export type LocationModeContrainte = 'LIBRE' | 'TYPE_UNIQUE' | 'DOSSIER';
+
 export interface PhysicalLocationDto {
     id: string;
     name: string;
     description: string | null;
     status: LocationStatus;
     storagePoint: boolean;
+    /** Nombre maximal de documents (storagePoint=true seulement) — null = illimité. */
+    capaciteMax: number | null;
+    /** Nombre de documents actuellement rattachés (vivants, hors DELETED). */
+    nombreDocuments: number;
+    modeContrainte: LocationModeContrainte;
+    /** Renseigné seulement si modeContrainte === 'TYPE_UNIQUE'. */
+    typeDocumentAccepteId: number | null;
+    typeDocumentAccepteNom: string | null;
+    /** Renseigné seulement si modeContrainte === 'DOSSIER'. */
+    dossierId: number | null;
+    dossierNom: string | null;
     parentId: string | null;
     uniteOrganisationnelleId: number;
     cheminComplet: string;
@@ -26,6 +49,13 @@ export interface PhysicalLocationNodeDto {
     name: string;
     status: LocationStatus;
     storagePoint: boolean;
+    capaciteMax: number | null;
+    nombreDocuments: number;
+    modeContrainte: LocationModeContrainte;
+    typeDocumentAccepteId: number | null;
+    typeDocumentAccepteNom: string | null;
+    dossierId: number | null;
+    dossierNom: string | null;
     children: PhysicalLocationNodeDto[];
 }
 
@@ -46,13 +76,23 @@ export interface PhysicalLocationUpdateDto {
  * Nœud d'arborescence envoyé à creerArborescence/mettreAJourArborescence —
  * voir PhysicalLocationTreeNodeDto côté backend. id absent/undefined =
  * nouveau nœud à créer ; présent = nœud existant à renommer (modification
- * uniquement, jamais en création, storagePoint alors ignoré côté serveur).
+ * uniquement, jamais en création, storagePoint/capaciteMax/modeContrainte
+ * alors ignorés côté serveur — voir definirCapaciteEmplacement/
+ * definirContrainteEmplacement pour modifier ceux d'un nœud déjà en base).
  */
 export interface PhysicalLocationTreeNodeDto {
     id?: string;
     name: string;
     description?: string;
     storagePoint: boolean;
+    /** Uniquement pour un NOUVEAU nœud storagePoint=true. */
+    capaciteMax?: number | null;
+    /** Uniquement pour un NOUVEAU nœud storagePoint=true — LIBRE si omis. */
+    modeContrainte?: LocationModeContrainte;
+    /** Renseigné seulement si modeContrainte === 'TYPE_UNIQUE'. */
+    typeDocumentId?: number | null;
+    /** Renseigné seulement si modeContrainte === 'DOSSIER'. */
+    dossierId?: number | null;
     children: PhysicalLocationTreeNodeDto[];
 }
 
@@ -140,6 +180,38 @@ export const changerTypeStockage = async (id: string, storagePoint: boolean): Pr
     }
 };
 
+/** capaciteMax null = retire la limite (illimité). Modifiable à tout moment
+ *  (contrairement à definirContrainteEmplacement), refusé seulement si
+ *  inférieur au nombre de documents déjà rattachés. */
+export const definirCapaciteEmplacement = async (id: string, capaciteMax: number | null): Promise<PhysicalLocationDto> => {
+    try {
+        const response = await api.put(`/editor/physical-locations/${id}/capacite`, null, {
+            params: capaciteMax != null ? { capaciteMax } : {},
+        });
+        return response.data;
+    } catch (error: any) {
+        throw extractMessage(error);
+    }
+};
+
+/** Uniquement pour un nœud VIDE (aucun document rattaché) — voir Javadoc backend. */
+export const definirContrainteEmplacement = async (
+    id: string, modeContrainte: LocationModeContrainte, typeDocumentId?: number | null, dossierId?: number | null
+): Promise<PhysicalLocationDto> => {
+    try {
+        const response = await api.put(`/editor/physical-locations/${id}/contrainte`, null, {
+            params: {
+                modeContrainte,
+                ...(typeDocumentId != null ? { typeDocumentId } : {}),
+                ...(dossierId != null ? { dossierId } : {}),
+            },
+        });
+        return response.data;
+    } catch (error: any) {
+        throw extractMessage(error);
+    }
+};
+
 /** nouveauParentId undefined/null = devient une nouvelle racine. */
 export const deplacerEmplacement = async (id: string, nouveauParentId: string | null): Promise<PhysicalLocationDto> => {
     try {
@@ -198,10 +270,24 @@ export const getArbreEmplacements = async (uoId: number): Promise<PhysicalLocati
     }
 };
 
-/** Emplacements assignables à un document (points de stockage ACTIFS) pour une UO. */
-export const getEmplacementsDisponibles = async (uoId: number): Promise<PhysicalLocationDto[]> => {
+/**
+ * Emplacements assignables à un document (points de stockage ACTIFS) pour une
+ * UO — typeDocumentId/dossierId (optionnels) filtrent par compatibilité
+ * (voir LocationModeContrainte côté backend) : un nœud LIBRE revient
+ * toujours, un nœud TYPE_UNIQUE seulement si typeDocumentId correspond, un
+ * nœud DOSSIER seulement si dossierId correspond. Omis = comportement
+ * historique (tous les points de stockage actifs, sans filtrage).
+ */
+export const getEmplacementsDisponibles = async (
+    uoId: number, typeDocumentId?: number | null, dossierId?: number | null
+): Promise<PhysicalLocationDto[]> => {
     try {
-        const response = await api.get(`/user/physical-locations/uo/${uoId}/disponibles`);
+        const response = await api.get(`/user/physical-locations/uo/${uoId}/disponibles`, {
+            params: {
+                ...(typeDocumentId != null ? { typeDocumentId } : {}),
+                ...(dossierId != null ? { dossierId } : {}),
+            },
+        });
         return response.data;
     } catch (error: any) {
         throw extractMessage(error);

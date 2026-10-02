@@ -1,0 +1,58 @@
+.uo-actions-menu-wrapper {
+    display: inline-flex;
+}
+
+.uo-actions-menu-toggle {
+    width: 1.6rem;
+    height: 1.6rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border, #E8D9C5);
+    border-radius: 6px;
+    background: var(--white-choc, #fff);
+    color: var(--choc, #8B5E3C);
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+
+.uo-actions-menu-toggle:hover:not(:disabled) {
+    border-color: var(--choc, #8B5E3C);
+}
+
+.uo-actions-menu-toggle:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.uo-actions-menu {
+    position: fixed;
+    min-width: 150px;
+    background: var(--white-choc, #fff);
+    border: 1px solid var(--border, #E8D9C5);
+    border-radius: 8px;
+    padding: 0.3rem;
+    box-shadow: 0 8px 24px rgba(var(--dark-choc-rgb), 0.14);
+    z-index: 1001;
+}
+
+.uo-actions-menu button {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    background: none;
+    border: none;
+    text-align: left;
+    padding: 0.4rem 0.5rem;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--dark-choc, #2C1A0E);
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.uo-actions-menu button:hover {
+    background: var(--cream, #FAF3EA);
+}

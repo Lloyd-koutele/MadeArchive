@@ -30,6 +30,8 @@ import type { PhysicalLocationDto, PhysicalLocationNodeDto } from '../services/o
 import EmplacementTreeModal from '../organisation/EmplacementTreeModal';
 import DossierTreePicker from '../organisation/DossierTreePicker';
 import MetaDataField from './MetadaField';
+import PdfViewer from '../components/PdfViewer';
+import Modal from '../Page/Modal';
 import { useNotify } from '../notifications/NotificationProvider';
 import { useConfirm } from '../notifications/ConfirmProvider';
 import '../Style/Editor/Editor.css';
@@ -180,11 +182,27 @@ function ImportDocuments({ onsuccess, preselectedTypeId, preselectedDossierId, p
             .then(uo => {
                 setUoId(uo.id);
                 getCandidatsGroupe(uo.id).then(setUsers).catch(() => {});
-                getEmplacementsDisponibles(uo.id).then(setEmplacements).catch(() => {});
             })
             .catch(() => {});
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // Liste des emplacements — re-filtrée par compatibilité dès que le type
+    // ou le dossier cible change (voir LocationModeContrainte côté serveur) :
+    // un point de stockage en mode "type unique"/"dossier" n'apparaît que
+    // s'il correspond à ce qui est choisi ici. Si l'emplacement actuellement
+    // sélectionné n'est plus dans la liste retournée (devenu incompatible
+    // après un changement de type/dossier), la sélection est effacée plutôt
+    // que silencieusement envoyée pour un document qu'elle n'accepterait pas.
+    useEffect(() => {
+        if (uoId == null) return;
+        getEmplacementsDisponibles(uoId, typeDocumentId || null, dossierId)
+            .then(liste => {
+                setEmplacements(liste);
+                setPhysicalLocationId(prev => (prev && !liste.some(l => l.id === prev)) ? '' : prev);
+            })
+            .catch(() => setEmplacements([]));
+    }, [uoId, typeDocumentId, dossierId]);
 
     // ── Déclenchement automatique de l'analyse (local) ───────────────────────
     // Dès que fichier(s)/dossier ET type de document sont fournis, l'analyse
@@ -260,16 +278,21 @@ function ImportDocuments({ onsuccess, preselectedTypeId, preselectedDossierId, p
     };
 
     /**
-     * Ouvre le document similaire détecté dans un nouvel onglet — jamais un
-     * <a href> direct (JWT en header, pas en cookie, voir streamPdfAAsBlob),
-     * et volontairement un ONGLET SÉPARÉ plutôt que de réutiliser l'aperçu de
-     * ce formulaire : mélanger "le document en cours d'upload" et "un autre
-     * document déjà archivé" dans la même zone d'aperçu serait trompeur.
+     * Ouvre le document similaire détecté dans un modal dédié (notre propre
+     * lecteur PDF, voir PdfViewer) — jamais un <a href> direct (JWT en
+     * header, pas en cookie, voir streamPdfAAsBlob). Un MODAL plutôt que de
+     * réutiliser l'aperçu de ce formulaire : mélanger "le document en cours
+     * d'upload" et "un autre document déjà archivé" dans la même zone
+     * d'aperçu serait trompeur ; le modal reste refermable immédiatement
+     * pour revenir à l'import en cours.
      */
+    const [docSimilaireUrl, setDocSimilaireUrl] = useState<string | null>(null);
+    const [docSimilaireTitre, setDocSimilaireTitre] = useState<string | null>(null);
     const handleVoirDocumentSimilaire = async (doc: DocumentSimilaireDto) => {
         try {
             const url = await streamPdfAAsBlob(doc.documentId);
-            window.open(url, '_blank');
+            setDocSimilaireUrl(url);
+            setDocSimilaireTitre(doc.titre);
         } catch {
             notify.error("Impossible d'ouvrir le document similaire (peut-être supprimé depuis)");
         }
@@ -311,7 +334,7 @@ function ImportDocuments({ onsuccess, preselectedTypeId, preselectedDossierId, p
      */
     const handleEmplacementSaved = async (node: PhysicalLocationNodeDto) => {
         if (uoId == null) return;
-        const actualises = await getEmplacementsDisponibles(uoId);
+        const actualises = await getEmplacementsDisponibles(uoId, typeDocumentId || null, dossierId);
         setEmplacements(actualises);
         if (node.storagePoint) {
             setPhysicalLocationId(node.id);
@@ -557,6 +580,133 @@ function ImportDocuments({ onsuccess, preselectedTypeId, preselectedDossierId, p
             ? files.length > 0 && !!typeDocumentId
             : !!lienUrl.trim() && !!typeDocumentId;
 
+    /** Accès/dossier/emplacement — réglages appliqués à TOUT le lot (voir leurs
+     *  commentaires respectifs ci-dessous), extraits dans une variable pour être
+     *  rendus aussi bien à l'étape "source" (avant analyse) qu'à l'étape
+     *  "validate" (après analyse) — retour utilisateur 10/2026 : une fois
+     *  l'OCR lancé, ces réglages disparaissaient complètement de l'écran sans
+     *  aucun moyen de les revoir/changer autrement qu'en "Recommencer" (donc en
+     *  reperdant toute l'analyse déjà faite). Même état (access/dossierId/
+     *  physicalLocationId...), donc un changement ici est immédiatement reflété
+     *  si on revient à l'étape "source", et inversement. */
+    const blocAccesDossierEmplacement = (
+        <>
+            {/* Accès — appliqué à tout le lot */}
+            <div className="up-row" role="radiogroup" aria-label="Accès">
+                <label>
+                    <input type="radio" checked={access === 'PUBLIC'}
+                        onChange={() => setAccess('PUBLIC')} /> Public
+                </label>
+                <label>
+                    <input type="radio" checked={access === 'PRIVE'}
+                        onChange={() => setAccess('PRIVE')} /> Privé
+                </label>
+            </div>
+
+            {access === 'PRIVE' && (
+                <div className="groupe-section">
+                    {users.length > 0 && (
+                        <div className="membres-section">
+                            <p className="membres-label">Membres du groupe (optionnel) :</p>
+                            <input
+                                type="text"
+                                className="membres-filtre-input"
+                                placeholder="Rechercher (nom, email, téléphone)"
+                                aria-label="Rechercher un utilisateur"
+                                value={filtreMembre}
+                                onChange={e => setFiltreMembre(e.target.value)}
+                            />
+                            <div className="membres-list">
+                                {users
+                                    .filter(u => {
+                                        const q = filtreMembre.trim().toLowerCase();
+                                        if (!q) return true;
+                                        return `${u.prenom} ${u.nom}`.toLowerCase().includes(q)
+                                            || u.email.toLowerCase().includes(q)
+                                            || (u.telephone ?? '').toLowerCase().includes(q);
+                                    })
+                                    .map(u => (
+                                        <label key={u.id} className="membre-item">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedMembres.includes(u.id)}
+                                                onChange={() => toggleMembre(u.id)}
+                                            />
+                                            <span>{u.prenom} {u.nom}</span>
+                                            <span className="membre-email">{u.email}</span>
+                                        </label>
+                                    ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Dossier cible — un seul pour tout le lot. Si ce dossier a déjà
+                ce type de document parmi ses types attendus, les fichiers
+                y sont simplement versés sans rien recréer ; sinon il y est
+                automatiquement déclaré (voir DocumentUploadeService côté
+                serveur). Pas d'objet pour une nouvelle version tant que
+                rien n'est choisi ici : le dossier du prédécesseur est
+                hérité par défaut. */}
+            {uoId != null && (
+                <div className="form-field">
+                    <label className="form-field-label">Dossier cible (optionnel)</label>
+                    <DossierTreePicker uoId={uoId} value={dossierId} onChange={setDossierId} />
+                </div>
+            )}
+
+            {/* Emplacement physique — un seul pour tout le lot. Toujours affiché
+                (même sans aucun emplacement existant) : le modal dédié
+                ci-dessous (EmplacementTreeModal, PARTAGÉ avec
+                PhysicalLocationsPanel) couvre justement ce cas, et
+                permet aussi de modifier l'emplacement sélectionné. */}
+            <div className="form-field">
+                <label htmlFor="import-emplacement" className="form-field-label">
+                    Emplacement physique des originaux (optionnel)
+                </label>
+                <div className="up-emplacement-choix">
+                    <select
+                        id="import-emplacement"
+                        className="form-field-input up-select"
+                        value={physicalLocationId}
+                        onChange={e => setPhysicalLocationId(e.target.value)}
+                    >
+                        <option value="">— Aucun —</option>
+                        {emplacements.map(loc => {
+                            const plein = loc.capaciteMax != null && loc.nombreDocuments >= loc.capaciteMax;
+                            return (
+                                <option key={loc.id} value={loc.id} disabled={plein}>
+                                    {loc.cheminComplet}
+                                    {loc.capaciteMax != null ? ` (${loc.nombreDocuments}/${loc.capaciteMax}${plein ? ' — plein' : ''})` : ''}
+                                </option>
+                            );
+                        })}
+                    </select>
+                    <button
+                        type="button"
+                        className="up-btn-secondary"
+                        onClick={() => setEmplacementModal({ open: true, mode: 'create' })}
+                        disabled={uoId == null}
+                        title="Créer un nouvel emplacement"
+                    >
+                        <i className="fa-solid fa-plus" /> Créer
+                    </button>
+                    {physicalLocationId && (
+                        <button
+                            type="button"
+                            className="up-btn-secondary"
+                            onClick={ouvrirModificationEmplacement}
+                            title="Modifier toute l'arborescence de cet emplacement"
+                        >
+                            <i className="fa-solid fa-pen" /> Modifier
+                        </button>
+                    )}
+                </div>
+            </div>
+        </>
+    );
+
     return (
         <div className="upload-wrapper">
 
@@ -718,113 +868,7 @@ function ImportDocuments({ onsuccess, preselectedTypeId, preselectedDossierId, p
                         </div>
                     )}
 
-                    {/* Accès — appliqué à tout le lot */}
-                    <div className="up-row" role="radiogroup" aria-label="Accès">
-                        <label>
-                            <input type="radio" checked={access === 'PUBLIC'}
-                                onChange={() => setAccess('PUBLIC')} /> Public
-                        </label>
-                        <label>
-                            <input type="radio" checked={access === 'PRIVE'}
-                                onChange={() => setAccess('PRIVE')} /> Privé
-                        </label>
-                    </div>
-
-                    {access === 'PRIVE' && (
-                        <div className="groupe-section">
-                            {users.length > 0 && (
-                                <div className="membres-section">
-                                    <p className="membres-label">Membres du groupe (optionnel) :</p>
-                                    <input
-                                        type="text"
-                                        className="membres-filtre-input"
-                                        placeholder="Rechercher (nom, email, téléphone)"
-                                        aria-label="Rechercher un utilisateur"
-                                        value={filtreMembre}
-                                        onChange={e => setFiltreMembre(e.target.value)}
-                                    />
-                                    <div className="membres-list">
-                                        {users
-                                            .filter(u => {
-                                                const q = filtreMembre.trim().toLowerCase();
-                                                if (!q) return true;
-                                                return `${u.prenom} ${u.nom}`.toLowerCase().includes(q)
-                                                    || u.email.toLowerCase().includes(q)
-                                                    || (u.telephone ?? '').toLowerCase().includes(q);
-                                            })
-                                            .map(u => (
-                                                <label key={u.id} className="membre-item">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={selectedMembres.includes(u.id)}
-                                                        onChange={() => toggleMembre(u.id)}
-                                                    />
-                                                    <span>{u.prenom} {u.nom}</span>
-                                                    <span className="membre-email">{u.email}</span>
-                                                </label>
-                                            ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* Dossier cible — un seul pour tout le lot. Si ce dossier a déjà
-                        ce type de document parmi ses types attendus, les fichiers
-                        y sont simplement versés sans rien recréer ; sinon il y est
-                        automatiquement déclaré (voir DocumentUploadeService côté
-                        serveur). Pas d'objet pour une nouvelle version tant que
-                        rien n'est choisi ici : le dossier du prédécesseur est
-                        hérité par défaut. */}
-                    {uoId != null && (
-                        <div className="form-field">
-                            <label className="form-field-label">Dossier cible (optionnel)</label>
-                            <DossierTreePicker uoId={uoId} value={dossierId} onChange={setDossierId} />
-                        </div>
-                    )}
-
-                    {/* Emplacement physique — un seul pour tout le lot. Toujours affiché
-                        (même sans aucun emplacement existant) : le modal dédié
-                        ci-dessous (EmplacementTreeModal, PARTAGÉ avec
-                        PhysicalLocationsPanel) couvre justement ce cas, et
-                        permet aussi de modifier l'emplacement sélectionné. */}
-                    <div className="form-field">
-                        <label htmlFor="import-emplacement" className="form-field-label">
-                            Emplacement physique des originaux (optionnel)
-                        </label>
-                        <div className="up-emplacement-choix">
-                            <select
-                                id="import-emplacement"
-                                className="form-field-input up-select"
-                                value={physicalLocationId}
-                                onChange={e => setPhysicalLocationId(e.target.value)}
-                            >
-                                <option value="">— Aucun —</option>
-                                {emplacements.map(loc => (
-                                    <option key={loc.id} value={loc.id}>{loc.cheminComplet}</option>
-                                ))}
-                            </select>
-                            <button
-                                type="button"
-                                className="up-btn-secondary"
-                                onClick={() => setEmplacementModal({ open: true, mode: 'create' })}
-                                disabled={uoId == null}
-                                title="Créer un nouvel emplacement"
-                            >
-                                <i className="fa-solid fa-plus" /> Créer
-                            </button>
-                            {physicalLocationId && (
-                                <button
-                                    type="button"
-                                    className="up-btn-secondary"
-                                    onClick={ouvrirModificationEmplacement}
-                                    title="Modifier toute l'arborescence de cet emplacement"
-                                >
-                                    <i className="fa-solid fa-pen" /> Modifier
-                                </button>
-                            )}
-                        </div>
-                    </div>
+                    {blocAccesDossierEmplacement}
 
                     {/* Local : pas de bouton — l'analyse démarre seule dès que fichier(s) et
                         type sont tous les deux fournis (voir l'effet plus haut). Lien : reste
@@ -1019,8 +1063,7 @@ function ImportDocuments({ onsuccess, preselectedTypeId, preselectedDossierId, p
                                 <span>
                                     <i className="fa-solid fa-triangle-exclamation" style={{ marginRight: '0.5rem' }} />
                                     Un document similaire existe déjà dans votre UO : «{' '}
-                                    {fileStates[currentIdx].documentSimilaire!.titre} » — vous pouvez
-                                    archiver quand même si ce n'est pas un doublon.
+                                    {fileStates[currentIdx].documentSimilaire!.titre} »
                                 </span>
                                 <button
                                     type="button"
@@ -1057,11 +1100,7 @@ function ImportDocuments({ onsuccess, preselectedTypeId, preselectedDossierId, p
                                         <span>Chargement de l'aperçu…</span>
                                     </div>
                                 ) : previewUrl ? (
-                                    <iframe
-                                        src={previewUrl}
-                                        className="import-preview-iframe"
-                                        title={`Aperçu de ${fileStates[currentIdx].nomFichier}`}
-                                    />
+                                    <PdfViewer url={previewUrl} className="import-preview-iframe" />
                                 ) : (
                                     <div className="import-preview-loading">
                                         <i className="fa-solid fa-file-circle-question" />
@@ -1098,6 +1137,17 @@ function ImportDocuments({ onsuccess, preselectedTypeId, preselectedDossierId, p
                                             prefilled={!!fileStates[currentIdx].prefilled[meta.nom]}
                                         />
                                     ))}
+                                </div>
+
+                                {/* Accès/dossier/emplacement — réglages du LOT entier (voir
+                                    blocAccesDossierEmplacement), pas de ce seul fichier : revenir
+                                    les revoir/changer ici évite d'avoir à "Recommencer" (et donc
+                                    reperdre l'analyse OCR déjà faite) juste pour ça. */}
+                                <div className="meta-fields meta-fields-lot">
+                                    <p className="meta-fields-title">
+                                        Accès, dossier et emplacement — pour tout le lot :
+                                    </p>
+                                    {blocAccesDossierEmplacement}
                                 </div>
                             </div>
                         </div>
@@ -1153,6 +1203,21 @@ function ImportDocuments({ onsuccess, preselectedTypeId, preselectedDossierId, p
                     existingNode={emplacementModal.mode === 'update' ? emplacementModal.node : undefined}
                     onSaved={handleEmplacementSaved}
                 />
+            )}
+
+            {docSimilaireUrl && (
+                <Modal
+                    isOpen
+                    onClose={() => {
+                        URL.revokeObjectURL(docSimilaireUrl);
+                        setDocSimilaireUrl(null);
+                        setDocSimilaireTitre(null);
+                    }}
+                    title={docSimilaireTitre ?? 'Document similaire'}
+                    size="large"
+                >
+                    <PdfViewer url={docSimilaireUrl} className="import-preview-iframe" />
+                </Modal>
             )}
         </div>
     );

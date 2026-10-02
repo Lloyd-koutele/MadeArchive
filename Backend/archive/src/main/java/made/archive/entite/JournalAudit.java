@@ -86,4 +86,16 @@ public class JournalAudit
     /** JSON optionnel — ex. { "avant": "USER", "apres": "EDITOR" } pour un changement de rôle. */
     @Column(columnDefinition = "TEXT")
     private String details;
+
+    /**
+     * SHA-256 (hex) de cette entrée chaînée à chainHash de l'entrée précédente
+     * (par id croissant) — voir service.audit.AuditChainService. Null tant que
+     * le job nocturne de chaînage n'est pas encore passé dessus, et DÉFINITIVEMENT
+     * null pour toute entrée antérieure à la mise en place de la chaîne (pas de
+     * chaînage rétroactif — voir Javadoc d'AuditChainService pour la raison :
+     * un chaînage rétroactif donnerait une fausse impression d'avoir protégé un
+     * historique qui, en réalité, ne l'était pas au moment où il a été écrit).
+     */
+    @Column(name = "chain_hash", length = 64)
+    private String chainHash;
 }
