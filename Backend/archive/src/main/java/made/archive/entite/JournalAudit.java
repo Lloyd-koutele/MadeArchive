@@ -89,8 +89,8 @@ public class JournalAudit
 
     /**
      * SHA-256 (hex) de cette entrée chaînée à chainHash de l'entrée précédente
-     * (par id croissant) — voir service.audit.AuditChainService. Null tant que
-     * le job nocturne de chaînage n'est pas encore passé dessus, et DÉFINITIVEMENT
+     * (dans l'ordre de positionChaine) — voir service.audit.AuditChainService. Null
+     * tant que le job de chaînage (quelques secondes) n'est pas passé dessus, et DÉFINITIVEMENT
      * null pour toute entrée antérieure à la mise en place de la chaîne (pas de
      * chaînage rétroactif — voir Javadoc d'AuditChainService pour la raison :
      * un chaînage rétroactif donnerait une fausse impression d'avoir protégé un
@@ -98,4 +98,15 @@ public class JournalAudit
      */
     @Column(name = "chain_hash", length = 64)
     private String chainHash;
+
+    /**
+     * Rang de l'entrée dans la chaîne, attribué par le job de chaînage au moment où il la traite —
+     * l'ordre de référence de la chaîne, PAS l'id : un id est attribué à l'insertion, pas au commit,
+     * une transaction lente peut donc valider une entrée d'id inférieur après qu'une entrée d'id
+     * supérieur a déjà été chaînée (voir migration V8). Null tant que l'entrée n'est pas chaînée.
+     * Volontairement absent des données hachées : l'ordre est déjà protégé par le chaînage lui-même
+     * (chaque empreinte dépend de la précédente), et l'ajouter invaliderait les empreintes existantes.
+     */
+    @Column(name = "position_chaine", unique = true)
+    private Long positionChaine;
 }

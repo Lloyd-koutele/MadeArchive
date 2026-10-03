@@ -14,7 +14,7 @@
     border-radius: var(--radius-sm); font-size: 0.85rem;
 }
 .doc-journal-liste li.doc-journal-echec { border-left-color: var(--error); }
-.doc-journal-date { color: var(--text-light); grid-row: span 3; }
+.doc-journal-date { color: var(--text-light); grid-row: span 4; }
 .doc-journal-action { font-weight: 700; color: var(--dark-choc); }
 .doc-journal-acteur { color: var(--dark-soft); word-break: break-all; }
 .doc-journal-desc { color: var(--dark-mid); }
@@ -22,3 +22,5 @@
     .doc-journal-liste li { grid-template-columns: 1fr; }
     .doc-journal-date { grid-row: auto; }
 }
+.doc-journal-details { grid-column: 2; display: flex; flex-direction: column; font-size: 0.78rem; color: var(--text-light); margin-top: 0.15rem; }
+@media (max-width: 600px) { .doc-journal-details { grid-column: 1; } }

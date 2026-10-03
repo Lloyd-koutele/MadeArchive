@@ -79,6 +79,14 @@ public class TypeDocument
     @JsonIgnore
     private PlanClassementNoeud planClassementNoeud;
 
+    /**
+     * Type créé par l'APPLICATION (ex. "Procès-verbal d'élimination", sort CONSERVER) — jamais par un
+     * utilisateur : non modifiable, non supprimable, et ses documents ne peuvent être ni supprimés ni
+     * reclassés (voir TypeDocumentService.refuserSiSysteme).
+     */
+    @Column(name = "systeme", nullable = false)
+    private boolean systeme = false;
+
     @Column(name = "extraction_regex_json", columnDefinition = "TEXT", nullable = true)
     private String extractionRegexJson;
     

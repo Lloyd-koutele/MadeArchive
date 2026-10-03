@@ -2765,3 +2765,5 @@ label.bulk-file-item { cursor: pointer; }
     .search-bar { flex-direction: column; }
     .search-type-select { width: 100%; }
 }
+/* Corbeille : motif de suppression sous l'échéance */
+.corbeille-motif { font-size: 0.78rem; color: var(--text-light); margin-top: 0.15rem; }

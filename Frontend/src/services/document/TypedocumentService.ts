@@ -25,6 +25,9 @@ export interface TypeDocumentDto {
      *  écoulé (voir modifierSortFinalTypeDocument pour la modifier après coup,
      *  même si des documents sont déjà rattachés à ce type). */
     sortFinal?: SortFinal;
+    /** Délai de grâce (jours) avant la suppression définitive d'un document de ce type en corbeille —
+     *  null/absent = défaut (6 jours). Se modifie via modifierDelaiGraceTypeDocument. */
+    periodGrace?: number | null;
     /** Activité (plan de classement de l'UO) — null/absent = non classé. Se modifie via
      *  rattacherTypeAActivite (PlanClassementService), pas via create/update. */
     planClassementNoeudId?: number | null;
@@ -143,6 +146,22 @@ export const modifierSortFinalTypeDocument = async (id: number, sortFinal: SortF
         // du serveur attend un littéral JSON valide ("CONSERVER", guillemets inclus) —
         // axios ne sérialise PAS automatiquement une string déjà passée en body.
         const response = await api.post(`/editor/types-documents/${id}/sort-final`, JSON.stringify(sortFinal));
+        return response.data;
+    } catch (error: any) {
+        throw error.response?.data?.message
+            ? new Error(error.response.data.message)
+            : error;
+    }
+};
+
+/**
+ * PUT /api/editor/types-documents/{id}/delai-grace
+ * Modifie le délai de grâce du type (1 à 365 jours, null = défaut) — appel dédié, comme le sort final :
+ * possible même si des documents sont déjà rattachés. L'échéance d'un document déjà en corbeille ne bouge pas.
+ */
+export const modifierDelaiGraceTypeDocument = async (id: number, jours: number | null): Promise<TypeDocumentDto> => {
+    try {
+        const response = await api.put(`/editor/types-documents/${id}/delai-grace`, jours === null ? 'null' : String(jours));
         return response.data;
     } catch (error: any) {
         throw error.response?.data?.message

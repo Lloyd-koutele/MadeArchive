@@ -206,6 +206,41 @@ public class MeilisearchService
         }
     }
 
+    /**
+     * Met à jour SEULEMENT le classement d'un document dans l'index (type, échéance, valeurs de métadonnées)
+     * après un reclassement — même mécanique PUT-fusion que updateDocumentAccess : pas de réindexage
+     * complet (qui exigerait de relire le texte OCR chiffré). Best-effort : un échec est logué, la base
+     * reste la source de vérité.
+     */
+    public void updateDocumentClassement(Document document, List<String> metaDataValues)
+    {
+        try
+        {
+            java.util.Map<String, Object> update = new java.util.HashMap<>();
+            update.put("id", document.getId().toString());
+            update.put("typeDocument", document.getTypeDocument().getNom());
+            update.put("typeDocumentId", document.getTypeDocument().getId());
+            update.put("retentionUntil", document.getRetentionUntil() != null
+                ? document.getRetentionUntil().toString() : null);
+            update.put("metaDataValues", metaDataValues);
+
+            buildAdminClient().put()
+                .uri("/indexes/" + INDEX_NAME + "/documents")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(objectMapper.writeValueAsString(List.of(update)))
+                .retrieve()
+                .bodyToMono(String.class)
+                .block();
+
+            log.info("[Meilisearch] Classement mis à jour : {} → {}", document.getId(),
+                document.getTypeDocument().getNom());
+        }
+        catch (Exception e)
+        {
+            log.error("[Meilisearch] Échec mise à jour classement {} : {}", document.getId(), e.getMessage());
+        }
+    }
+
     public void deleteDocument(String documentId)
     {
         try

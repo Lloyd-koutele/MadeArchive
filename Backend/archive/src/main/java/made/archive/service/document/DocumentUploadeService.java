@@ -88,6 +88,7 @@ public class DocumentUploadeService
     private final made.archive.service.organisation.DossierService          dossierService;
     private final RegexGenerationService                                    regexGenerationService;
     private final HorodatageService                                        horodatageService;
+    private final made.archive.repository.PlanClassementNoeudRepository     planClassementNoeudRepository;
 
     private TransactionTemplate transactionTemplate;
 
@@ -411,6 +412,28 @@ public class DocumentUploadeService
                             dossierGere.setTypesDocumentsAttendus(nouveaux);
                             dossierRepository.save(dossierGere);
                         }
+                    }
+
+                    // Activité propre à ce document : seulement si elle diffère de celle de son type et
+                    // appartient à la même UO — sinon il suit simplement son type (null).
+                    Long noeudDemande = request.getDocumentUploadDto().getPlanClassementNoeudId();
+                    if (noeudDemande != null)
+                    {
+                        made.archive.entite.PlanClassementNoeud noeud = planClassementNoeudRepository.findById(noeudDemande)
+                            .orElseThrow(() -> new BusinessException("Activité introuvable : " + noeudDemande));
+                        if (!noeud.getUniteOrganisationnelle().getId().equals(uo.getId()))
+                        {
+                            throw new BusinessException("Cette activité appartient au plan de classement d'une autre UO");
+                        }
+                        boolean identiqueAuType = typeDocument.getPlanClassementNoeud() != null
+                            && typeDocument.getPlanClassementNoeud().getId().equals(noeud.getId());
+                        document.setPlanClassementNoeud(identiqueAuType ? null : noeud);
+                    }
+                    else if (documentPrecedent != null && documentPrecedent.getPlanClassementNoeud() != null
+                        && documentPrecedent.getTypeDocument().getId().equals(typeDocument.getId()))
+                    {
+                        // Nouvelle version d'un document classé à part : elle garde son classement.
+                        document.setPlanClassementNoeud(documentPrecedent.getPlanClassementNoeud());
                     }
 
                     UUID physicalLocationId = request.getDocumentUploadDto().getPhysicalLocationId();

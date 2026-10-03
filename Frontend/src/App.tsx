@@ -17,6 +17,7 @@ import AttestationDocumentPublique from './Page/AttestationDocumentPublique.tsx'
 import { NotificationProvider } from './notifications/NotificationProvider.tsx';
 import NotificationStack from './notifications/NotificationStack.tsx';
 import { ConfirmProvider } from './notifications/ConfirmProvider.tsx';
+import { MotifSuppressionProvider } from './notifications/MotifSuppressionProvider.tsx';
 import api from './services/api';
 
 // requiredRole accepte désormais un seul rôle ou une liste (any-of)
@@ -108,10 +109,12 @@ function App() {
   return (
     <NotificationProvider>
       <ConfirmProvider>
-        {setupStatus === 'loading' && <div style={{ minHeight: '100vh' }} />}
-        {setupStatus === 'needs-setup' && <SetupWizard />}
-        {setupStatus === 'ready' && <RouterProvider router={router} />}
-        <NotificationStack />
+        <MotifSuppressionProvider>
+          {setupStatus === 'loading' && <div style={{ minHeight: '100vh' }} />}
+          {setupStatus === 'needs-setup' && <SetupWizard />}
+          {setupStatus === 'ready' && <RouterProvider router={router} />}
+          <NotificationStack />
+        </MotifSuppressionProvider>
       </ConfirmProvider>
     </NotificationProvider>
   );

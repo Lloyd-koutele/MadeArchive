@@ -22,6 +22,9 @@ interface TypeDocumentFormFieldsProps {
     onSortFinalChange?: (v: SortFinal) => void;
     /** Activités du plan de classement de l'UO (aplaties) + choix courant (null = non classé).
      *  Absent : le sélecteur n'est pas rendu. */
+    /** Délai de grâce (jours) avant suppression définitive en corbeille — null = défaut (6). Absent : champ non rendu. */
+    delaiGrace?: number | null;
+    onDelaiGraceChange?: (v: number | null) => void;
     activites?: PlanClassementOption[];
     activiteId?: number | null;
     onActiviteChange?: (v: number | null) => void;
@@ -33,6 +36,7 @@ function TypeDocumentFormFields({
     metaData, onMetaDataChange,
     idPrefix,
     sortFinal, onSortFinalChange,
+    delaiGrace, onDelaiGraceChange,
     activites, activiteId, onActiviteChange,
 }: TypeDocumentFormFieldsProps) {
 
@@ -88,6 +92,24 @@ function TypeDocumentFormFields({
                                 min={1}
                                 value={retentionYears ?? ''}
                                 onChange={e => onRetentionYearsChange(Number(e.target.value))}
+                            />
+                        </div>
+                    )}
+
+                    {onDelaiGraceChange && (
+                        <div className="form-field td-span2">
+                            <label className="form-field-label" htmlFor={`${idPrefix}-delai-grace`}>
+                                Délai de grâce avant suppression définitive (jours, 6 par défaut)
+                            </label>
+                            <input
+                                id={`${idPrefix}-delai-grace`}
+                                type="number"
+                                className="form-field-input"
+                                min={1}
+                                max={365}
+                                placeholder="6"
+                                value={delaiGrace ?? ''}
+                                onChange={e => onDelaiGraceChange(e.target.value === '' ? null : Number(e.target.value))}
                             />
                         </div>
                     )}

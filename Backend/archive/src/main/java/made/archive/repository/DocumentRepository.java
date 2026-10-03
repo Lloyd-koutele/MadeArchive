@@ -165,6 +165,16 @@ public interface DocumentRepository extends JpaRepository<Document, UUID>, JpaSp
     List<Document> findByStatusAndSuppressionPrevueLeLessThanEqual(
         DocumentStatus status, LocalDate date);
 
+    /** Un document est-il classé EXPLICITEMENT dans cette activité (exception à celle de son type) ? */
+    boolean existsByPlanClassementNoeud_Id(Long noeudId);
+
+    /** Pierres tombales dont le procès-verbal d'élimination n'a pas encore été généré. */
+    List<Document> findByStatusAndElimineLeIsNotNullAndProcesVerbalIdIsNull(DocumentStatus status);
+
+    /** Documents dont la suppression est prévue dans la fenêtre [from, to] — alertes "suppression imminente". */
+    List<Document> findByStatusAndSuppressionPrevueLeBetween(
+        DocumentStatus status, LocalDate from, LocalDate to);
+
     /**
      * Documents dont l'horodatage RFC 3161 a échoué (ou n'a jamais été
      * tenté) à l'upload — voir HorodatageService (best-effort) et
@@ -289,7 +299,7 @@ public interface DocumentRepository extends JpaRepository<Document, UUID>, JpaSp
     @Query("SELECT new made.archive.dto.DocumentExportRow(" +
            "d.id, d.titre, d.storageKey, d.access, d.status, d.createAt, " +
            "d.uniteOrganisationnelle.id, d.uniteOrganisationnelle.nom, " +
-           "d.typeDocument.nom, p.nom, p.id, n.id, " +
+           "d.typeDocument.nom, p.nom, p.id, COALESCE(dn.id, n.id), " +
            "d.pdfaSha256, d.originalSha256, d.pkiSignature, d.horodatageToken, d.horodatageDate, " +
            "d.retentionUntil, d.typeDocument.retention.retentionYears, d.typeDocument.retention.sortFinal) " +
            // LEFT JOIN explicite sur dossier (nullable) : une navigation par
@@ -299,7 +309,7 @@ public interface DocumentRepository extends JpaRepository<Document, UUID>, JpaSp
            // dossier revenant vide). uniteOrganisationnelle/typeDocument
            // sont non-nullables (nullable=false sur Document), la navigation
            // par point y reste sans risque.
-           "FROM Document d LEFT JOIN d.dossier p LEFT JOIN d.typeDocument t LEFT JOIN t.planClassementNoeud n " +
+           "FROM Document d LEFT JOIN d.dossier p LEFT JOIN d.typeDocument t LEFT JOIN t.planClassementNoeud n LEFT JOIN d.planClassementNoeud dn " +
            "WHERE d.id IN :ids")
     List<made.archive.dto.DocumentExportRow> findAllByIdPourExport(@Param("ids") Collection<UUID> ids);
 }

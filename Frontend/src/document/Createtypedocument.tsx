@@ -18,6 +18,7 @@ function CreateTypeDocument({ onsuccess, restrictToUO }: CreateTypeDocumentProps
     const [nom, setNom] = useState('');
     const [retentionYears, setRetentionYears] = useState<number | null>(null);
     const [sortFinal, setSortFinal] = useState<SortFinal>('CONSERVER');
+    const [delaiGrace, setDelaiGrace] = useState<number | null>(null);
     const [metaData, setMetaData] = useState<MetaDataDto[]>([{ nom: '', obligatoire: false }]);
     const [isLoading, setIsLoading] = useState(false);
     const [activites, setActivites] = useState<PlanClassementOption[]>([]);
@@ -51,6 +52,7 @@ function CreateTypeDocument({ onsuccess, restrictToUO }: CreateTypeDocumentProps
                 nom: nom.trim(),
                 retentionYears,
                 sortFinal,
+                periodGrace: delaiGrace,
                 uoId: restrictToUO.id,
                 metaData: metaData.map(m => ({ nom: m.nom.trim(), obligatoire: m.obligatoire || false }))
             };
@@ -66,6 +68,7 @@ function CreateTypeDocument({ onsuccess, restrictToUO }: CreateTypeDocumentProps
             setNom('');
             setRetentionYears(null);
             setSortFinal('CONSERVER');
+            setDelaiGrace(null);
             setActiviteId(null);
             setMetaData([{ nom: '', obligatoire: false }]);
             setTimeout(() => onsuccess?.(), 1500);
@@ -86,6 +89,7 @@ function CreateTypeDocument({ onsuccess, restrictToUO }: CreateTypeDocumentProps
                     nom={nom} onNomChange={setNom}
                     retentionYears={retentionYears} onRetentionYearsChange={setRetentionYears}
                     sortFinal={sortFinal} onSortFinalChange={setSortFinal}
+                    delaiGrace={delaiGrace} onDelaiGraceChange={setDelaiGrace}
                     activites={activites} activiteId={activiteId} onActiviteChange={setActiviteId}
                     metaData={metaData} onMetaDataChange={setMetaData}
                 />

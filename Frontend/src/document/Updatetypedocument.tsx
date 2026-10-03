@@ -1,6 +1,6 @@
 // document/Updatetypedocument.tsx
 import React, { useState, useEffect } from 'react';
-import { updateTypeDocument, modifierSortFinalTypeDocument } from '../services/document/TypedocumentService';
+import { updateTypeDocument, modifierSortFinalTypeDocument, modifierDelaiGraceTypeDocument } from '../services/document/TypedocumentService';
 import type { MetaDataDto, SortFinal, TypeDocumentDto } from '../services/document/TypedocumentService';
 import TypeDocumentFormFields from './TypeDocumentFormFields';
 import { getPlanClassement, aplatirPlanClassement, rattacherTypeAActivite } from '../services/organisation/PlanClassementService';
@@ -18,6 +18,7 @@ function UpdateTypeDocument({ initialData, onsuccess }: UpdateTypeDocumentProps)
     const [nom, setNom] = useState('');
     const [retentionYears, setRetentionYears] = useState<number | null>(null);
     const [sortFinal, setSortFinal] = useState<SortFinal>('CONSERVER');
+    const [delaiGrace, setDelaiGrace] = useState<number | null>(null);
     const [metaData, setMetaData] = useState<MetaDataDto[]>([{ nom: '', obligatoire: false }]);
     const [isLoading, setIsLoading] = useState(false);
     const [activites, setActivites] = useState<PlanClassementOption[]>([]);
@@ -35,6 +36,7 @@ function UpdateTypeDocument({ initialData, onsuccess }: UpdateTypeDocumentProps)
             setNom(initialData.nom || '');
             setRetentionYears(initialData.retentionYears ?? null);
             setSortFinal(initialData.sortFinal ?? 'CONSERVER');
+            setDelaiGrace(initialData.periodGrace ?? null);
             setActiviteId(initialData.planClassementNoeudId ?? null);
             setMetaData(
                 initialData.metaData && initialData.metaData.length > 0
@@ -93,6 +95,17 @@ function UpdateTypeDocument({ initialData, onsuccess }: UpdateTypeDocumentProps)
             }
         }
 
+        // Délai de grâce : appel dédié lui aussi (non verrouillé par les documents rattachés).
+        let succesDelai = true;
+        if (delaiGrace !== (initialData.periodGrace ?? null)) {
+            try {
+                await modifierDelaiGraceTypeDocument(initialData.id, delaiGrace);
+            } catch (err: any) {
+                succesDelai = false;
+                notify.error(err.message || "Erreur lors de la modification du délai de grâce");
+            }
+        }
+
         // Activité : appel dédié lui aussi — modifiable même si des documents sont rattachés au type.
         let succesActivite = true;
         if (activiteId !== (initialData.planClassementNoeudId ?? null)) {
@@ -105,7 +118,7 @@ function UpdateTypeDocument({ initialData, onsuccess }: UpdateTypeDocumentProps)
         }
 
         setIsLoading(false);
-        if (succesPrincipal && succesSortFinal && succesActivite) {
+        if (succesPrincipal && succesSortFinal && succesDelai && succesActivite) {
             notify.success("Type de document mis à jour avec succès");
             setTimeout(() => onsuccess?.(), 1500);
         }
@@ -119,6 +132,7 @@ function UpdateTypeDocument({ initialData, onsuccess }: UpdateTypeDocumentProps)
                     nom={nom} onNomChange={setNom}
                     retentionYears={retentionYears} onRetentionYearsChange={setRetentionYears}
                     sortFinal={sortFinal} onSortFinalChange={setSortFinal}
+                    delaiGrace={delaiGrace} onDelaiGraceChange={setDelaiGrace}
                     activites={activites} activiteId={activiteId} onActiviteChange={setActiviteId}
                     metaData={metaData} onMetaDataChange={setMetaData}
                 />

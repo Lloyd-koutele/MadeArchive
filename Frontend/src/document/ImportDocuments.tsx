@@ -29,6 +29,8 @@ import type { PhysicalLocationDto, PhysicalLocationNodeDto } from '../services/o
 // d'arborescence profite aux deux écrans à la fois.
 import EmplacementTreeModal from '../organisation/EmplacementTreeModal';
 import DossierTreePicker from '../organisation/DossierTreePicker';
+import { getPlanClassement, aplatirPlanClassement } from '../services/organisation/PlanClassementService';
+import type { PlanClassementOption } from '../services/organisation/PlanClassementService';
 import MetaDataField from './MetadaField';
 import PdfViewer from '../components/PdfViewer';
 import Modal from '../Page/Modal';
@@ -114,6 +116,9 @@ function ImportDocuments({ onsuccess, preselectedTypeId, preselectedDossierId, p
     const [filtreMembre, setFiltreMembre]        = useState('');
     const [emplacements, setEmplacements]        = useState<PhysicalLocationDto[]>([]);
     const [physicalLocationId, setPhysicalLocationId] = useState('');
+    /** Activité (plan de classement) de tout le lot — '' = suit l'activité par défaut de son type. */
+    const [activiteId, setActiviteId] = useState('');
+    const [activites, setActivites] = useState<PlanClassementOption[]>([]);
     /** Dossier cible (optionnel) — voir DossierTreePicker. Si ce dossier a déjà
      *  ce type de document parmi ses types attendus, les fichiers y sont
      *  simplement versés sans rien recréer ; sinon le type y est automatiquement
@@ -522,6 +527,7 @@ function ImportDocuments({ onsuccess, preselectedTypeId, preselectedDossierId, p
                         groupeMembresIds: selectedMembres,
                     }),
                     ...(physicalLocationId && { physicalLocationId }),
+                    ...(activiteId && { planClassementNoeudId: Number(activiteId) }),
                     ...(dossierId != null && { dossierId }),
                     ...(precedentDocument && { documentPrecedentId: precedentDocument.documentId }),
                 },
@@ -589,6 +595,16 @@ function ImportDocuments({ onsuccess, preselectedTypeId, preselectedDossierId, p
      *  reperdant toute l'analyse déjà faite). Même état (access/dossierId/
      *  physicalLocationId...), donc un changement ici est immédiatement reflété
      *  si on revient à l'étape "source", et inversement. */
+    useEffect(() => {
+        if (uoId == null) return;
+        getPlanClassement(uoId)
+            .then(arbre => setActivites(aplatirPlanClassement(arbre)))
+            .catch(() => setActivites([])); // non bloquant : sans plan, tout reste "non classé"
+    }, [uoId]);
+
+    // Changer de type remet l'activité sur celle par défaut du nouveau type
+    useEffect(() => { setActiviteId(''); }, [typeDocumentId]);
+
     const blocAccesDossierEmplacement = (
         <>
             {/* Accès — appliqué à tout le lot */}
@@ -653,6 +669,22 @@ function ImportDocuments({ onsuccess, preselectedTypeId, preselectedDossierId, p
                 <div className="form-field">
                     <label className="form-field-label">Dossier cible (optionnel)</label>
                     <DossierTreePicker uoId={uoId} value={dossierId} onChange={setDossierId} />
+                </div>
+            )}
+
+            {/* Activité (plan de classement) — par défaut celle du type, à changer seulement pour un cas
+                particulier (ex. facture ponctuelle dans un type habituellement récurrent). Une seule pour
+                tout le lot ; un document isolé se corrige ensuite avec « Reclasser ». */}
+            {activites.length > 0 && (
+                <div className="form-field">
+                    <label htmlFor="import-activite" className="form-field-label">Activité (optionnel)</label>
+                    <select id="import-activite" className="form-field-input up-select" value={activiteId}
+                        onChange={e => setActiviteId(e.target.value)}>
+                        <option value="">
+                            {selectedType?.activite ? `Par défaut du type : ${selectedType.activite}` : 'Par défaut du type (non classé)'}
+                        </option>
+                        {activites.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
+                    </select>
                 </div>
             )}
 

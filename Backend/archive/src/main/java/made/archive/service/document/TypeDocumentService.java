@@ -147,6 +147,7 @@ public class TypeDocumentService
                 throw new AccessDeniedException("Vous n'avez pas l'autorisation de supprimer ce type de document");
             }
     
+            refuserSiSysteme(typeDocument);
             if (hasLinkedDocuments(id)) 
             {
                 throw new BusinessException("Impossible de supprimer ce type de document car des documents y sont actuellement rattachés.");
@@ -417,16 +418,10 @@ public class TypeDocumentService
             Retention retention = new Retention();
             retention.setCreateAt(LocalDateTime.now());
     
-            if (dto.getRetentionYears() != null)
-            {
-                retention.setRetentionYears(dto.getRetentionYears());
-                retention.setPeriodGrace(dto.getPeriodGrace() != null ? dto.getPeriodGrace() : 30L);
-            }
-            else
-            {
-                retention.setRetentionYears(null);
-                retention.setPeriodGrace(null);
-            }
+            retention.setRetentionYears(dto.getRetentionYears());
+            // Délai de grâce avant suppression définitive (corbeille) — indépendant de la durée de
+            // rétention : il s'applique aussi à une suppression volontaire. Null = défaut (6 jours).
+            retention.setPeriodGrace(validerDelaiGrace(dto.getPeriodGrace()));
 
             SortFinal sortFinalDemande = parseSortFinal(dto.getSortFinal());
             if (sortFinalDemande == null)
@@ -499,6 +494,7 @@ public class TypeDocumentService
                 throw new AccessDeniedException("Vous n'avez pas l'autorisation de modifier ce type de document");
             }
     
+            refuserSiSysteme(typeDocument);
             if (hasLinkedDocuments(id)) 
             {
                 throw new BusinessException("Impossible de modifier ce type de document car des documents y sont actuellement rattachés.");
@@ -525,10 +521,9 @@ public class TypeDocumentService
                 throw new BusinessException("La durée de rétention, si elle est renseignée, doit être supérieure à 0");
             }
     
+            // periodGrace n'est volontairement PAS touché ici : il se modifie via modifierDelaiGrace
+            // (appel dédié, non verrouillé par les documents déjà rattachés).
             currentRetention.setRetentionYears(dto.getRetentionYears());
-            currentRetention.setPeriodGrace(dto.getRetentionYears() != null
-                ? (dto.getPeriodGrace() != null ? dto.getPeriodGrace() : 30L)
-                : null);
     
             if (dto.getMetaData() != null)
             {
@@ -661,6 +656,7 @@ public class TypeDocumentService
         {
             throw new AccessDeniedException("Vous n'avez pas l'autorisation de modifier ce type de document");
         }
+        refuserSiSysteme(typeDocument);
     
         if (!typeDocument.getNom().equalsIgnoreCase(nouveauNom))
         {
@@ -706,6 +702,7 @@ public class TypeDocumentService
             throw new AccessDeniedException("Vous n'avez pas l'autorisation de modifier ce type de document");
         }
 
+        refuserSiSysteme(typeDocument);
         SortFinal nouveauSortFinal = parseSortFinal(sortFinalDemande);
         if (nouveauSortFinal == null)
         {
@@ -726,6 +723,57 @@ public class TypeDocumentService
 
         TypeDocumentDto dto = typeDocumentMapper.toDto(typeDocument);
         return dto;
+    }
+
+    /** Un type créé par l'application (ex. « Procès-verbal d'élimination ») n'est jamais modifiable ni supprimable. */
+    public static void refuserSiSysteme(TypeDocument type)
+    {
+        if (type != null && type.isSysteme())
+        {
+            throw new BusinessException("Le type « " + type.getNom()
+                + " » est géré par l'application : il ne peut être ni modifié ni supprimé");
+        }
+    }
+
+    /** Délai de grâce de la corbeille pour ce type, en jours (1 à 365) — null = défaut (voir
+     *  DocumentService.delaiGraceJours). Comme modifierSortFinal, DÉLIBÉRÉMENT hors du verrou
+     *  hasLinkedDocuments : il ne touche aucun document existant (l'échéance d'un document déjà en
+     *  corbeille reste celle calculée à son entrée) et sert surtout pour les types déjà en service. */
+    @Transactional
+    public TypeDocumentDto modifierDelaiGrace(Long id, Long jours, User currentUser)
+    {
+        TypeDocument typeDocument = typeDocumentRepository.findById(id)
+            .orElseThrow(() -> new BusinessException("Type de document non trouvé avec l'ID: " + id));
+
+        if (!uniteOrganisationnelleService.estEditeurDeUO(
+                typeDocument.getUniteOrganisationnelle().getId(), currentUser))
+        {
+            throw new AccessDeniedException("Vous n'avez pas l'autorisation de modifier ce type de document");
+        }
+
+        refuserSiSysteme(typeDocument);
+        Long nouveau = validerDelaiGrace(jours);
+        Long ancien = typeDocument.getRetention().getPeriodGrace();
+        typeDocument.getRetention().setPeriodGrace(nouveau);
+        typeDocumentRepository.save(typeDocument);
+
+        auditLogService.log(currentUser, AuditAction.TYPE_DOCUMENT_DELAI_GRACE_MODIFIE, AuditCible.TYPE_DOCUMENT,
+            id.toString(), typeDocument.getUniteOrganisationnelle().getId(),
+            "Délai de grâce du type \"" + typeDocument.getNom() + "\" : "
+                + (ancien != null ? ancien + " jours" : "défaut") + " → "
+                + (nouveau != null ? nouveau + " jours" : "défaut (" + DocumentService.DELAI_GRACE_CORBEILLE_JOURS + " jours)"),
+            true);
+
+        return typeDocumentMapper.toDto(typeDocument);
+    }
+
+    private Long validerDelaiGrace(Long jours)
+    {
+        if (jours != null && (jours < 1 || jours > 365))
+        {
+            throw new BusinessException("Le délai de grâce doit être compris entre 1 et 365 jours");
+        }
+        return jours;
     }
 
     /** null (pas d'erreur) si non fourni — createTypeDocument applique alors le

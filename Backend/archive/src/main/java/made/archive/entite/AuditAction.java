@@ -135,6 +135,19 @@ public enum AuditAction
     /** Export (CSV/.log) du journal de CE document par un utilisateur. */
     DOCUMENT_JOURNAL_EXPORTE,
 
+    // ── Fin de vie : blocage de l'élimination, délai de grâce, reclassement ───────
+    DOCUMENT_ELIMINATION_BLOQUEE,
+    DOCUMENT_ELIMINATION_DEBLOQUEE,
+    TYPE_DOCUMENT_DELAI_GRACE_MODIFIE,
+    /** Changement de type (et/ou de dossier, d'emplacement) d'un document archivé par erreur. */
+    DOCUMENT_RECLASSE,
+
+    // ── Procès-verbal d'élimination ─────────────────────────────────────────────
+    /** PV généré et archivé (cible : le PV lui-même). */
+    PV_ELIMINATION_GENERE,
+    /** Mention, dans le journal d'un document éliminé, du PV qui l'inclut (cible : le document). */
+    DOCUMENT_INCLUS_PV_ELIMINATION,
+
     // ── Plan de classement (voir entite.PlanClassementNoeud) ───────────────────
     PLAN_CLASSEMENT_NOEUD_CREE,
     PLAN_CLASSEMENT_NOEUD_MODIFIE,

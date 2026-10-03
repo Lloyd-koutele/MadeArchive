@@ -22,6 +22,7 @@ import made.archive.entite.Document;
 import made.archive.entite.DocumentStatus;
 import made.archive.entite.FixityCheckResult;
 import made.archive.entite.MetaData;
+import made.archive.entite.MotifSuppression;
 import made.archive.entite.Dossier;
 import made.archive.entite.Role_Name;
 import made.archive.entite.TypeAccess;
@@ -94,6 +95,7 @@ public class DocumentService
     private final MeilisearchService meilisearchService;
     private final made.archive.repository.AttestationRepository attestationRepository;
     private final DocumentRetentionService documentRetentionService;
+    private final made.archive.repository.PlanClassementNoeudRepository planClassementNoeudRepository;
 
     private static final String INDEX_NAME        = "documents";
 
@@ -101,7 +103,20 @@ public class DocumentService
     private static final List<DocumentStatus> STATUTS_EXCLUS_LECTURE =
         List.of(DocumentStatus.DELETED, DocumentStatus.CORBEILLE);
 
+    /** Délai de grâce PAR DÉFAUT de la corbeille — celui d'un type qui n'a pas défini le sien (voir delaiGraceJours). */
     public static final long DELAI_GRACE_CORBEILLE_JOURS = 6;
+
+    /**
+     * Délai de grâce (jours) avant la suppression définitive d'un document de ce type : la valeur saisie
+     * à la création du type (Retention.periodGrace), sinon DELAI_GRACE_CORBEILLE_JOURS. Calculé à l'entrée
+     * en corbeille et figé dans Document.suppressionPrevueLe : modifier le délai du type ne déplace pas
+     * l'échéance des documents déjà en corbeille.
+     */
+    public static long delaiGraceJours(TypeDocument type)
+    {
+        Long saisi = type != null && type.getRetention() != null ? type.getRetention().getPeriodGrace() : null;
+        return saisi != null && saisi > 0 ? saisi : DELAI_GRACE_CORBEILLE_JOURS;
+    }
 
     // 1. DOSSIERS — grille de types avec compteurs
     
@@ -272,7 +287,10 @@ public class DocumentService
             .statutAvantCorbeille(doc.getStatutAvantCorbeille() != null ? doc.getStatutAvantCorbeille().name() : null)
             .suppressionPrevueLe(doc.getSuppressionPrevueLe())
             .activite(made.archive.service.organisation.PlanClassementService
-                .chemin(doc.getTypeDocument().getPlanClassementNoeud()))
+                .chemin(made.archive.service.organisation.PlanClassementService.activiteEffective(doc)))
+            .activiteNoeudId(made.archive.service.organisation.PlanClassementService.activiteEffective(doc) != null
+                ? made.archive.service.organisation.PlanClassementService.activiteEffective(doc).getId() : null)
+            .activiteSurDocument(doc.getPlanClassementNoeud() != null)
             .retentionYearsType(doc.getTypeDocument().getRetention() != null
                 ? doc.getTypeDocument().getRetention().getRetentionYears() : null)
             .peutGererCorbeille(estEditeur(user) && getUtilisateursAyantAcces(doc).stream()
@@ -443,8 +461,16 @@ public class DocumentService
 
     // 7. CORBEILLE — suppression volontaire (délai de grâce unique, voir DELAI_GRACE_CORBEILLE_JOURS, restaurable)
 
+    /**
+     * Supprime un document ACTIF (le met en corbeille) — motif obligatoire (ERREUR_ARCHIVAGE,
+     * SUPPRESSION_LEGALE, ou AUTRE avec commentaire), conservé sur le document et dans le journal.
+     * Purge automatique à l'échéance du délai de grâce du type, quel que soit son sort final : c'est
+     * une décision volontaire de l'éditeur, restaurable d'ici là.
+     *
+     * @return la date de suppression définitive prévue.
+     */
     @Transactional
-    public void envoyerCorbeille(UUID documentId, UserDetails userDetails)
+    public LocalDate envoyerCorbeille(UUID documentId, MotifSuppression motif, String commentaire, UserDetails userDetails)
     {
         User user    = resolveUser(userDetails);
         Document doc = resolveDocument(documentId, user);
@@ -455,6 +481,14 @@ public class DocumentService
         {
             throw new BusinessException(
                 "Seul un éditeur ayant accès à ce document peut l'envoyer à la corbeille");
+        }
+
+        DocumentRetentionService.validerMotifUtilisateur(motif, commentaire);
+
+        if (doc.getTypeDocument().isSysteme())
+        {
+            throw new BusinessException("Ce document est géré par l'application (" + doc.getTypeDocument().getNom()
+                + ") : il ne peut pas être supprimé");
         }
 
         if (doc.getStatus() == DocumentStatus.CORBEILLE)
@@ -468,17 +502,29 @@ public class DocumentService
         }
 
         DocumentStatus statutOrigine = doc.getStatus();
+        String commentaireNet = commentaire != null && !commentaire.isBlank() ? commentaire.trim() : null;
         doc.setStatutAvantCorbeille(statutOrigine);
         doc.setStatus(DocumentStatus.CORBEILLE);
-        doc.setSuppressionPrevueLe(LocalDate.now().plusDays(DELAI_GRACE_CORBEILLE_JOURS));
+        doc.setMotifSuppression(motif);
+        doc.setCommentaireSuppression(commentaireNet);
+        doc.setEliminationBloquee(false);
+        doc.setAlerteSuppressionLe(null);
+        doc.setSuppressionPrevueLe(LocalDate.now().plusDays(delaiGraceJours(doc.getTypeDocument())));
         documentRepository.save(doc);
+        meilisearchService.updateDocumentStatus(doc);
 
+        java.util.Map<String, Object> details = new java.util.LinkedHashMap<>();
+        details.put("motif", motif.name());
+        if (commentaireNet != null) details.put("commentaire", commentaireNet);
         auditLogService.log(user, AuditAction.DOCUMENT_PLACE_CORBEILLE, AuditCible.DOCUMENT,
             doc.getId().toString(),
             doc.getUniteOrganisationnelle() != null ? doc.getUniteOrganisationnelle().getId() : null,
-            "Document \"" + doc.getTitre() + "\" (" + statutOrigine + ") envoyé à la corbeille — "
-                + "suppression définitive prévue le " + doc.getSuppressionPrevueLe(),
-            true);
+            "Document \"" + doc.getTitre() + "\" (" + statutOrigine + ") envoyé à la corbeille — motif : "
+                + motif + (commentaireNet != null ? " (" + commentaireNet + ")" : "")
+                + ", suppression définitive prévue le " + doc.getSuppressionPrevueLe(),
+            true, details);
+
+        return doc.getSuppressionPrevueLe();
     }
 
     @Transactional
@@ -514,6 +560,13 @@ public class DocumentService
         doc.setStatus(statutRestaure);
         doc.setStatutAvantCorbeille(null);
         doc.setSuppressionPrevueLe(null);
+        doc.setMotifSuppression(null);
+        doc.setCommentaireSuppression(null);
+        doc.setEliminationBloquee(false);
+        doc.setBlocageMotif(null);
+        doc.setBlocagePar(null);
+        doc.setBlocageLe(null);
+        doc.setAlerteSuppressionLe(null);
         if (retentionDepassee)
         {
             Long anneesRetention = doc.getTypeDocument().getRetention() != null
@@ -521,6 +574,7 @@ public class DocumentService
             doc.setRetentionUntil(anneesRetention != null ? LocalDate.now().plusYears(anneesRetention) : null);
         }
         documentRepository.save(doc);
+        meilisearchService.updateDocumentStatus(doc);
 
         auditLogService.log(user, AuditAction.DOCUMENT_RESTAURE_CORBEILLE, AuditCible.DOCUMENT,
             doc.getId().toString(),
@@ -531,30 +585,52 @@ public class DocumentService
     }
 
     /**
-     * Suppression définitive immédiate, demandée par un éditeur, d'un document
-     * en CORBEILLE dont le sort final (CONSERVER/TRIER — voir entite.SortFinal)
-     * exclut la purge automatique du job planifié (voir
-     * DocumentRetentionService.purgeDocumentsCorbeille) : sans cette action, un
-     * tel document resterait en corbeille indéfiniment. Même autorisation que
-     * envoyerCorbeille/restaurerDepuisCorbeille (éditeur ayant accès au document) —
-     * les règles de délai de grâce et de sort final sont vérifiées par
-     * DocumentRetentionService.supprimerDefinitivementManuellement.
+     * Suppression définitive immédiate, demandée par un éditeur, d'un document arrivé en FIN DE VIE
+     * dont le sort final (CONSERVER/TRIER) exclut la purge automatique — voir
+     * DocumentRetentionService.supprimerDefinitivementManuellement pour les règles. Motif obligatoire.
+     * Même autorisation que envoyerCorbeille/restaurerDepuisCorbeille (éditeur ayant accès).
      */
     @Transactional
-    public void supprimerDefinitivementDepuisCorbeille(UUID documentId, UserDetails userDetails)
+    public void supprimerDefinitivementDepuisCorbeille(UUID documentId, MotifSuppression motif, String commentaire,
+                                                       UserDetails userDetails)
     {
         User user    = resolveUser(userDetails);
         Document doc = resolveDocument(documentId, user);
+        verifierEditeurAvecAcces(user, doc, "le supprimer définitivement");
 
+        documentRetentionService.supprimerDefinitivementManuellement(doc, user, motif, commentaire);
+    }
+
+    /** Bloque la suppression automatique d'un document en corbeille (motif obligatoire). */
+    @Transactional
+    public void bloquerEliminationCorbeille(UUID documentId, String motif, UserDetails userDetails)
+    {
+        User user    = resolveUser(userDetails);
+        Document doc = resolveDocument(documentId, user);
+        verifierEditeurAvecAcces(user, doc, "bloquer sa suppression");
+
+        documentRetentionService.bloquerElimination(doc, user, motif);
+    }
+
+    /** Débloque : nouveau délai de grâce complet. */
+    @Transactional
+    public void debloquerEliminationCorbeille(UUID documentId, String motif, UserDetails userDetails)
+    {
+        User user    = resolveUser(userDetails);
+        Document doc = resolveDocument(documentId, user);
+        verifierEditeurAvecAcces(user, doc, "débloquer sa suppression");
+
+        documentRetentionService.debloquerElimination(doc, user, motif);
+    }
+
+    private void verifierEditeurAvecAcces(User user, Document doc, String action)
+    {
         boolean autorise = estEditeur(user) && getUtilisateursAyantAcces(doc).stream()
             .anyMatch(u -> u.getId().equals(user.getId()));
         if (!autorise)
         {
-            throw new BusinessException(
-                "Seul un éditeur ayant accès à ce document peut le supprimer définitivement");
+            throw new BusinessException("Seul un éditeur ayant accès à ce document peut " + action);
         }
-
-        documentRetentionService.supprimerDefinitivementManuellement(doc, user);
     }
 
     // 8. LOCALISATION PHYSIQUE — modification après coup
@@ -681,6 +757,210 @@ public class DocumentService
         }}
 
     
+    // 8a. RECLASSEMENT — document archivé par erreur dans le mauvais type
+
+    /**
+     * Corrige le classement d'un document archivé par erreur : nouveau type (avec les métadonnées de ce
+     * type), et si demandé nouveau dossier / nouvel emplacement — en une seule opération, sans rien
+     * supprimer ni réarchiver : le fichier, ses empreintes, sa signature et son horodatage restent
+     * valables (ils portent sur le fichier, pas sur son classement). Ne concerne que la version ouverte.
+     *
+     * Changer de type change la règle de conservation : retentionUntil est recalculé depuis la date
+     * d'archivage. Si l'échéance obtenue est déjà passée, le document suit le circuit normal de fin de
+     * vie (tâche planifiée : corbeille avec son délai de grâce complet) — jamais de suppression immédiate.
+     *
+     * Les valeurs de l'ancien type sont conservées dans le journal du document (details de l'entrée
+     * DOCUMENT_RECLASSE) : reprises par nom de champ quand le nouveau type a le même, sinon supprimées
+     * de la fiche mais jamais perdues. Même autorisation que les autres corrections (éditeur ayant accès).
+     */
+    @Transactional
+    public DocumentDetailDto reclasser(UUID documentId, made.archive.dto.ReclassementRequestDto req, UserDetails userDetails)
+    {
+        User user    = resolveUser(userDetails);
+        Document doc = resolveDocument(documentId, user);
+        verifierEditeurAvecAcces(user, doc, "le reclasser");
+
+        if (doc.getStatus() == DocumentStatus.CORBEILLE)
+        {
+            throw new BusinessException("Ce document est dans la corbeille — restaurez-le avant de le reclasser");
+        }
+
+        TypeDocument ancienType = doc.getTypeDocument();
+        TypeDocumentService.refuserSiSysteme(ancienType);
+        boolean changeType = req.getTypeDocumentId() != null && !req.getTypeDocumentId().equals(ancienType.getId());
+        if (!changeType && !req.isModifierDossier() && !req.isModifierEmplacement() && !req.isModifierActivite())
+        {
+            throw new BusinessException("Aucun changement demandé");
+        }
+        String activiteAvant = made.archive.service.organisation.PlanClassementService
+            .chemin(made.archive.service.organisation.PlanClassementService.activiteEffective(doc));
+
+        java.util.Map<String, Object> details = new java.util.LinkedHashMap<>();
+        List<String> valeursPourIndex = List.of();
+
+        if (changeType)
+        {
+            TypeDocument nouveauType = typeDocumentService.getTypeDocumentById(req.getTypeDocumentId());
+            Long uoDoc = doc.getUniteOrganisationnelle() != null ? doc.getUniteOrganisationnelle().getId() : null;
+            if (uoDoc == null || nouveauType.getUniteOrganisationnelle() == null
+                || !uoDoc.equals(nouveauType.getUniteOrganisationnelle().getId()))
+            {
+                throw new BusinessException("Le nouveau type doit appartenir à la même unité organisationnelle que le document");
+            }
+
+            // Un emplacement qui n'accepte QUE l'ancien type ne peut plus recevoir ce document, sauf si
+            // l'éditeur en choisit un autre dans la même opération.
+            var emplacement = doc.getPhysicalLocation();
+            if (emplacement != null && !req.isModifierEmplacement()
+                && emplacement.getModeContrainte() == made.archive.entite.LocationModeContrainte.TYPE_UNIQUE
+                && emplacement.getTypeDocumentAccepte() != null
+                && !emplacement.getTypeDocumentAccepte().getId().equals(nouveauType.getId()))
+            {
+                throw new BusinessException("L'emplacement actuel (\"" + emplacement.getName() + "\") n'accepte que le type \""
+                    + emplacement.getTypeDocumentAccepte().getNom() + "\" — choisissez un autre emplacement pour ce reclassement");
+            }
+
+            // Valeurs actuelles (lues par requête, pas via doc.getData() : cette collection resterait
+            // périmée dans la session après le remplacement ci-dessous).
+            java.util.Map<String, String> valeursAvant = new java.util.LinkedHashMap<>();
+            for (DataType dt : dataTypeRepository.findByDocument_Id(documentId))
+            {
+                valeursAvant.put(dt.getMetaData() != null ? dt.getMetaData().getNom() : "(sans libellé)", dt.getValeur());
+            }
+
+            List<MetaData> defs = nouveauType.getMetaData() != null ? nouveauType.getMetaData() : List.of();
+            Map<String, MetaData> defsParNom = defs.stream().collect(Collectors.toMap(
+                m -> made.archive.util.NormalisationNoms.normaliser(m.getNom()), m -> m, (a, b) -> a));
+
+            List<String> erreurs = new ArrayList<>();
+            List<DataType> aEnregistrer = new ArrayList<>();
+            java.util.Map<String, String> valeursApres = new java.util.LinkedHashMap<>();
+            Set<String> champsRenseignes = new java.util.HashSet<>();
+            for (DataTypeDto dto : req.getMetaData() != null ? req.getMetaData() : List.<DataTypeDto>of())
+            {
+                MetaData meta = dto.getNom() != null
+                    ? defsParNom.get(made.archive.util.NormalisationNoms.normaliser(dto.getNom())) : null;
+                if (meta == null)
+                {
+                    erreurs.add("Champ inconnu pour le type « " + nouveauType.getNom() + " » : " + dto.getNom());
+                    continue;
+                }
+                String valeur = dto.getValeur() != null ? dto.getValeur().trim() : "";
+                if (valeur.isEmpty()) continue;
+                champsRenseignes.add(meta.getNom());
+                DataType dataType = new DataType();
+                dataType.setDocument(doc);
+                dataType.setMetaData(meta);
+                dataType.setValeur(valeur);
+                aEnregistrer.add(dataType);
+                valeursApres.put(meta.getNom(), valeur);
+            }
+            for (MetaData meta : defs)
+            {
+                if (Boolean.TRUE.equals(meta.getObligatoire()) && !champsRenseignes.contains(meta.getNom()))
+                {
+                    erreurs.add("Le champ '" + meta.getNom() + "' est obligatoire pour le type « " + nouveauType.getNom() + " »");
+                }
+            }
+            if (!erreurs.isEmpty())
+            {
+                throw new BusinessException("Validation des métadonnées échouée : " + String.join(" | ", erreurs));
+            }
+
+            // Anciennes valeurs sans champ équivalent dans le nouveau type : retirées de la fiche, gardées dans le journal.
+            java.util.Map<String, String> nonReprises = new java.util.LinkedHashMap<>();
+            valeursAvant.forEach((nom, val) -> {
+                if (!defsParNom.containsKey(made.archive.util.NormalisationNoms.normaliser(nom)))
+                {
+                    nonReprises.put(nom, val);
+                }
+            });
+
+            LocalDate retentionAvant = doc.getRetentionUntil();
+            Long annees = nouveauType.getRetention() != null ? nouveauType.getRetention().getRetentionYears() : null;
+            LocalDate retentionApres = annees != null ? doc.getCreateAt().toLocalDate().plusYears(annees) : null;
+
+            dataTypeRepository.deleteByDocumentId(documentId);
+            dataTypeRepository.saveAll(aEnregistrer);
+            doc.setTypeDocument(nouveauType);
+            doc.setRetentionUntil(retentionApres);
+            documentRepository.save(doc);
+
+            valeursPourIndex = new ArrayList<>(valeursApres.values());
+            purgerAttestationSiExiste(doc, "reclassement du document (type modifié)");
+
+            details.put("typeAvant", ancienType.getNom());
+            details.put("typeApres", nouveauType.getNom());
+            details.put("conservationAvant", retentionAvant != null ? retentionAvant.toString() : "illimitée");
+            details.put("conservationApres", retentionApres != null ? retentionApres.toString() : "illimitée");
+            details.put("valeursAvant", valeursAvant);
+            details.put("valeursApres", valeursApres);
+            if (!nonReprises.isEmpty()) details.put("valeursNonReprises", nonReprises);
+        }
+
+        // Activité propre au document : explicitement choisie, ou remise à "suit son type" quand le type
+        // change sans qu'une activité ait été précisée (l'ancienne exception n'a plus de raison d'être).
+        if (req.isModifierActivite() || changeType)
+        {
+            made.archive.entite.PlanClassementNoeud demande = null;
+            if (req.isModifierActivite() && req.getPlanClassementNoeudId() != null)
+            {
+                demande = planClassementNoeudRepository.findById(req.getPlanClassementNoeudId())
+                    .orElseThrow(() -> new BusinessException("Activité introuvable : " + req.getPlanClassementNoeudId()));
+                Long uoDocument = doc.getUniteOrganisationnelle() != null ? doc.getUniteOrganisationnelle().getId() : null;
+                if (uoDocument == null || !demande.getUniteOrganisationnelle().getId().equals(uoDocument))
+                {
+                    throw new BusinessException("Cette activité appartient au plan de classement d'une autre UO");
+                }
+                var parDefaut = doc.getTypeDocument().getPlanClassementNoeud();
+                if (parDefaut != null && parDefaut.getId().equals(demande.getId()))
+                {
+                    demande = null; // identique à celle du type : le document la suit simplement
+                }
+            }
+            doc.setPlanClassementNoeud(demande);
+            documentRepository.save(doc);
+        }
+
+        String activiteApres = made.archive.service.organisation.PlanClassementService
+            .chemin(made.archive.service.organisation.PlanClassementService.activiteEffective(doc));
+        boolean activiteChangee = !java.util.Objects.equals(activiteAvant, activiteApres);
+        if (changeType || activiteChangee)
+        {
+            details.put("activiteAvant", activiteAvant != null ? activiteAvant : "non classé");
+            details.put("activiteApres", activiteApres != null ? activiteApres : "non classé");
+            Long uoLog = doc.getUniteOrganisationnelle() != null ? doc.getUniteOrganisationnelle().getId() : null;
+            String description = "Document \"" + doc.getTitre() + "\" reclassé par " + user.getEmail() + " : "
+                + (changeType
+                    ? "type « " + ancienType.getNom() + " » → « " + doc.getTypeDocument().getNom() + " » ; échéance de conservation "
+                        + details.get("conservationAvant") + " → " + details.get("conservationApres") + " ; "
+                    : "")
+                + "activité " + (activiteAvant != null ? activiteAvant : "non classé") + " → "
+                + (activiteApres != null ? activiteApres : "non classé");
+            auditLogService.log(user, AuditAction.DOCUMENT_RECLASSE, AuditCible.DOCUMENT,
+                doc.getId().toString(), uoLog, description, true, details);
+        }
+
+        // Dossier / emplacement : mêmes règles et mêmes entrées de journal que les corrections séparées —
+        // appelés dans la MÊME transaction, donc tout est annulé ensemble si l'un des changements est refusé.
+        if (req.isModifierDossier())
+        {
+            modifierDossierDocument(documentId, req.getDossierId(), req.isFusionnerGroupes(), userDetails);
+        }
+        if (req.isModifierEmplacement())
+        {
+            modifierEmplacementPhysique(documentId, req.getPhysicalLocationId(), userDetails);
+        }
+
+        // En DERNIER : l'index n'est touché que si tous les changements ont été acceptés (best-effort).
+        if (changeType)
+        {
+            meilisearchService.updateDocumentClassement(doc, valeursPourIndex);
+        }
+
+        return getDetail(documentId, userDetails);
+    }
+
     // 8b. DOSSIER — rattacher, migrer ou détacher un document après coup
 
     @Transactional

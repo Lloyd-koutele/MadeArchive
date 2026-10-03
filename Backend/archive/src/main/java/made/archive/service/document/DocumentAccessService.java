@@ -11,7 +11,6 @@ import made.archive.dto.DocumentPageDto;
 import made.archive.entite.Document;
 import made.archive.entite.DocumentStatus;
 import made.archive.entite.Role_Name;
-import made.archive.entite.SortFinal;
 import made.archive.entite.TypeAccess;
 import made.archive.entite.User;
 import made.archive.exception.BusinessException;
@@ -110,6 +109,21 @@ public class DocumentAccessService
             .totalElements(pageResult.getTotalElements())
             .totalPages(pageResult.getTotalPages())
             .build();
+    }
+
+    /**
+     * Documents dont l'activité EFFECTIVE (celle du document si elle a été précisée, sinon celle de son type)
+     * est l'un de ces nœuds — voir PlanClassementService.activiteEffective. Jointures explicites (LEFT) :
+     * un document sans activité ne doit pas disparaître des autres requêtes.
+     */
+    public static Predicate predicatActivite(jakarta.persistence.criteria.Root<Document> root,
+                                      jakarta.persistence.criteria.CriteriaBuilder cb, java.util.Set<Long> ids)
+    {
+        Join<Object, Object> noeudDoc  = root.join("planClassementNoeud", JoinType.LEFT);
+        Join<Object, Object> noeudType = root.join("typeDocument").join("planClassementNoeud", JoinType.LEFT);
+        return cb.or(
+            noeudDoc.get("id").in(ids),
+            cb.and(cb.isNull(noeudDoc.get("id")), noeudType.get("id").in(ids)));
     }
 
     private Specification<Document> buildSpecification(
@@ -246,7 +260,7 @@ public class DocumentAccessService
                 }
                 else
                 {
-                    predicates.add(root.get("typeDocument").get("planClassementNoeud").get("id").in(idsActivite));
+                    predicates.add(predicatActivite(root, cb, idsActivite));
                 }
             }
 
@@ -488,27 +502,25 @@ public class DocumentAccessService
                 ? doc.getTypeDocument().getRetention().getRetentionYears() : null)
             .peutGererCorbeille(peutGererCorbeille(doc, currentUser))
             .peutSupprimerDefinitivement(peutSupprimerDefinitivement(doc, currentUser))
+            .motifSuppression(doc.getMotifSuppression() != null ? doc.getMotifSuppression().name() : null)
+            .commentaireSuppression(doc.getCommentaireSuppression())
+            .suppressionAutomatique(DocumentRetentionService.estSupprimableAutomatiquement(doc))
+            .eliminationBloquee(doc.isEliminationBloquee())
+            .blocageMotif(doc.getBlocageMotif())
+            .peutBloquerElimination(doc.getStatus() == DocumentStatus.CORBEILLE && !doc.isEliminationBloquee()
+                && DocumentRetentionService.estSupprimableAutomatiquement(doc) && peutGererCorbeille(doc, currentUser))
+            .peutDebloquerElimination(doc.getStatus() == DocumentStatus.CORBEILLE && doc.isEliminationBloquee()
+                && peutGererCorbeille(doc, currentUser))
             .build();
     }
 
     /** Voir Javadoc de DocumentListItemDto.peutSupprimerDefinitivement. */
     private boolean peutSupprimerDefinitivement(Document doc, User currentUser)
     {
-        if (doc.getStatus() != DocumentStatus.CORBEILLE
-            || doc.getSuppressionPrevueLe() == null
-            || doc.getSuppressionPrevueLe().isAfter(java.time.LocalDate.now()))
-        {
-            return false;
-        }
-
-        SortFinal sortFinal = doc.getTypeDocument().getRetention() != null
-            ? doc.getTypeDocument().getRetention().getSortFinal() : SortFinal.DETRUIRE;
-        if (sortFinal == SortFinal.DETRUIRE)
-        {
-            return false;
-        }
-
-        return peutGererCorbeille(doc, currentUser);
+        return doc.getStatus() == DocumentStatus.CORBEILLE
+            && !doc.isEliminationBloquee()
+            && !DocumentRetentionService.estSupprimableAutomatiquement(doc)
+            && peutGererCorbeille(doc, currentUser);
     }
 
     /**
