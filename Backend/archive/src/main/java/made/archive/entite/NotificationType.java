@@ -66,5 +66,8 @@ public enum NotificationType
      *  signale LE LIEN lui-même, pas un document précis. Purement informatif :
      *  l'horodatage est best-effort, aucun document n'est jamais bloqué par
      *  cette panne. */
-    HORODATAGE_INDISPONIBLE
+    HORODATAGE_INDISPONIBLE,
+
+    /** Documents en corbeille que le système va supprimer dans moins de 3 jours (une alerte par jour). */
+    DOCUMENT_SUPPRESSION_IMMINENTE
 }

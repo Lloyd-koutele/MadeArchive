@@ -169,3 +169,13 @@
 }
 
 .confirm-btn-danger:hover { background: #7a2e2e; }
+
+/* ── Fenêtre "motif de suppression" (MotifSuppressionProvider) ─────────── */
+.motif-choix { display: flex; flex-direction: column; gap: 0.4rem; margin: 0.8rem 0 0.6rem; }
+.motif-choix label { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; color: var(--dark-mid); }
+.motif-texte {
+    width: 100%; box-sizing: border-box; resize: vertical; padding: 0.5rem 0.6rem;
+    border: 1px solid var(--border); border-radius: var(--radius-sm); font: inherit;
+    color: var(--dark-mid); background: var(--white-choc);
+}
+.confirm-btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }

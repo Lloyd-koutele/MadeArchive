@@ -33,6 +33,9 @@ export interface TypeDocumentDto {
     userId: string;
     retentionYears: number;
     periodGrace: number;
+    /** Activité par défaut du type (plan de classement de l'UO) — null/absent = non classé. */
+    planClassementNoeudId?: number | null;
+    activite?: string | null;
 }
 
 export interface UserDto {
@@ -88,6 +91,15 @@ export interface DocumentListItemDto {
      *  supprimerDefinitivementDepuisCorbeille). false pour un document dont le
      *  sort final est DETRUIRE : celui-là sera purgé automatiquement. */
     peutSupprimerDefinitivement?: boolean;
+    /** ERREUR_ARCHIVAGE | SUPPRESSION_LEGALE | AUTRE | FIN_DE_VIE — null = non renseigné (ancienne suppression). */
+    motifSuppression?: string | null;
+    commentaireSuppression?: string | null;
+    /** true si le SYSTÈME supprimera ce document seul à l'échéance ; faux = conservation permanente, décision de l'éditeur. */
+    suppressionAutomatique?: boolean;
+    eliminationBloquee?: boolean;
+    blocageMotif?: string | null;
+    peutBloquerElimination?: boolean;
+    peutDebloquerElimination?: boolean;
 }
 
 /**
@@ -172,8 +184,13 @@ export interface DocumentDetailDto {
     /** true si l'utilisateur consultant peut basculer PUBLIC ↔ PRIVÉ ce document
      *  (toujours false si le document hérite de la confidentialité d'un dossier PRIVÉ). */
     peutModifierAcces: boolean;
-    /** Activité (plan de classement de l'UO) héritée du type, ex. "03 Finances › 03.2 Factures". Null = non classé. */
+    /** Activité EFFECTIVE (plan de classement de l'UO), ex. "03 Finances › 03.2 Factures" : celle de ce document
+     *  si elle a été précisée, sinon celle de son type. Null = non classé. */
     activite?: string | null;
+    /** Id du nœud de l'activité effective — null = non classé. */
+    activiteNoeudId?: number | null;
+    /** true = activité précisée pour CE document (exception) ; false = héritée de son type. */
+    activiteSurDocument?: boolean;
 }
 
 /**
@@ -392,9 +409,11 @@ export const downloadPdfA = async (id: string, titre: string): Promise<void> => 
  * jusque-là (voir restaurerDocumentDepuisCorbeille). Réservé à un éditeur
  * ayant accès au document.
  */
-export const envoyerDocumentCorbeille = async (id: string): Promise<void> => {
+export const envoyerDocumentCorbeille = async (
+    id: string, motif: string, commentaire?: string,
+): Promise<void> => {
     try {
-        await api.post(`/user/docs/${id}/corbeille`);
+        await api.post(`/user/docs/${id}/corbeille`, { motif, commentaire });
     } catch (error: any) {
         throw error.response?.data?.message
             ? new Error(error.response.data.message)
@@ -432,9 +451,33 @@ export const restaurerDocumentDepuisCorbeille = async (id: string, renouvelerRet
  * automatique après le délai de grâce : sans cet appel, il resterait en
  * corbeille indéfiniment. Irréversible — à confirmer côté UI avant l'appel.
  */
-export const supprimerDefinitivementDepuisCorbeille = async (id: string): Promise<void> => {
+export const supprimerDefinitivementDepuisCorbeille = async (
+    id: string, motif: string, commentaire?: string,
+): Promise<void> => {
     try {
-        await api.post(`/user/docs/${id}/corbeille/supprimer-definitivement`);
+        await api.post(`/user/docs/${id}/corbeille/supprimer-definitivement`, { motif, commentaire });
+    } catch (error: any) {
+        throw error.response?.data?.message
+            ? new Error(error.response.data.message)
+            : error;
+    }
+};
+
+/** POST /api/user/docs/{id}/corbeille/bloquer — bloque la suppression automatique (motif obligatoire). */
+export const bloquerEliminationDocument = async (id: string, motif: string): Promise<void> => {
+    try {
+        await api.post(`/user/docs/${id}/corbeille/bloquer`, { motif });
+    } catch (error: any) {
+        throw error.response?.data?.message
+            ? new Error(error.response.data.message)
+            : error;
+    }
+};
+
+/** POST /api/user/docs/{id}/corbeille/debloquer — rétablit la suppression automatique, délai de grâce complet. */
+export const debloquerEliminationDocument = async (id: string, motif: string): Promise<void> => {
+    try {
+        await api.post(`/user/docs/${id}/corbeille/debloquer`, { motif });
     } catch (error: any) {
         throw error.response?.data?.message
             ? new Error(error.response.data.message)
@@ -620,6 +663,8 @@ export interface DocumentUploadDto {
     documentPrecedentId?: string;
     /** Emplacement physique de l'original papier, s'il y en a un (optionnel). */
     physicalLocationId?: string;
+    /** Activité de ce document (ou de tout le lot) si elle diffère de celle de son type — omis = suit son type. */
+    planClassementNoeudId?: number;
 }
 
 /**
@@ -1102,6 +1147,40 @@ export const exporterJournalDocument = async (id: string, format: 'csv' | 'log')
     try {
         const response = await api.get(`/user/docs/${id}/journal/export`, { params: { format }, responseType: 'blob' });
         triggerDownload(response.data, `journal-document_${id}.${format}`);
+    } catch (error: any) {
+        throw error.response?.data?.message
+            ? new Error(error.response.data.message)
+            : error;
+    }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RECLASSEMENT (/api/user/docs/{id}/reclasser)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface ReclassementRequest {
+    /** Nouveau type (même UO) — omis ou identique à l'actuel : le type ne change pas. */
+    typeDocumentId?: number;
+    /** Valeurs des métadonnées du NOUVEAU type, par libellé de champ. */
+    metaData?: { nom: string; valeur: string }[];
+    /** true = appliquer planClassementNoeudId (null = revenir à l'activité par défaut du type). */
+    modifierActivite?: boolean;
+    planClassementNoeudId?: number | null;
+    modifierDossier?: boolean;
+    dossierId?: number | null;
+    fusionnerGroupes?: boolean;
+    modifierEmplacement?: boolean;
+    physicalLocationId?: string | null;
+}
+
+/**
+ * PUT /api/user/docs/{id}/reclasser — corrige le classement d'un document archivé par erreur (type +
+ * métadonnées, dossier, emplacement) SANS le supprimer ni le réarchiver : le fichier, ses empreintes, sa
+ * signature et son horodatage ne changent pas. Ne concerne que la version ouverte.
+ */
+export const reclasserDocument = async (id: string, requete: ReclassementRequest): Promise<DocumentDetailDto> => {
+    try {
+        return (await api.put(`/user/docs/${id}/reclasser`, requete)).data;
     } catch (error: any) {
         throw error.response?.data?.message
             ? new Error(error.response.data.message)

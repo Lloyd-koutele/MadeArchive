@@ -219,6 +219,65 @@ public class Document
     @Column(length = 20)
     private DocumentStatus statutAvantCorbeille;
 
+    /**
+     * Pourquoi ce document est en corbeille (ou l'a été avant sa purge) — voir MotifSuppression.
+     * Null = suppression volontaire antérieure à l'introduction des motifs ("non renseigné").
+     * Conservé dans la pierre tombale. FIN_DE_VIE = mis en corbeille par le système à l'échéance de
+     * conservation : seul ce cas dépend du sort final du type pour la purge automatique (voir
+     * DocumentRetentionService.estSupprimableAutomatiquement).
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "motif_suppression", length = 30)
+    private MotifSuppression motifSuppression;
+
+    @Column(name = "commentaire_suppression", length = 500)
+    private String commentaireSuppression;
+
+    /** Dernier jour où l'alerte "suppression imminente" a été envoyée pour ce document (une par jour). */
+    @Column(name = "alerte_suppression_le")
+    private LocalDate alerteSuppressionLe;
+
+    /**
+     * L'éditeur a BLOQUÉ la suppression automatique de ce document en corbeille (motif, auteur, date
+     * ci-dessous). Tant que c'est vrai, ni la tâche planifiée ni aucune autre voie ne le purge ; le
+     * débloquer redonne un délai de grâce complet (voir DocumentRetentionService.debloquerElimination).
+     */
+    @Column(name = "elimination_bloquee", nullable = false)
+    private boolean eliminationBloquee;
+
+    @Column(name = "blocage_motif", length = 500)
+    private String blocageMotif;
+
+    @Column(name = "blocage_par")
+    private UUID blocagePar;
+
+    @Column(name = "blocage_le")
+    private java.time.Instant blocageLe;
+
+    /**
+     * Activité (plan de classement de l'UO) propre à CE document — exception à l'activité par défaut de son
+     * type. Null = il suit celle de son type (cas général). Jamais égale à celle du type : voir
+     * PlanClassementService.activiteEffective et DocumentUploadeService/DocumentService.reclasser, qui
+     * remettent null dans ce cas pour que le document continue de suivre son type.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "plan_classement_noeud_id")
+    @JsonIgnore
+    private PlanClassementNoeud planClassementNoeud;
+
+    /** Date de la purge définitive (pierre tombale). Posée par DocumentRetentionService.purgeOne. */
+    @Column(name = "elimine_le")
+    private java.time.Instant elimineLe;
+
+    /** Qui a supprimé définitivement ce document — null = le système (suppression automatique). */
+    @Column(name = "elimine_par")
+    private UUID eliminePar;
+
+    /** Procès-verbal d'élimination (autre Document, archivé dans MadeArchive) qui mentionne cette
+     *  élimination — null tant qu'il n'est pas généré (réessayé chaque nuit). */
+    @Column(name = "proces_verbal_id")
+    private UUID procesVerbalId;
+
     // Emplacement physique de l'original papier, si ce document en a un — voir
     // PhysicalLocation. Nullable : un document purement numérique n'a pas
     // d'original physique à localiser. Doit toujours pointer vers un nœud

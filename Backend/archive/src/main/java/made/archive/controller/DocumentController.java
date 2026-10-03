@@ -230,6 +230,31 @@ public class DocumentController
     }
 
     /**
+     * PUT /api/editor/types-documents/{id}/delai-grace
+     * Body : nombre de jours (1 à 365), ou absent/null pour revenir au défaut (6 jours). Modifiable même
+     * si des documents sont rattachés — voir TypeDocumentService.modifierDelaiGrace.
+     */
+    @Secured("ROLE_EDITOR")
+    @PutMapping("/types-documents/{id}/delai-grace")
+    public ResponseEntity<?> modifierDelaiGrace(@PathVariable Long id, @RequestBody(required = false) Long jours,
+                                                 @AuthenticationPrincipal UserDetailsImpl currentUser)
+    {
+        try
+        {
+            return ResponseEntity.ok(typeDocumentService.modifierDelaiGrace(id, jours, currentUser.getUser()));
+        }
+        catch (BusinessException | AccessDeniedException e)
+        {
+            return ResponseEntity.badRequest().body(buildError("Erreur : " + e.getMessage()));
+        }
+        catch (Exception e)
+        {
+            return ResponseEntity.badRequest()
+                .body(buildError("Erreur lors de la modification du délai de grâce : " + e.getMessage()));
+        }
+    }
+
+    /**
      * Corrige manuellement les regex d'extraction d'un type — pour quand une
      * regex générée automatiquement se trompe systématiquement, sans avoir à
      * réinitialiser (et donc attendre un nouveau document) via reset-regex.

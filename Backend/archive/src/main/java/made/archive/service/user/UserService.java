@@ -151,7 +151,10 @@ public class UserService
     @Transactional(readOnly = true)
     public List<UserResponseDto> getAllUsers(User currentUser)
     {
-        List<User> tous = userRepository.findAll();
+        // Le compte technique « Système MadeArchive » n'est pas un utilisateur : jamais listé.
+        List<User> tous = userRepository.findAll().stream()
+            .filter(u -> !UtilisateurSystemeService.EMAIL.equals(u.getEmail()))
+            .toList();
 
         if (isAdmin(currentUser))
         {

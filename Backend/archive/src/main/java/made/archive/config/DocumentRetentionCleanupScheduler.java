@@ -22,6 +22,7 @@ import org.springframework.stereotype.Component;
 public class DocumentRetentionCleanupScheduler
 {
     private final DocumentRetentionService documentRetentionService;
+    private final made.archive.service.document.ProcesVerbalEliminationService procesVerbalEliminationService;
 
     /**
      * Tous les jours à 2h du matin.
@@ -46,6 +47,21 @@ public class DocumentRetentionCleanupScheduler
         catch (Exception e)
         {
             log.error("[Retention] Erreur lors de la purge de la corbeille : {}",
+                e.getMessage(), e);
+        }
+
+        // Procès-verbaux d'élimination : APRÈS la purge (ils documentent ce qui vient d'être éliminé) et
+        // jamais bloquants — voir ProcesVerbalEliminationService. Ne lève pas d'exception.
+        procesVerbalEliminationService.genererProcesVerbauxEnAttente();
+
+        // Après la purge du jour : les documents déjà supprimés ne sont plus à signaler.
+        try
+        {
+            documentRetentionService.alerterSuppressionsImminentes();
+        }
+        catch (Exception e)
+        {
+            log.error("[Retention] Erreur lors des alertes de suppression imminente : {}",
                 e.getMessage(), e);
         }
     }

@@ -1,0 +1,9 @@
+.reclasser-section { margin-top: 1rem; }
+.reclasser-btn {
+    background: none; border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer;
+    padding: 0.45rem 0.8rem; color: var(--dark-choc); font-weight: 600;
+}
+.reclasser-btn:hover { background: var(--cream); }
+.reclasser-form { display: flex; flex-direction: column; gap: 0.8rem; }
+.reclasser-intro, .reclasser-note { margin: 0; font-size: 0.85rem; color: var(--text-light); }
+.reclasser-check { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; color: var(--dark-mid); }

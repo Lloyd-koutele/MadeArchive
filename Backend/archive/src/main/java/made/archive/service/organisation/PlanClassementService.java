@@ -23,6 +23,7 @@ import made.archive.entite.UniteOrganisationnelle;
 import made.archive.entite.User;
 import made.archive.exception.AccessDeniedException;
 import made.archive.exception.BusinessException;
+import made.archive.repository.DocumentRepository;
 import made.archive.repository.PlanClassementNoeudRepository;
 import made.archive.repository.TypeDocumentRepository;
 import made.archive.service.audit.AuditLogService;
@@ -45,6 +46,7 @@ public class PlanClassementService
 
     private final PlanClassementNoeudRepository noeudRepository;
     private final TypeDocumentRepository        typeDocumentRepository;
+    private final DocumentRepository            documentRepository;
     private final UniteOrganisationnelleService uniteOrganisationnelleService;
     private final AuditLogService               auditLogService;
 
@@ -106,6 +108,20 @@ public class PlanClassementService
             segments.add(0, n.getCode() + " " + n.getLibelle());
         }
         return String.join(SEPARATEUR_CHEMIN, segments);
+    }
+
+    /**
+     * L'activité qui s'applique à CE document : celle qui lui est propre si elle a été précisée, sinon celle
+     * de son type. Null = non classé. Seule règle de dérivation : l'affichage, le filtre de recherche, l'export
+     * SEDA et les procès-verbaux passent tous par ici (ou par son équivalent JPQL COALESCE de l'export).
+     */
+    public static PlanClassementNoeud activiteEffective(made.archive.entite.Document document)
+    {
+        if (document.getPlanClassementNoeud() != null)
+        {
+            return document.getPlanClassementNoeud();
+        }
+        return document.getTypeDocument() != null ? document.getTypeDocument().getPlanClassementNoeud() : null;
     }
 
     /** Ce nœud + tous ses descendants — pour filtrer les documents "de cette activité ou en dessous". */
@@ -241,6 +257,10 @@ public class PlanClassementService
         {
             throw new BusinessException("Des types de documents sont encore rattachés à cette activité — détachez-les d'abord");
         }
+        if (documentRepository.existsByPlanClassementNoeud_Id(id))
+        {
+            throw new BusinessException("Des documents sont encore classés dans cette activité — reclassez-les d'abord");
+        }
 
         String libelle = noeud.getCode() + " " + noeud.getLibelle();
         noeudRepository.delete(noeud);
@@ -261,6 +281,7 @@ public class PlanClassementService
             .orElseThrow(() -> new BusinessException("Type de document introuvable : " + typeId));
         Long uoId = type.getUniteOrganisationnelle().getId();
         verifierEditeur(uoId, currentUser);
+        made.archive.service.document.TypeDocumentService.refuserSiSysteme(type);
 
         PlanClassementNoeud nouveau = noeudId != null ? chargerDansUo(noeudId, uoId) : null;
         String avant = chemin(type.getPlanClassementNoeud());

@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -87,9 +88,10 @@ class PlanClassementIntegrationTest
         PlanClassementService planClassementService(
             PlanClassementNoeudRepository noeudRepository,
             TypeDocumentRepository typeDocumentRepository,
+            made.archive.repository.DocumentRepository documentRepository,
             UniteOrganisationnelleService uoService)
         {
-            return new PlanClassementService(noeudRepository, typeDocumentRepository, uoService, mock(AuditLogService.class));
+            return new PlanClassementService(noeudRepository, typeDocumentRepository, documentRepository, uoService, mock(AuditLogService.class));
         }
     }
 
@@ -104,6 +106,7 @@ class PlanClassementIntegrationTest
     @Autowired private UserRepository userRepository;
     @Autowired private RoleRepository roleRepository;
     @Autowired private UniteOrganisationnelleService uoServiceMock;
+    @Autowired private made.archive.repository.DocumentRepository documentRepository;
 
     private PlanClassementNoeudRequestDto req(Long uoId, Long parentId, String code, String libelle)
     {
@@ -208,5 +211,74 @@ class PlanClassementIntegrationTest
 
         assertThatThrownBy(() -> service.rattacherType(t.getId(), autre.getId(), ed))
             .isInstanceOf(BusinessException.class);
+    }
+
+    private made.archive.entite.Document document(UniteOrganisationnelle uo, TypeDocument type, User uploader)
+    {
+        made.archive.entite.Document d = new made.archive.entite.Document();
+        d.setTitre("doc-" + UUID.randomUUID());
+        d.setAccess(made.archive.entite.TypeAccess.PUBLIC);
+        d.setOriginalSha256(UUID.randomUUID().toString().replace("-", "").repeat(2).substring(0, 64));
+        d.setPdfaSha256(UUID.randomUUID().toString().replace("-", "").repeat(2).substring(0, 64));
+        d.setStorageKey("pdfa/" + UUID.randomUUID() + ".pdf");
+        d.setStatus(made.archive.entite.DocumentStatus.ACTIVE);
+        d.setIntegrityLevel(made.archive.entite.IntegrityLevel.STANDARD);
+        d.setUniteOrganisationnelle(uo);
+        d.setTypeDocument(type);
+        d.setUploadedBy(uploader);
+        d.setCreateAt(LocalDateTime.now());
+        d.setVersion(1L);
+        d.setDerniereVersion(true);
+        return d;
+    }
+
+    /** L'activité effective d'un document = la sienne si elle est précisée, sinon celle de son type — filtre ET export. */
+    @Test
+    @Transactional
+    void leFiltreEtLExportUtilisentLActiviteEffective()
+    {
+        UniteOrganisationnelle uo = uo("UO-Effective");
+        User ed = editeur("effective@test.local");
+        when(uoServiceMock.estEditeurDeUO(anyLong(), any())).thenReturn(true);
+        when(uoServiceMock.getUOEntiteSiEditeur(anyLong(), any())).thenReturn(uo);
+
+        PlanClassementNoeudDto fin = service.creer(req(uo.getId(), null, "03", "Finances"), ed);
+        PlanClassementNoeudDto fact = service.creer(req(uo.getId(), fin.getId(), "03.2", "Factures"), ed);
+        PlanClassementNoeudDto achats = service.creer(req(uo.getId(), fin.getId(), "03.4", "Achats ponctuels"), ed);
+        PlanClassementNoeudDto rh = service.creer(req(uo.getId(), null, "02", "RH"), ed);
+
+        TypeDocument type = type(uo, ed, "Facture");
+        service.rattacherType(type.getId(), fact.getId(), ed);          // activité par défaut : 03.2
+
+        made.archive.entite.Document suitLeType = documentRepository.save(document(uo, type, ed));
+        made.archive.entite.Document exception = document(uo, type, ed);
+        exception.setPlanClassementNoeud(noeudRepository.findById(achats.getId()).orElseThrow());
+        exception = documentRepository.save(exception);
+        TypeDocument typeSansActivite = type(uo, ed, "Note");
+        made.archive.entite.Document nonClasse = documentRepository.save(document(uo, typeSansActivite, ed));
+
+        java.util.function.Function<PlanClassementNoeudDto, List<UUID>> filtre = noeud ->
+            documentRepository.findAll((root, q, cb) ->
+                made.archive.service.document.DocumentAccessService.predicatActivite(root, cb,
+                    service.idsAvecDescendants(noeud.getId())))
+                .stream().map(made.archive.entite.Document::getId).toList();
+
+        assertThat(filtre.apply(fact)).containsExactly(suitLeType.getId());          // 03.2 : celui qui suit son type
+        assertThat(filtre.apply(achats)).containsExactly(exception.getId());         // 03.4 : l'exception
+        assertThat(filtre.apply(fin)).containsExactlyInAnyOrder(suitLeType.getId(), exception.getId()); // parent : tout dessous
+        assertThat(filtre.apply(rh)).isEmpty();                                      // autre branche
+        assertThat(filtre.apply(fin)).doesNotContain(nonClasse.getId());             // non classé jamais inclus
+
+        // Export (SEDA) : COALESCE(activité du document, activité du type) — et un document SANS activité reste exporté
+        var lignes = documentRepository.findAllByIdPourExport(List.of(suitLeType.getId(), exception.getId(), nonClasse.getId()));
+        java.util.Map<UUID, Long> parDoc = new java.util.HashMap<>();
+        lignes.forEach(l -> parDoc.put(l.id(), l.planClassementNoeudId()));
+        assertThat(lignes).hasSize(3);
+        assertThat(parDoc.get(suitLeType.getId())).isEqualTo(fact.getId());
+        assertThat(parDoc.get(exception.getId())).isEqualTo(achats.getId());
+        assertThat(parDoc.get(nonClasse.getId())).isNull();
+
+        // On ne supprime pas une activité où des documents sont classés à part
+        assertThatThrownBy(() -> service.supprimer(achats.getId(), ed)).isInstanceOf(BusinessException.class);
     }
 }

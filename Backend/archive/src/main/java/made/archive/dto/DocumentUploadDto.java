@@ -30,4 +30,10 @@ public class DocumentUploadDto
     // PhysicalLocation). Doit être un point de stockage ACTIF de la même UO,
     // validé par PhysicalLocationService.resolvePourRattachement.
     private UUID physicalLocationId;
+
+    /**
+     * Activité (plan de classement de l'UO) de CE document, si elle diffère de l'activité par défaut de son
+     * type — null = il suit celle de son type. Ignorée (remise à null) si elle est identique à celle du type.
+     */
+    private Long planClassementNoeudId;
 }

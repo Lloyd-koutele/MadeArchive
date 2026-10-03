@@ -52,13 +52,26 @@ public class DocumentListItemDto
     private boolean peutGererCorbeille;
 
     /**
-     * true si CE document précis, en CORBEILLE, peut être supprimé
-     * définitivement MAINTENANT par l'utilisateur consultant (voir
-     * DocumentService.supprimerDefinitivementDepuisCorbeille) — c'est-à-dire :
-     * délai de grâce déjà écoulé ET sort final du type (CONSERVER/TRIER)
-     * excluant la purge automatique (voir entite.SortFinal). false pour un
-     * document dont le sort final est DETRUIRE : celui-là sera purgé
-     * automatiquement, pas besoin (ni possibilité) d'une action manuelle.
+     * true si l'utilisateur peut supprimer CE document définitivement MAINTENANT : il est en corbeille
+     * parce qu'il est arrivé en FIN DE VIE avec un sort final (CONSERVER/TRIER) qui exclut la purge
+     * automatique, et son élimination n'est pas bloquée. Motif obligatoire à la saisie.
      */
     private boolean peutSupprimerDefinitivement;
+
+    /** Pourquoi le document est en corbeille (ERREUR_ARCHIVAGE, SUPPRESSION_LEGALE, AUTRE, FIN_DE_VIE) —
+     *  null hors corbeille, ou pour une suppression antérieure aux motifs ("non renseigné"). */
+    private String motifSuppression;
+    private String commentaireSuppression;
+
+    /** true si le SYSTÈME supprimera ce document tout seul à l'échéance (suppressionPrevueLe) — faux pour
+     *  un document de conservation permanente, qui attend une décision de l'éditeur. */
+    private boolean suppressionAutomatique;
+
+    /** L'éditeur a bloqué la suppression automatique (motif/auteur dans le journal du document). */
+    private boolean eliminationBloquee;
+    private String blocageMotif;
+
+    /** L'utilisateur peut bloquer / débloquer la suppression automatique de CE document. */
+    private boolean peutBloquerElimination;
+    private boolean peutDebloquerElimination;
 }

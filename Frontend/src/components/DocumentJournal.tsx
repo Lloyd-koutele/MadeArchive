@@ -5,6 +5,23 @@ import { libelleAction } from '../audit/auditLabels';
 import { useNotify } from '../notifications/NotificationProvider';
 import '../Style/components/DocumentJournal.css';
 
+/** details (JSON optionnel d'une entrée : motif, ancien → nouveau classement, valeurs conservées...) → lignes lisibles. */
+function lignesDetails(details: string | null): string[] {
+    if (!details) return [];
+    try {
+        const obj = JSON.parse(details);
+        if (obj === null || typeof obj !== 'object') return [String(obj)];
+        return Object.entries(obj).map(([cle, valeur]) => {
+            const texte = valeur !== null && typeof valeur === 'object'
+                ? Object.entries(valeur as Record<string, unknown>).map(([k, v]) => `${k} : ${typeof v === 'object' ? JSON.stringify(v) : String(v)}`).join(' ; ')
+                : String(valeur);
+            return `${cle} : ${texte}`;
+        });
+    } catch {
+        return [details];
+    }
+}
+
 function formatHorodatage(iso: string): string {
     return new Date(iso).toLocaleString('fr-FR', {
         day: '2-digit', month: '2-digit', year: 'numeric',
@@ -96,6 +113,11 @@ function DocumentJournal({ documentId }: { documentId: string }) {
                                         {e.adresseIp ? ` · IP ${e.adresseIp}` : ''}
                                     </span>
                                     <span className="doc-journal-desc">{e.description}</span>
+                                    {lignesDetails(e.details).length > 0 && (
+                                        <span className="doc-journal-details">
+                                            {lignesDetails(e.details).map((l, i) => <span key={i}>{l}</span>)}
+                                        </span>
+                                    )}
                                 </li>
                             ))}
                         </ul>

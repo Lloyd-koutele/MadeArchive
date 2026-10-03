@@ -34,6 +34,9 @@ const LIBELLES: Record<string, string> = {
     EXPORT_TELECHARGE: 'Export téléchargé', FIXITY_CHECK_DEMANDE: 'Contrôle d\'intégrité demandé',
     CHAINE_AUDIT_VERIFICATION_DEMANDEE: 'Vérification de la chaîne demandée',
     DOCUMENT_HORODATE: 'Horodatage RFC 3161 obtenu', DOCUMENT_JOURNAL_EXPORTE: 'Journal du document exporté',
+    DOCUMENT_ELIMINATION_BLOQUEE: 'Suppression automatique bloquée', DOCUMENT_ELIMINATION_DEBLOQUEE: 'Suppression automatique débloquée',
+    TYPE_DOCUMENT_DELAI_GRACE_MODIFIE: 'Délai de grâce du type modifié', DOCUMENT_RECLASSE: 'Document reclassé',
+    PV_ELIMINATION_GENERE: "Procès-verbal d'élimination généré", DOCUMENT_INCLUS_PV_ELIMINATION: "Élimination consignée dans un procès-verbal",
     PLAN_CLASSEMENT_NOEUD_CREE: 'Activité ajoutée au plan', PLAN_CLASSEMENT_NOEUD_MODIFIE: 'Activité modifiée',
     PLAN_CLASSEMENT_NOEUD_DEPLACE: 'Activité déplacée', PLAN_CLASSEMENT_NOEUD_SUPPRIME: 'Activité supprimée',
 };

@@ -12,6 +12,8 @@ import java.util.UUID;
 
 public interface DataTypeRepository extends JpaRepository<DataType, Long>
 {
+    List<DataType> findByDocument_Id(UUID documentId);
+
     @Modifying
     @Query("DELETE FROM DataType d WHERE d.document.id = :documentId")
     void deleteByDocumentId(@Param("documentId") UUID documentId);

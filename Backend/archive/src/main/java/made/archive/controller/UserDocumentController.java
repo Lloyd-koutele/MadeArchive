@@ -625,14 +625,15 @@ public class UserDocumentController
     @PostMapping("/docs/{id}/corbeille")
     public ResponseEntity<?> envoyerCorbeille(
         @PathVariable UUID id,
+        @RequestBody made.archive.dto.SuppressionDocumentRequestDto requete,
         @AuthenticationPrincipal UserDetails userDetails)
     {
         try
         {
-            documentService.envoyerCorbeille(id, userDetails);
+            java.time.LocalDate echeance = documentService.envoyerCorbeille(
+                id, requete.getMotif(), requete.getCommentaire(), userDetails);
             return ResponseEntity.ok(java.util.Map.of("message",
-                "Document envoyé à la corbeille, suppression définitive dans "
-                    + DocumentService.DELAI_GRACE_CORBEILLE_JOURS + " jours"));
+                "Document envoyé à la corbeille, suppression définitive prévue le " + echeance));
         }
         catch (BusinessException e)
         {
@@ -697,17 +698,85 @@ public class UserDocumentController
     @PostMapping("/docs/{id}/corbeille/supprimer-definitivement")
     public ResponseEntity<?> supprimerDefinitivementDepuisCorbeille(
         @PathVariable UUID id,
+        @RequestBody made.archive.dto.SuppressionDocumentRequestDto requete,
         @AuthenticationPrincipal UserDetails userDetails)
     {
         try
         {
-            documentService.supprimerDefinitivementDepuisCorbeille(id, userDetails);
+            documentService.supprimerDefinitivementDepuisCorbeille(
+                id, requete.getMotif(), requete.getCommentaire(), userDetails);
             return ResponseEntity.ok(java.util.Map.of("message", "Document supprimé définitivement"));
         }
         catch (BusinessException e)
         {
             return ResponseEntity.badRequest()
                 .body(buildError("BUSINESS_ERROR", e.getMessage()));
+        }
+        catch (Exception e)
+        {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(buildError("INTERNAL_ERROR", "Erreur : " + e.getMessage()));
+        }
+    }
+
+    /**
+     * POST /api/user/docs/{id}/corbeille/bloquer — bloque la suppression automatique d'un document en
+     * corbeille (motif obligatoire) ; /debloquer la rétablit avec un délai de grâce complet.
+     */
+    @Secured("ROLE_EDITOR")
+    @PostMapping("/docs/{id}/corbeille/bloquer")
+    public ResponseEntity<?> bloquerElimination(
+        @PathVariable UUID id,
+        @RequestBody made.archive.dto.MotifRequestDto requete,
+        @AuthenticationPrincipal UserDetails userDetails)
+    {
+        try
+        {
+            documentService.bloquerEliminationCorbeille(id, requete.getMotif(), userDetails);
+            return ResponseEntity.ok(java.util.Map.of("message", "Suppression bloquée"));
+        }
+        catch (BusinessException e)
+        {
+            return ResponseEntity.badRequest().body(buildError("BUSINESS_ERROR", e.getMessage()));
+        }
+    }
+
+    @Secured("ROLE_EDITOR")
+    @PostMapping("/docs/{id}/corbeille/debloquer")
+    public ResponseEntity<?> debloquerElimination(
+        @PathVariable UUID id,
+        @RequestBody made.archive.dto.MotifRequestDto requete,
+        @AuthenticationPrincipal UserDetails userDetails)
+    {
+        try
+        {
+            documentService.debloquerEliminationCorbeille(id, requete.getMotif(), userDetails);
+            return ResponseEntity.ok(java.util.Map.of("message", "Suppression débloquée, nouveau délai de grâce"));
+        }
+        catch (BusinessException e)
+        {
+            return ResponseEntity.badRequest().body(buildError("BUSINESS_ERROR", e.getMessage()));
+        }
+    }
+
+    /**
+     * PUT /api/user/docs/{id}/reclasser — corrige le classement d'un document archivé par erreur (type +
+     * métadonnées, dossier, emplacement) sans le supprimer — voir DocumentService.reclasser.
+     */
+    @Secured("ROLE_EDITOR")
+    @PutMapping("/docs/{id}/reclasser")
+    public ResponseEntity<?> reclasser(
+        @PathVariable UUID id,
+        @RequestBody made.archive.dto.ReclassementRequestDto requete,
+        @AuthenticationPrincipal UserDetails userDetails)
+    {
+        try
+        {
+            return ResponseEntity.ok(documentService.reclasser(id, requete, userDetails));
+        }
+        catch (BusinessException e)
+        {
+            return ResponseEntity.badRequest().body(buildError("BUSINESS_ERROR", e.getMessage()));
         }
         catch (Exception e)
         {

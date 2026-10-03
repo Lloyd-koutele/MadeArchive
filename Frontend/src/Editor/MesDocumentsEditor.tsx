@@ -13,6 +13,8 @@ import DossierAttachSection from '../components/DossierAttachSection';
 import DeplacerDossierModal from '../components/DeplacerDossierModal';
 import EmplacementPhysiqueModal from '../components/EmplacementPhysiqueModal';
 import PdfViewer from '../components/PdfViewer';
+import ReclasserSection from '../components/ReclasserSection';
+import DocumentJournal from '../components/DocumentJournal';
 import type { TypeDocumentDto } from '../services/document/DocumentService';
 import MetaDataField from '../document/MetadaField';
 import {
@@ -41,6 +43,7 @@ import '../Style/Editor/Editor.css';
 import '../Style/document/Typedocument.css';
 import { useNotify } from '../notifications/NotificationProvider';
 import { useConfirm } from '../notifications/ConfirmProvider';
+import { useDemandeMotif } from '../notifications/MotifSuppressionProvider';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constantes
@@ -97,6 +100,7 @@ function MesDocumentsEditor({
 }: MesDocumentsEditorProps) {
     const notify = useNotify();
     const confirm = useConfirm();
+    const demanderMotif = useDemandeMotif();
 
     // ── Vue courante ──────────────────────────────────────────────────────────
     type View = 'folders' | 'list';
@@ -561,14 +565,16 @@ function MesDocumentsEditor({
     };
 
     const handleEnvoyerCorbeille = async (documentId: string) => {
-        if (!(await confirm(
-            'Envoyer ce document à la corbeille ? Il sera supprimé définitivement dans 6 jours — '
-            + 'vous pourrez le restaurer avant cette échéance.'
-        ))) return;
+        const raison = await demanderMotif({
+            title: 'Supprimer ce document',
+            message: 'Pourquoi supprimer ce document ? Il sera supprimé définitivement à l\'échéance du délai '
+                + 'de grâce — vous pourrez le restaurer d\'ici là.',
+        });
+        if (!raison) return;
 
         setSuppressionLoading(true);
         try {
-            await envoyerDocumentCorbeille(documentId);
+            await envoyerDocumentCorbeille(documentId, raison.motif, raison.commentaire);
             await openDetailById(documentId); // recharge pour afficher la date planifiée
             loadFolders();
             if (activeFolder) loadDocuments(activeFolder, listPage);
@@ -616,13 +622,15 @@ function MesDocumentsEditor({
     // à handleEnvoyerCorbeille (déclenché depuis le détail déjà ouvert), ne
     // rouvre pas le détail : juste rafraîchir la liste sur place.
     const handleEnvoyerCorbeilleRapide = async (doc: DocumentListItemDto) => {
-        if (!(await confirm(
-            `Envoyer "${doc.titre}" à la corbeille ? Il sera supprimé définitivement dans 6 jours — `
-            + 'vous pourrez le restaurer avant cette échéance.'
-        ))) return;
+        const raison = await demanderMotif({
+            title: 'Supprimer ce document',
+            message: `Pourquoi supprimer "${doc.titre}" ? Il sera supprimé définitivement à l'échéance du délai `
+                + 'de grâce — vous pourrez le restaurer d\'ici là.',
+        });
+        if (!raison) return;
 
         try {
-            await envoyerDocumentCorbeille(doc.documentId);
+            await envoyerDocumentCorbeille(doc.documentId, raison.motif, raison.commentaire);
             notify.success(`"${doc.titre}" envoyé à la corbeille`);
             setSelectedDocIds(prev => {
                 const next = new Set(prev);
@@ -699,14 +707,17 @@ function MesDocumentsEditor({
         const ids = docsSelectionnesGerables.map(d => d.documentId);
         if (ids.length === 0) return;
 
-        if (!(await confirm(
-            `Envoyer ${ids.length} document${ids.length > 1 ? 's' : ''} à la corbeille ? `
-            + `Ils seront supprimés définitivement dans 6 jours — vous pourrez les restaurer avant cette échéance.`
-        ))) return;
+        const raison = await demanderMotif({
+            title: `Supprimer ${ids.length} document${ids.length > 1 ? 's' : ''}`,
+            message: `Pourquoi supprimer ${ids.length > 1 ? 'ces ' + ids.length + ' documents' : 'ce document'} ? `
+                + 'Le même motif sera enregistré pour chacun. Ils seront supprimés définitivement à l\'échéance du '
+                + 'délai de grâce — vous pourrez les restaurer d\'ici là.',
+        });
+        if (!raison) return;
 
         setSuppressionMasseEnCours(true);
         try {
-            const resultats = await Promise.allSettled(ids.map(id => envoyerDocumentCorbeille(id)));
+            const resultats = await Promise.allSettled(ids.map(id => envoyerDocumentCorbeille(id, raison.motif, raison.commentaire)));
             const succes = resultats.filter(r => r.status === 'fulfilled').length;
             const echecs = resultats.length - succes;
 
@@ -1752,6 +1763,11 @@ function DocumentDetailPanel({
 
             <EmplacementPhysiqueSection detail={detail} />
 
+            <div className="details-row">
+                <strong>Activité :</strong> {detail.activite ?? 'Non classé'}
+                {detail.activite && !detail.activiteSurDocument ? ' (celle de son type)' : ''}
+            </div>
+
             <DossierAttachSection detail={detail} />
 
             {detail.pdfaSha256 && (
@@ -1766,6 +1782,8 @@ function DocumentDetailPanel({
                 peutModifier={detail.peutModifierEmplacement}
                 onUpdated={onEmplacementChange}
             />
+
+            <ReclasserSection detail={detail} onUpdated={onEmplacementChange} />
 
             {detail.historiqueVersions.length > 0 && (
                 <div className="version-history">
@@ -1818,6 +1836,9 @@ function DocumentDetailPanel({
                     )}
                 </div>
             )}
+
+            {/* Journal du document : espace éditeur, donc toujours autorisé (le serveur le vérifie aussi). */}
+            <DocumentJournal documentId={detail.documentId} />
         </div>
     );
 }

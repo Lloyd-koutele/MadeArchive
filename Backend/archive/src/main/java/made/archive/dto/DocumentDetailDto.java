@@ -90,6 +90,10 @@ public class DocumentDetailDto
     /** Activité (plan de classement de l'UO) héritée du TYPE de ce document, ex.
      *  "03 Finances › 03.2 Factures". Null = type non classé. */
     private String activite;
+    /** Id du nœud de l'activité EFFECTIVE (celle du document, sinon celle de son type) — null si non classé. */
+    private Long activiteNoeudId;
+    /** true si l'activité a été précisée pour CE document (exception) ; false = héritée de son type. */
+    private boolean activiteSurDocument;
 
     @Data
     @Builder

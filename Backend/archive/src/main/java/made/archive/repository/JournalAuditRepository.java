@@ -28,16 +28,26 @@ public interface JournalAuditRepository
      */
     boolean existsByActeurIdAndAction(UUID acteurId, AuditAction action);
 
-    /** Entrées pas encore chaînées — voir AuditChainService.calculerChainage. */
+    /** Entrées pas encore chaînées — voir AuditChainService.calculerChainage. L'ordre par id n'est
+     *  qu'une préférence de traitement : c'est positionChaine, attribuée au chaînage, qui fait foi. */
     List<JournalAudit> findByChainHashIsNullOrderByIdAsc();
 
     /** Dernière entrée déjà chaînée (le "bout" actuel de la chaîne), ou null
      *  si la chaîne n'a encore jamais été amorcée. */
-    JournalAudit findTopByChainHashIsNotNullOrderByIdDesc();
+    JournalAudit findTopByPositionChaineIsNotNullOrderByPositionChaineDesc();
 
-    /** Toute la plage chaînée, dans l'ordre — pour la vérification à la
+    /** Toute la plage chaînée, dans l'ordre de la chaîne — pour la vérification à la
      *  demande (voir AuditChainService.verifierChaine). */
-    List<JournalAudit> findByChainHashIsNotNullOrderByIdAsc();
+    List<JournalAudit> findByPositionChaineIsNotNullOrderByPositionChaineAsc();
+
+    /**
+     * Verrou PostgreSQL propre au chaînage, relâché automatiquement à la fin de la transaction.
+     * Garantit qu'une seule instance de l'application (déploiement Helm à plusieurs réplicas) chaîne
+     * à la fois : deux chaînages simultanés liraient le même "bout" de chaîne et produiraient deux
+     * branches. false = une autre instance chaîne déjà, ce passage est simplement sauté.
+     */
+    @Query(value = "SELECT pg_try_advisory_xact_lock(:cle)", nativeQuery = true)
+    boolean verrouillerChainage(@Param("cle") long cle);
 
     /**
      * Journal de cycle de vie d'UN document : ses propres entrées (cible DOCUMENT) + celles de son groupe

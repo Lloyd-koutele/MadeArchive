@@ -4,6 +4,8 @@ import {
     getDocumentsCorbeille,
     restaurerDocumentDepuisCorbeille,
     supprimerDefinitivementDepuisCorbeille,
+    bloquerEliminationDocument,
+    debloquerEliminationDocument,
     retentionEstDepassee,
     formaterNouvelleEcheanceRetention,
     streamPdfAAsBlob,
@@ -17,6 +19,7 @@ import PdfViewer from '../components/PdfViewer';
 import VersionBadge from './VersionBadge';
 import { useNotify } from '../notifications/NotificationProvider';
 import { useConfirm } from '../notifications/ConfirmProvider';
+import { useDemandeMotif, LIBELLES_MOTIF } from '../notifications/MotifSuppressionProvider';
 import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus';
 import '../Style/document/Filtre.css';
 import '../Style/Editor/Editor.css';
@@ -45,6 +48,7 @@ function formatDate(iso: string | null | undefined): string {
 function Corbeille() {
     const notify = useNotify();
     const confirm = useConfirm();
+    const demanderMotif = useDemandeMotif();
     const peutRestaurer = hasRole('EDITOR');
 
     const [documents, setDocuments] = useState<DocumentListItemDto[]>([]);
@@ -221,17 +225,18 @@ function Corbeille() {
      * explicite obligatoire.
      */
     const handleSupprimerDefinitivement = async (doc: DocumentListItemDto) => {
-        const accepte = await confirm({
+        const raison = await demanderMotif({
             title: 'Suppression définitive',
-            message: `Supprimer définitivement "${doc.titre}" ? Cette action est irréversible — `
-                + `le fichier et son entrée dans la recherche disparaîtront, seul l'historique d'audit sera conservé.`,
+            message: `Pourquoi supprimer définitivement "${doc.titre}" ? Cette action est irréversible — `
+                + `le fichier et son entrée dans la recherche disparaîtront, seuls l'historique d'audit et le `
+                + `procès-verbal d'élimination seront conservés.`,
             confirmLabel: 'Supprimer définitivement',
         });
-        if (!accepte) return;
+        if (!raison) return;
 
         setSuppressionEnCoursId(doc.documentId);
         try {
-            await supprimerDefinitivementDepuisCorbeille(doc.documentId);
+            await supprimerDefinitivementDepuisCorbeille(doc.documentId, raison.motif, raison.commentaire);
             notify.success(`"${doc.titre}" supprimé définitivement`);
             charger(page);
         } catch (err: any) {
@@ -240,6 +245,38 @@ function Corbeille() {
             setSuppressionEnCoursId(null);
         }
     };
+
+    /** Bloque (ou débloque) la suppression AUTOMATIQUE d'un document — motif obligatoire dans les deux cas. */
+    const handleBloquer = async (doc: DocumentListItemDto, bloquer: boolean) => {
+        const saisie = await demanderMotif({
+            title: bloquer ? 'Bloquer la suppression' : 'Débloquer la suppression',
+            message: bloquer
+                ? `"${doc.titre}" ne sera plus supprimé automatiquement tant que vous ne débloquez pas sa suppression. Pourquoi le bloquer ?`
+                : `La suppression automatique de "${doc.titre}" reprendra avec un délai de grâce complet. Pourquoi la débloquer ?`,
+            confirmLabel: bloquer ? 'Bloquer' : 'Débloquer',
+            texteSeul: true,
+        });
+        if (!saisie?.commentaire) return;
+
+        try {
+            if (bloquer) await bloquerEliminationDocument(doc.documentId, saisie.commentaire);
+            else await debloquerEliminationDocument(doc.documentId, saisie.commentaire);
+            notify.success(bloquer ? 'Suppression bloquée' : 'Suppression débloquée');
+            charger(page);
+        } catch (err: any) {
+            notify.error(err.message ?? 'Erreur lors du changement de blocage');
+        }
+    };
+
+    /** Ce que le système fera de ce document — affiché à la place de la seule date. */
+    const libelleEcheance = (doc: DocumentListItemDto): string => {
+        if (doc.eliminationBloquee) return 'Suppression bloquée';
+        if (doc.suppressionAutomatique) return `Suppression le ${formatDate(doc.suppressionPrevueLe)}`;
+        return 'Conservation permanente — décision requise';
+    };
+
+    const libelleMotifDoc = (doc: DocumentListItemDto): string | null =>
+        doc.motifSuppression ? (LIBELLES_MOTIF[doc.motifSuppression] ?? doc.motifSuppression) : null;
 
     const handleDownload = async (doc: DocumentListItemDto) => {
         setDownloadingId(doc.documentId);
@@ -301,7 +338,7 @@ function Corbeille() {
 
             <p className="users-count" style={{ marginBottom: '0.5rem' }}>
                 <i className="fa-solid fa-circle-info" style={{ marginRight: '0.4rem', color: 'var(--text-light)' }} />
-                Les documents ci-dessous seront supprimés définitivement à la date indiquée
+                Les documents ci-dessous sont supprimés définitivement à la date indiquée (sauf conservation permanente, où un éditeur décide)
                 {peutRestaurer ? ', sauf restauration avant cette échéance.' : '.'}
                 {!peutRestaurer && ' Vue en lecture seule.'}
             </p>
@@ -361,7 +398,7 @@ function Corbeille() {
                                         <VersionBadge label={doc.versionLabel} />
                                     </p>
                                     <p className="doc-grid-type">
-                                        {doc.typeDocumentNom} · Suppression : {formatDate(doc.suppressionPrevueLe)}
+                                        {doc.typeDocumentNom} · {libelleEcheance(doc)}{libelleMotifDoc(doc) ? ` · ${libelleMotifDoc(doc)}` : ''}
                                     </p>
 
                                     <div className="td-actions doc-grid-actions">
@@ -383,6 +420,24 @@ function Corbeille() {
                                                     ? <i className="fa-solid fa-spinner fa-spin" />
                                                     : <i className="fa-solid fa-clock-rotate-left" />
                                                 }
+                                            </button>
+                                        )}
+                                        {doc.peutBloquerElimination && (
+                                            <button
+                                                className="action-button"
+                                                onClick={() => handleBloquer(doc, true)}
+                                                title="Bloquer la suppression automatique"
+                                            >
+                                                <i className="fa-solid fa-lock" />
+                                            </button>
+                                        )}
+                                        {doc.peutDebloquerElimination && (
+                                            <button
+                                                className="action-button"
+                                                onClick={() => handleBloquer(doc, false)}
+                                                title="Débloquer la suppression automatique"
+                                            >
+                                                <i className="fa-solid fa-lock-open" />
                                             </button>
                                         )}
                                         {doc.peutSupprimerDefinitivement && (
@@ -461,7 +516,10 @@ function Corbeille() {
                                                 {doc.access === 'PUBLIC' ? 'Public' : 'Privé'}
                                             </span>
                                         </td>
-                                        <td>{formatDate(doc.suppressionPrevueLe)}</td>
+                                        <td title={doc.blocageMotif ?? doc.commentaireSuppression ?? undefined}>
+                                            {libelleEcheance(doc)}
+                                            {libelleMotifDoc(doc) && <div className="corbeille-motif">Motif : {libelleMotifDoc(doc)}</div>}
+                                        </td>
                                         <td onClick={e => e.stopPropagation()}>
                                             <div className="td-actions">
                                                 {/* Masqués sur écran réduit (voir Editor.css,
@@ -485,6 +543,24 @@ function Corbeille() {
                                                             ? <i className="fa-solid fa-spinner fa-spin" />
                                                             : <i className="fa-solid fa-clock-rotate-left" />
                                                         }
+                                                    </button>
+                                                )}
+                                                {doc.peutBloquerElimination && (
+                                                    <button
+                                                        className="action-button corbeille-actions-standalone"
+                                                        onClick={() => handleBloquer(doc, true)}
+                                                        title="Bloquer la suppression automatique"
+                                                    >
+                                                        <i className="fa-solid fa-lock" />
+                                                    </button>
+                                                )}
+                                                {doc.peutDebloquerElimination && (
+                                                    <button
+                                                        className="action-button corbeille-actions-standalone"
+                                                        onClick={() => handleBloquer(doc, false)}
+                                                        title="Débloquer la suppression automatique"
+                                                    >
+                                                        <i className="fa-solid fa-lock-open" />
                                                     </button>
                                                 )}
                                                 {doc.peutSupprimerDefinitivement && (
@@ -543,6 +619,22 @@ function Corbeille() {
                                                                     className="action-menu-item"
                                                                 >
                                                                     <i className="fa-solid fa-clock-rotate-left" /> Restaurer
+                                                                </button>
+                                                            )}
+                                                            {doc.peutBloquerElimination && (
+                                                                <button
+                                                                    onClick={() => { closeCompactMenu(); handleBloquer(doc, true); }}
+                                                                    className="action-menu-item"
+                                                                >
+                                                                    <i className="fa-solid fa-lock" /> Bloquer la suppression
+                                                                </button>
+                                                            )}
+                                                            {doc.peutDebloquerElimination && (
+                                                                <button
+                                                                    onClick={() => { closeCompactMenu(); handleBloquer(doc, false); }}
+                                                                    className="action-menu-item"
+                                                                >
+                                                                    <i className="fa-solid fa-lock-open" /> Débloquer la suppression
                                                                 </button>
                                                             )}
                                                             {doc.peutSupprimerDefinitivement && (
