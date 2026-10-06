@@ -1,7 +1,7 @@
 /**
  * Position d'un menu contextuel (clic droit / Ctrl+clic) ancré à l'ÉLÉMENT cliqué — comme le menu d'un bouton "...",
  * jamais au point exact du curseur ni au centre de l'écran : bord droit du menu aligné sur le bord droit de l'élément,
- * juste en dessous (ou juste au-dessus s'il n'y a pas la place). Le menu doit porter la classe
+ * juste en dessous (ou juste au-dessus s'il n'y a pas la place). Voir aussi le bouton fantôme ci-dessous. Le menu doit porter la classe
  * `dossier-context-menu-anchored` (translateX(-100%), voir Editor.css) et poser ces valeurs en `position: fixed`.
  */
 export interface PositionMenu {
@@ -11,7 +11,11 @@ export interface PositionMenu {
 }
 
 export function positionSousElement(el: HTMLElement, hauteurEstimee = 200, largeurMin = 200): PositionMenu {
-    const r = el.getBoundingClientRect();
+    // Une carte peut être plus large/haute que sa partie visible (cellule de grille) : si elle porte un "bouton ...
+    // fantôme" ([data-ctx-anchor], invisible, posé dans le coin haut-droit de l'aperçu), le menu s'ancre à LUI —
+    // exactement comme si la carte avait ses trois points.
+    const ancre = el.querySelector<HTMLElement>('[data-ctx-anchor]') ?? el;
+    const r = ancre.getBoundingClientRect();
     const left = Math.min(Math.max(r.right, largeurMin), window.innerWidth - 8);
     return r.bottom + hauteurEstimee < window.innerHeight
         ? { top: r.bottom + 4, left }

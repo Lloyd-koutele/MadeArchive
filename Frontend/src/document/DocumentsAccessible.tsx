@@ -1079,6 +1079,7 @@ function DocumentsAccessibles({ uoId = null, modeAdministration = false }: Docum
                                     onKeyDown={e => e.key === 'Enter' && openPdfViewer(doc)}
                                     aria-label={`Lire ${doc.titre}`}
                                 >
+                                    <span className="ctx-anchor" data-ctx-anchor aria-hidden="true" />
                                     {previews[doc.documentId] ? (
                                         <img
                                             src={previews[doc.documentId]}

@@ -412,6 +412,7 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
                             className={`td-folder-card ${selectedIds.has(td.id!) ? 'td-row-selected' : ''}`}
                         >
                             <div className="td-folder-icon-wrap">
+                                <span className="ctx-anchor" data-ctx-anchor aria-hidden="true" />
                                 <div className="td-folder-back" />
                                 <div className="td-folder-sheet">
                                     <div className="td-folder-doc-line short" />

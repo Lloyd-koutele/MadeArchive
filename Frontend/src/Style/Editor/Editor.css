@@ -1870,6 +1870,18 @@ label.bulk-file-item { cursor: pointer; }
    centré à l'écran pour une sélection multiple (aucune carte unique à
    désigner). Le menu générique (DossiersPanel/TypeDocumentList, positionné au
    curseur) n'utilise ni l'une ni l'autre. */
+/* Bouton "..." fantôme : invisible, jamais cliquable, posé dans le coin haut-droit de l'aperçu d'une carte — uniquement
+   un point d'ancrage pour le menu du Ctrl+clic (voir components/ancrageMenu.ts). */
+.ctx-anchor {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 28px;
+    height: 28px;
+    opacity: 0;
+    pointer-events: none;
+}
+
 .dossier-context-menu-anchored {
     /* Ancré à l'élément cliqué, bord droit contre bord droit (voir components/ancrageMenu.ts) — comme un menu "...". */
     transform: translateX(-100%);
