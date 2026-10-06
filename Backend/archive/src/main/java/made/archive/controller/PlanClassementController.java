@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import lombok.RequiredArgsConstructor;
+import made.archive.dto.PlanClassementArbreRequestDto;
 import made.archive.dto.PlanClassementNoeudRequestDto;
 import made.archive.exception.AccessDeniedException;
 import made.archive.exception.BusinessException;
@@ -47,6 +48,25 @@ public class PlanClassementController
                                    @AuthenticationPrincipal UserDetailsImpl principal)
     {
         return executer(() -> service.creer(dto, principal.getUser()));
+    }
+
+    /** Crée une activité avec toute sa descendance (organigramme de création). */
+    @Secured("ROLE_EDITOR")
+    @PostMapping("/arborescence")
+    public ResponseEntity<?> creerArborescence(@RequestBody PlanClassementArbreRequestDto dto,
+                                               @AuthenticationPrincipal UserDetailsImpl principal)
+    {
+        return executer(() -> service.creerArborescence(dto, principal.getUser()));
+    }
+
+    /** Met à jour une activité et sa descendance (libellés, nouvelles sous-activités). */
+    @Secured("ROLE_EDITOR")
+    @PutMapping("/{id}/arborescence")
+    public ResponseEntity<?> mettreAJourArborescence(@PathVariable Long id,
+                                                     @RequestBody PlanClassementArbreRequestDto.Noeud node,
+                                                     @AuthenticationPrincipal UserDetailsImpl principal)
+    {
+        return executer(() -> service.mettreAJourArborescence(id, node, principal.getUser()));
     }
 
     @Secured("ROLE_EDITOR")

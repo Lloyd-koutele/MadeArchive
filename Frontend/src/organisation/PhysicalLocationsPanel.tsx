@@ -716,7 +716,7 @@ function PhysicalLocationsPanel({ uoId, mode = 'lecture', onOuvrirDansDossier }:
                 <div className="pl-form">
                     <label>
                         <p style={{ marginBottom: '0.4rem' }}>
-                            Nombre maximal de documents — laisser vide pour aucune limite.
+                            Nombre maximal de documents
                             {capaciteModal.node && ` Actuellement ${capaciteModal.node.nombreDocuments} document(s).`}
                         </p>
                         <input
@@ -894,74 +894,10 @@ function PlNode({
                 {isInactive && <span className="pl-status-tag">Inactif</span>}
 
                 <div className="pl-actions">
-                    {/* "Voir les documents" — lecture seule, disponible dans les DEUX
-                        modes (même un ADMIN/ADMIN_UO peut consulter). */}
-                    {node.storagePoint && (
-                        <button title="Voir les documents" className="pl-actions-standalone"
-                            onClick={() => onViewDocuments(node)}>
-                            <i className="fa-solid fa-eye" />
-                        </button>
-                    )}
-
-                    {/* Masqués sur écran réduit (voir PhysicalLocationsPanel.css,
-                        .pl-actions-standalone) — repris à l'identique (mêmes icônes,
-                        mêmes libellés, mêmes conditions) dans le menu "..." juste
-                        en dessous plutôt que disparaître. Tout regroupé derrière
-                        estGestionnaire : ADMIN/ADMIN_UO (mode="lecture") ne voient
-                        plus AUCUNE de ces actions, même "Ajouter un enfant". */}
-                    {estGestionnaire && (
-                        <>
-                            {!node.storagePoint && !isInactive && (
-                                <button title="Ajouter un enfant" className="pl-actions-standalone"
-                                    onClick={() => onAddChild(node.id, node.name)} disabled={isBusy}>
-                                    <i className="fa-solid fa-plus" />
-                                </button>
-                            )}
-                            {node.storagePoint && (
-                                <>
-                                    <button title="Modifier la capacité" className="pl-actions-standalone"
-                                        onClick={() => onEditCapacite(node)} disabled={isBusy}>
-                                        <i className="fa-solid fa-gauge-high" />
-                                    </button>
-                                    <button
-                                        title={node.nombreDocuments > 0
-                                            ? "Modifier la contrainte — impossible, nœud non vide"
-                                            : "Modifier la contrainte d'acceptation"}
-                                        className="pl-actions-standalone"
-                                        onClick={() => onEditContrainte(node)} disabled={isBusy || node.nombreDocuments > 0}>
-                                        <i className="fa-solid fa-filter" />
-                                    </button>
-                                </>
-                            )}
-                            <button title="Modifier" className="pl-actions-standalone"
-                                onClick={() => onEdit(node)} disabled={isBusy}>
-                                <i className="fa-solid fa-pen" />
-                            </button>
-                            <button title={node.storagePoint ? 'Convertir en chemin' : 'Convertir en stockage'}
-                                className="pl-actions-standalone"
-                                onClick={() => onToggleType(node)} disabled={isBusy}>
-                                <i className="fa-solid fa-shuffle" />
-                            </button>
-                            <button title={isInactive ? 'Réactiver' : 'Désactiver'}
-                                className="pl-actions-standalone"
-                                onClick={() => onToggleStatus(node)} disabled={isBusy}>
-                                <i className={`fa-solid ${isInactive ? 'fa-toggle-off' : 'fa-toggle-on'}`} />
-                            </button>
-                            <button
-                                title={node.children.length > 0 ? 'Supprimer' : 'Supprimer'}
-                                className="pl-delete-btn pl-actions-standalone"
-                                onClick={() => onDelete(node)} disabled={isBusy}>
-                                <i className="fa-solid fa-trash" />
-                            </button>
-                        </>
-                    )}
-
-                    {/* Menu "..." compact — visible uniquement sous ~1100px, voir
-                        PhysicalLocationsPanel.css. Reprend exactement les mêmes
-                        actions/icônes/conditions que les boutons autonomes ci-dessus.
-                        Affiché même en mode "lecture" SI storagePoint (pour garder
-                        "Voir les documents" accessible sur petit écran) — mais sans
-                        aucune des entrées de gestion dans ce cas. */}
+                    {/* Toutes les actions sont derrière le seul menu "..." — quelle que soit la largeur
+                        d'écran (jamais de rangée de boutons). Affiché même en mode "lecture" SI
+                        storagePoint, pour garder "Voir les documents" accessible, mais sans aucune
+                        entrée de gestion dans ce cas (ADMIN/ADMIN_UO). */}
                     {(estGestionnaire || node.storagePoint) && (
                         <div className="action-menu-wrapper pl-actions-compact">
                             <button

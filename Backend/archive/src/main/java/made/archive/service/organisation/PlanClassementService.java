@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
+import made.archive.dto.PlanClassementArbreRequestDto;
 import made.archive.dto.PlanClassementNoeudDto;
 import made.archive.dto.PlanClassementNoeudRequestDto;
 import made.archive.entite.AuditAction;
@@ -217,6 +218,132 @@ public class PlanClassementService
             "Activité \"" + code + " " + libelle + "\" ajoutée au plan de classement", true);
 
         return simple(noeud);
+    }
+
+    /**
+     * Crée une activité et toute sa descendance en une fois (organigramme de création). Atomique : une erreur
+     * n'en crée aucune. Les codes sont générés nœud par nœud d'après la position.
+     */
+    @Transactional
+    public PlanClassementNoeudDto creerArborescence(PlanClassementArbreRequestDto dto, User currentUser)
+    {
+        if (dto.getUoId() == null || dto.getNode() == null)
+        {
+            throw new BusinessException("L'unité organisationnelle et l'activité sont obligatoires");
+        }
+        UniteOrganisationnelle uo = uniteOrganisationnelleService.getUOEntiteSiEditeur(dto.getUoId(), currentUser);
+        PlanClassementNoeud parent = dto.getParentId() != null ? chargerDansUo(dto.getParentId(), uo.getId()) : null;
+
+        int[] compteur = { 0 };
+        PlanClassementNoeud racine = creerRecursif(dto.getNode(), parent, uo, compteur);
+
+        auditLogService.log(currentUser, AuditAction.PLAN_CLASSEMENT_NOEUD_CREE, AuditCible.PLAN_CLASSEMENT,
+            racine.getId().toString(), uo.getId(),
+            "Activité \"" + racine.getCode() + " " + racine.getLibelle() + "\" ajoutée au plan de classement"
+                + (compteur[0] > 1 ? " avec " + (compteur[0] - 1) + " sous-activité(s)" : ""), true);
+
+        return trouverDansArbre(uo.getId(), racine.getId());
+    }
+
+    private PlanClassementNoeud creerRecursif(PlanClassementArbreRequestDto.Noeud n, PlanClassementNoeud parent,
+                                              UniteOrganisationnelle uo, int[] compteur)
+    {
+        PlanClassementNoeud noeud = new PlanClassementNoeud();
+        noeud.setLibelle(nettoyer(n.getLibelle(), "Le libellé"));
+        noeud.setCode(prochainCode(uo.getId(), parent, Set.of()));
+        noeud.setParent(parent);
+        noeud.setUniteOrganisationnelle(uo);
+        noeudRepository.saveAndFlush(noeud);   // visible par prochainCode du frère suivant
+        compteur[0]++;
+        for (PlanClassementArbreRequestDto.Noeud enfant : n.getChildren())
+        {
+            creerRecursif(enfant, noeud, uo, compteur);
+        }
+        return noeud;
+    }
+
+    /**
+     * Met à jour une activité existante et sa descendance en un seul appel : libellés modifiés (refusé pour une
+     * activité verrouillée) et nouvelles sous-activités ajoutées. Une activité existante absente de la requête
+     * n'est jamais supprimée ici (la suppression reste une action dédiée, avec sa confirmation).
+     */
+    @Transactional
+    public PlanClassementNoeudDto mettreAJourArborescence(Long id, PlanClassementArbreRequestDto.Noeud node, User currentUser)
+    {
+        if (node == null)
+        {
+            throw new BusinessException("L'activité est obligatoire");
+        }
+        PlanClassementNoeud racine = charger(id);
+        Long uoId = racine.getUniteOrganisationnelle().getId();
+        verifierEditeur(uoId, currentUser);
+
+        Set<Long> sousArbre = idsAvecDescendants(id);
+        int[] ajoutes = { 0 };
+        List<String> renommes = new ArrayList<>();
+        mettreAJourRecursif(node, racine, sousArbre, racine.getUniteOrganisationnelle(), ajoutes, renommes);
+
+        if (!renommes.isEmpty() || ajoutes[0] > 0)
+        {
+            auditLogService.log(currentUser, AuditAction.PLAN_CLASSEMENT_NOEUD_MODIFIE, AuditCible.PLAN_CLASSEMENT,
+                id.toString(), uoId,
+                "Activité \"" + racine.getCode() + "\" mise à jour"
+                    + (renommes.isEmpty() ? "" : " — renommées : " + String.join(", ", renommes))
+                    + (ajoutes[0] > 0 ? " — " + ajoutes[0] + " sous-activité(s) ajoutée(s)" : ""), true);
+        }
+        return trouverDansArbre(uoId, id);
+    }
+
+    private void mettreAJourRecursif(PlanClassementArbreRequestDto.Noeud n, PlanClassementNoeud existant,
+                                     Set<Long> sousArbre, UniteOrganisationnelle uo, int[] ajoutes, List<String> renommes)
+    {
+        String libelle = nettoyer(n.getLibelle(), "Le libellé");
+        if (!libelle.equals(existant.getLibelle()))
+        {
+            verifierNonVerrouille(existant, "renommer");
+            renommes.add("\"" + existant.getCode() + " " + existant.getLibelle() + "\" → \"" + libelle + "\"");
+            existant.setLibelle(libelle);
+            noeudRepository.saveAndFlush(existant);
+        }
+        for (PlanClassementArbreRequestDto.Noeud enfant : n.getChildren())
+        {
+            if (enfant.getId() == null)
+            {
+                int[] c = { 0 };
+                creerRecursif(enfant, existant, uo, c);
+                ajoutes[0] += c[0];
+            }
+            else
+            {
+                if (!sousArbre.contains(enfant.getId()))
+                {
+                    throw new BusinessException("Activité hors de l'arborescence modifiée : " + enfant.getId());
+                }
+                mettreAJourRecursif(enfant, charger(enfant.getId()), sousArbre, uo, ajoutes, renommes);
+            }
+        }
+    }
+
+    /** Le nœud demandé, avec sa descendance et ses indicateurs (documents, verrou), tel que getArbre le renvoie. */
+    private PlanClassementNoeudDto trouverDansArbre(Long uoId, Long id)
+    {
+        List<PlanClassementNoeud> tous = noeudRepository.findByUniteOrganisationnelleId(uoId);
+        Map<Long, Long> comptes = new HashMap<>();
+        for (Object[] r : typeDocumentRepository.countParNoeudPourUo(uoId))
+        {
+            comptes.put((Long) r[0], (Long) r[1]);
+        }
+        Map<Long, Long> documents = new HashMap<>();
+        for (Object[] r : documentRepository.countDocumentsParActivitePourUo(uoId))
+        {
+            documents.put((Long) r[0], (Long) r[1]);
+        }
+        Map<Long, List<PlanClassementNoeud>> enfants = tous.stream()
+            .filter(n -> n.getParent() != null)
+            .collect(Collectors.groupingBy(n -> n.getParent().getId()));
+        PlanClassementNoeud noeud = tous.stream().filter(n -> n.getId().equals(id)).findFirst()
+            .orElseThrow(() -> new BusinessException("Activité introuvable : " + id));
+        return versDto(noeud, enfants, comptes, documents);
     }
 
     /** Renomme (libellé seulement : le code découle de la position). Refusé si des documents sont classés ici

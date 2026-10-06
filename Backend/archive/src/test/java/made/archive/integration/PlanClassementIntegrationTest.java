@@ -274,6 +274,94 @@ class PlanClassementIntegrationTest
         service.supprimer(libre.getId(), ed);
     }
 
+    private made.archive.dto.PlanClassementArbreRequestDto.Noeud draft(Long id, String libelle,
+        made.archive.dto.PlanClassementArbreRequestDto.Noeud... enfants)
+    {
+        var n = new made.archive.dto.PlanClassementArbreRequestDto.Noeud();
+        n.setId(id);
+        n.setLibelle(libelle);
+        n.setChildren(new java.util.ArrayList<>(List.of(enfants)));
+        return n;
+    }
+
+    @Test
+    @Transactional
+    void creerUneArborescenceEnUnAppel_codesGeneresEtAtomique()
+    {
+        UniteOrganisationnelle uo = uo("UO-Arbre");
+        User ed = editeur("arbre@test.local");
+        when(uoServiceMock.estEditeurDeUO(anyLong(), any())).thenReturn(true);
+        when(uoServiceMock.getUOEntiteSiEditeur(anyLong(), any())).thenReturn(uo);
+
+        var requete = new made.archive.dto.PlanClassementArbreRequestDto();
+        requete.setUoId(uo.getId());
+        requete.setNode(draft(null, "Enseignement",
+            draft(null, "Examens", draft(null, "Sujets"), draft(null, "Corrigés")),
+            draft(null, "Cours")));
+
+        PlanClassementNoeudDto racine = service.creerArborescence(requete, ed);
+
+        assertThat(racine.getCode()).isEqualTo("01");
+        assertThat(racine.getChildren()).extracting(PlanClassementNoeudDto::getCode).containsExactly("01.1", "01.2");
+        assertThat(racine.getChildren().get(0).getChildren()).extracting(PlanClassementNoeudDto::getCode)
+            .containsExactly("01.1.1", "01.1.2");
+
+        // Sous une activité existante : la racine du brouillon reçoit le rang suivant
+        var sous = new made.archive.dto.PlanClassementArbreRequestDto();
+        sous.setUoId(uo.getId());
+        sous.setParentId(racine.getId());
+        sous.setNode(draft(null, "Soutenances"));
+        assertThat(service.creerArborescence(sous, ed).getCode()).isEqualTo("01.3");
+
+        // Un libellé vide quelque part dans le brouillon est refusé (en production, la transaction de l'appel
+        // annule alors toute l'arborescence : rien n'est créé à moitié)
+        var invalide = new made.archive.dto.PlanClassementArbreRequestDto();
+        invalide.setUoId(uo.getId());
+        invalide.setNode(draft(null, "Finances", draft(null, "  ")));
+        assertThatThrownBy(() -> service.creerArborescence(invalide, ed)).isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    @Transactional
+    void mettreAJourUneArborescence_renommeAjouteEtRespecteLeVerrou()
+    {
+        UniteOrganisationnelle uo = uo("UO-MajArbre");
+        User ed = editeur("majarbre@test.local");
+        when(uoServiceMock.estEditeurDeUO(anyLong(), any())).thenReturn(true);
+        when(uoServiceMock.getUOEntiteSiEditeur(anyLong(), any())).thenReturn(uo);
+
+        PlanClassementNoeudDto fin = service.creer(req(uo.getId(), null, "Finances"), ed);
+        PlanClassementNoeudDto fact = service.creer(req(uo.getId(), fin.getId(), "Factures"), ed);
+        PlanClassementNoeudDto budget = service.creer(req(uo.getId(), fin.getId(), "Budget"), ed);
+
+        TypeDocument type = type(uo, ed, "Facture");
+        service.rattacherType(type.getId(), fact.getId(), ed);
+        documentRepository.save(document(uo, type, ed));            // verrouille 01 et 01.1
+
+        // Renommer l'activité LIBRE et ajouter des sous-activités, sans toucher aux verrouillées
+        PlanClassementNoeudDto maj = service.mettreAJourArborescence(fin.getId(),
+            draft(fin.getId(), "Finances",
+                draft(fact.getId(), "Factures", draft(null, "Fournisseurs")),
+                draft(budget.getId(), "Budget annuel", draft(null, "Prévisions"))), ed);
+
+        assertThat(maj.getChildren()).extracting(PlanClassementNoeudDto::getLibelle)
+            .containsExactly("Factures", "Budget annuel");
+        assertThat(maj.getChildren().get(0).getChildren()).extracting(PlanClassementNoeudDto::getCode).containsExactly("01.1.1");
+        assertThat(maj.getChildren().get(1).getChildren()).extracting(PlanClassementNoeudDto::getCode).containsExactly("01.2.1");
+
+        // Renommer une activité verrouillée est refusé (même depuis l'organigramme)
+        assertThatThrownBy(() -> service.mettreAJourArborescence(fin.getId(),
+            draft(fin.getId(), "Finances", draft(fact.getId(), "Factures clients")), ed))
+            .isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> service.mettreAJourArborescence(fin.getId(),
+            draft(fin.getId(), "Direction financière"), ed)).isInstanceOf(BusinessException.class);
+
+        // Un nœud d'une autre arborescence est refusé
+        PlanClassementNoeudDto autre = service.creer(req(uo.getId(), null, "RH"), ed);
+        assertThatThrownBy(() -> service.mettreAJourArborescence(fin.getId(),
+            draft(fin.getId(), "Finances", draft(autre.getId(), "RH")), ed)).isInstanceOf(BusinessException.class);
+    }
+
     @Test
     @Transactional
     void deplacerRecalculeLeCodeDeLActiviteEtDeSesDescendants()
