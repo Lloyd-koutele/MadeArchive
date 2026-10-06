@@ -17,6 +17,8 @@ import made.archive.repository.FixityCheckResultRepository;
 import made.archive.repository.UserRepository;
 import made.archive.security.DocumentEncryptionService;
 import made.archive.service.audit.AuditLogService;
+import made.archive.service.integrite.AlerteIntegriteService;
+import made.archive.service.integrite.PreuveIntegriteService;
 import made.archive.service.notification.NotificationService;
 import made.archive.service.organisation.UniteOrganisationnelleService;
 
@@ -47,6 +49,8 @@ public class FixityCheckService
     private final UserRepository userRepository;
     private final AuditLogService auditLogService;
     private final MeilisearchService meilisearchService;
+    private final PreuveIntegriteService preuveIntegriteService;
+    private final AlerteIntegriteService alerteIntegriteService;
 
     /**
      * Vérifie l'intégrité d'une liste de documents par leurs IDs.
@@ -159,15 +163,57 @@ public class FixityCheckService
             return;
         }
 
+        // Le hash du fichier n'est plus comparé à la SEULE valeur de la base : une base réécrite donnerait un
+        // faux "corrompu" (empreinte modifiée) ou un faux "intact" (fichier ET empreinte modifiés). L'arbitre
+        // confronte le fichier à des preuves hors base — voir PreuveIntegriteService.
         String actualHash = hashService.calculateFromBytes(decryptedBytes);
-        if (actualHash.equals(document.getPdfaSha256()))
+        PreuveIntegriteService.Constat constat = preuveIntegriteService.evaluer(document, actualHash);
+
+        switch (constat.verdict())
         {
-            saveResult(document, CheckResult.OK, null);
+            case OK ->
+            {
+                if (constat.degrade())
+                {
+                    log.warn("[Fixity] Document {} vérifié par simple comparaison d'empreinte — aucune preuve "
+                        + "indépendante consultable (ancien document non signé ou clé de confiance absente)",
+                        document.getId());
+                }
+                saveResult(document, CheckResult.OK, null);
+            }
+            case PREUVE_ALTEREE -> savePreuveAlteree(document, constat.raison());
+            case FICHIER_ALTERE -> saveResult(document, CheckResult.CORRUPTED, constat.raison());
         }
-        else
+    }
+
+    /**
+     * Le fichier est conforme à une preuve indépendante mais l'enregistrement en base ne l'est plus : ce n'est PAS
+     * une corruption du document (il reste ACTIF, consultable, indexé) mais un signe d'intrusion dans la base —
+     * alerte réservée à l'administration. Une alerte par changement : un contrôle nocturne qui retrouve la même
+     * anomalie ne renotifie pas.
+     */
+    private void savePreuveAlteree(Document document, String raison)
+    {
+        Optional<FixityCheckResult> existant = fixityCheckResultRepository.findByDocumentId(document.getId());
+        boolean dejaSignale = existant.isPresent()
+            && existant.get().getResult() == CheckResult.PREUVE_ALTEREE
+            && raison.equals(existant.get().getRaison());
+
+        FixityCheckResult resultat = existant.orElseGet(() ->
         {
-            saveResult(document, CheckResult.CORRUPTED,
-                "Empreinte SHA-256 différente de celle archivée à l'upload");
+            FixityCheckResult r = new FixityCheckResult();
+            r.setDocument(document);
+            return r;
+        });
+        resultat.setCheckedAt(Instant.now());
+        resultat.setResult(CheckResult.PREUVE_ALTEREE);
+        resultat.setRaison(raison);
+        fixityCheckResultRepository.save(resultat);
+
+        log.error("[Fixity] PREUVES ALTÉRÉES en base pour le document {} : {}", document.getId(), raison);
+        if (!dejaSignale)
+        {
+            alerteIntegriteService.documentPreuveAlteree(document, raison);
         }
     }
 

@@ -9,11 +9,13 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import made.archive.entite.Document;
 import made.archive.entite.DocumentStatus;
 import made.archive.entite.TypeAccess;
+import made.archive.service.integrite.FeuilleDocument;
 
 public interface DocumentRepository extends JpaRepository<Document, UUID>, JpaSpecificationExecutor<Document>
 {
@@ -64,6 +66,14 @@ public interface DocumentRepository extends JpaRepository<Document, UUID>, JpaSp
     @Query("SELECT d.id FROM Document d WHERE d.status NOT IN "
         + "(made.archive.entite.DocumentStatus.DELETED, made.archive.entite.DocumentStatus.CORBEILLE)")
     List<UUID> findAllIdsNonSupprimes();
+
+    /**
+     * IDs des documents d'un type, hors statuts donnés — pour répercuter dans Meilisearch un changement qui touche
+     * tous les documents du type (voir TypeDocumentService.renommerTypeDocument).
+     */
+    @Query("SELECT d.id FROM Document d WHERE d.typeDocument.id = :typeId AND d.status NOT IN :statuts")
+    List<UUID> findIdsByTypeDocumentIdAndStatusNotIn(@Param("typeId") Long typeId,
+                                                     @Param("statuts") Collection<DocumentStatus> statuts);
 
     @Query("SELECT d FROM Document d WHERE d.typeDocument.id = :typeDocumentId")
     List<Document> findByTypeDocumentId(@Param("typeDocumentId") Long typeDocumentId);
@@ -312,4 +322,29 @@ public interface DocumentRepository extends JpaRepository<Document, UUID>, JpaSp
            "FROM Document d LEFT JOIN d.dossier p LEFT JOIN d.typeDocument t LEFT JOIN t.planClassementNoeud n LEFT JOIN d.planClassementNoeud dn " +
            "WHERE d.id IN :ids")
     List<made.archive.dto.DocumentExportRow> findAllByIdPourExport(@Param("ids") Collection<UUID> ids);
+
+    // ── Preuves d'intégrité (voir service.integrite) ───────────────────────────────────────────────────────
+
+    /** Identifiants des documents jamais scellés (rattrapage — voir ScellementRattrapageService). */
+    @Query("SELECT d.id FROM Document d WHERE d.signatureEnregistrement IS NULL")
+    List<UUID> findIdsASceller();
+
+    /** Documents jamais scellés (créés avant le scellement des enregistrements) — par lots, pour le rattrapage. */
+    Page<Document> findBySignatureEnregistrementIsNull(Pageable pageable);
+
+    /** Feuilles (id + empreintes + signature) des documents scellés pas encore ancrés, pour le prochain ancrage. */
+    @Query("""
+        SELECT new made.archive.service.integrite.FeuilleDocument(d.id, d.pdfaSha256, d.originalSha256, d.signatureEnregistrement)
+        FROM Document d WHERE d.ancrageId IS NULL AND d.signatureEnregistrement IS NOT NULL""")
+    List<FeuilleDocument> findFeuillesAAncrer();
+
+    /** Feuilles des documents d'un lot d'ancrage, telles qu'elles sont AUJOURD'HUI en base. */
+    @Query("""
+        SELECT new made.archive.service.integrite.FeuilleDocument(d.id, d.pdfaSha256, d.originalSha256, d.signatureEnregistrement)
+        FROM Document d WHERE d.ancrageId = :ancrageId""")
+    List<FeuilleDocument> findFeuillesParAncrage(@Param("ancrageId") Long ancrageId);
+
+    @Modifying
+    @Query("UPDATE Document d SET d.ancrageId = :ancrageId WHERE d.id IN :ids AND d.ancrageId IS NULL")
+    int rattacherAncrage(@Param("ancrageId") Long ancrageId, @Param("ids") Collection<UUID> ids);
 }

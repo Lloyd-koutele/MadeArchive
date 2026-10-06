@@ -10,6 +10,7 @@ import made.archive.repository.AuditChainSealRepository;
 import made.archive.repository.JournalAuditRepository;
 import made.archive.service.document.HashService;
 import made.archive.service.document.HorodatageService;
+import made.archive.service.integrite.HorodatageVerificationService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -79,6 +80,7 @@ public class AuditChainService
     private final AuditChainSealRepository  auditChainSealRepository;
     private final HashService               hashService;
     private final HorodatageService         horodatageService;
+    private final HorodatageVerificationService jetons;
 
     /** Valeur de départ de la chaîne — jamais une vraie empreinte d'entrée,
      *  juste une constante fixe connue de tous pour amorcer le calcul. */
@@ -238,6 +240,36 @@ public class AuditChainService
                     .action(entree != null ? entree.getAction() : null)
                     .description("Divergence avec le scellement horodaté du "
                         + seal.getCreatedAt() + " — l'empreinte actuelle ne correspond plus à celle scellée")
+                    .build());
+            }
+        }
+
+        // Le jeton RFC 3161 de chaque scellement est lui aussi vérifié (signature, certificat TSA reconnu, empreinte
+        // attestée) : sans cela, un attaquant qui réécrit la chaîne ET les empreintes scellées en base resterait
+        // indétectable, la comparaison ci-dessus ne portant que sur des valeurs de la même base. Le jeton, lui, ne
+        // se réécrit pas sans l'autorité d'horodatage.
+        for (AuditChainSeal seal : auditChainSealRepository.findAll())
+        {
+            if (seal.getHorodatageToken() == null || seal.getDernierChainHash() == null)
+            {
+                continue;
+            }
+            HorodatageVerificationService.Etat etat = jetons.verifier(seal.getHorodatageToken(), seal.getDernierChainHash());
+            if (etat == HorodatageVerificationService.Etat.EMPREINTE_DIFFERENTE
+                || etat == HorodatageVerificationService.Etat.INVALIDE)
+            {
+                JournalAudit entree = chaine.stream()
+                    .filter(e -> e.getId().equals(seal.getDernierEntryId()))
+                    .findFirst().orElse(null);
+                ruptures.add(ChaineAuditRuptureDto.builder()
+                    .id(seal.getDernierEntryId())
+                    .horodatage(entree != null ? entree.getHorodatage() : null)
+                    .uoId(entree != null ? entree.getUoId() : null)
+                    .action(entree != null ? entree.getAction() : null)
+                    .description("Le jeton d'horodatage du scellement du " + seal.getCreatedAt()
+                        + (etat == HorodatageVerificationService.Etat.EMPREINTE_DIFFERENTE
+                            ? " atteste une autre empreinte que celle enregistrée"
+                            : " est invalide (illisible, signature incorrecte ou autorité inconnue)"))
                     .build());
             }
         }

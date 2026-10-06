@@ -558,7 +558,7 @@ function AdminUoDashboard() {
                             )}
 
                             {tab === 'corbeille' && (
-                                <Corbeille />
+                                <Corbeille lectureSeule />
                             )}
 
                             {tab === 'journal' && <AuditLogPanel />}

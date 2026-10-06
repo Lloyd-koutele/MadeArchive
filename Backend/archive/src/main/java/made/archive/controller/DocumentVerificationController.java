@@ -1,6 +1,7 @@
 package made.archive.controller;
 
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.http.ResponseEntity;
@@ -18,7 +19,10 @@ import made.archive.entite.AuditCible;
 import made.archive.entite.Document;
 import made.archive.exception.BusinessException;
 import made.archive.repository.DocumentRepository;
-import made.archive.security.PkiService;
+import made.archive.entite.DocumentStatus;
+import made.archive.entite.FixityCheckResult;
+import made.archive.repository.FixityCheckResultRepository;
+import made.archive.service.integrite.PreuveIntegriteService;
 import made.archive.service.audit.AuditLogService;
 
 /**
@@ -35,7 +39,8 @@ import made.archive.service.audit.AuditLogService;
 public class DocumentVerificationController
 {
     private final DocumentRepository documentRepository;
-    private final PkiService pkiService;
+    private final PreuveIntegriteService preuveIntegriteService;
+    private final FixityCheckResultRepository fixityCheckResultRepository;
     private final AuditLogService auditLogService;
 
     /**
@@ -57,42 +62,48 @@ public class DocumentVerificationController
             Document document = documentRepository.findById(docId)
                 .orElseThrow(() -> new BusinessException("Document non trouvé : " + docId));
 
-            // 2. Vérifier que tous les champs nécessaires existent
-            String publicKey = document.getUploadedBy() != null
-                ? document.getUploadedBy().getPkiPublicKey() : null;
+            // 2. Les preuves sont vérifiées avec les clés du HSM, les jetons d'horodatage ancrés et le manifeste
+            //    verrouillé — jamais avec la clé publique stockée en base (qu'un accès à PostgreSQL permettrait
+            //    de remplacer en même temps que l'empreinte et la signature).
+            PreuveIntegriteService.VerificationPreuves preuves = preuveIntegriteService.verifierPreuves(document);
 
-            if (publicKey == null || publicKey.isBlank())
+            Optional<FixityCheckResult> controle = fixityCheckResultRepository.findByDocumentId(docId);
+            String dernierControle = controle
+                .map(c -> " Dernier contrôle d'intégrité du fichier : " + c.getResult() + " le "
+                    + c.getCheckedAt().truncatedTo(java.time.temporal.ChronoUnit.SECONDS) + ".")
+                .orElse(" Le fichier n'a pas encore fait l'objet d'un contrôle d'intégrité.");
+            String detail = String.join(" ; ", preuves.constats());
+
+            boolean fichierCorrompu = document.getStatus() == DocumentStatus.CORRUPTED;
+
+            String status;
+            String message;
+            boolean isValid;
+            if (!preuves.verifiable())
             {
-                return ResponseEntity.badRequest().body(new DocumentVerificationDto(
-                    false,
-                    "Document non signé",
-                    "L'éditeur ayant déposé ce document n'a pas de clé PKI publique",
-                    null
-                ));
+                isValid = false;
+                status = "NON VÉRIFIABLE";
+                message = "Aucune preuve de confiance n'a pu être consultée pour ce document. " + detail + ".";
             }
-
-            if (document.getPkiSignature() == null || document.getPkiSignature().isBlank())
+            else if (!preuves.authentique())
             {
-                return ResponseEntity.badRequest().body(new DocumentVerificationDto(
-                    false,
-                    "Signature manquante",
-                    "La signature PKI du document est manquante",
-                    null
-                ));
+                isValid = false;
+                status = "FALSIFIÉ ✗";
+                message = "Les preuves de ce document ne sont pas concordantes : " + detail + ".";
             }
-
-            // 3. Vérifier la signature (avec la clé publique de l'éditeur qui a déposé)
-            boolean isValid = pkiService.verifySignature(
-                document.getPdfaSha256(),
-                document.getPkiSignature(),
-                publicKey
-            );
-
-            // 4. Retourner le résultat
-            String status = isValid ? "AUTHENTIQUE ✓" : "FALSIFIÉ ✗";
-            String message = isValid 
-                ? "La signature est valide. Le document n'a pas été modifié."
-                : "La signature est invalide. Le document a été altéré.";
+            else if (fichierCorrompu)
+            {
+                isValid = false;
+                status = "FICHIER CORROMPU ⚠";
+                message = "Les preuves sont valides mais le fichier archivé a été détecté corrompu. " + detail + "."
+                    + dernierControle;
+            }
+            else
+            {
+                isValid = true;
+                status = "AUTHENTIQUE ✓";
+                message = "Les preuves cryptographiques sont valides et concordantes. " + detail + "." + dernierControle;
+            }
 
             log.info("[Verification] Document {} : {}", docId, status);
 
@@ -103,12 +114,10 @@ public class DocumentVerificationController
                 "Vérification publique d'authenticité du document \"" + document.getTitre() + "\" — " + status,
                 isValid);
 
-            return ResponseEntity.ok(new DocumentVerificationDto(
-                isValid,
-                status,
-                message,
-                DocumentVerificationDto.DocumentMetadata.fromEntity(document)
-            ));
+            DocumentVerificationDto.DocumentMetadata metadonnees = DocumentVerificationDto.DocumentMetadata.fromEntity(document);
+            metadonnees.setPublicKey(preuveIntegriteService.clePubliqueDeConfiance(document).orElse(null));
+
+            return ResponseEntity.ok(new DocumentVerificationDto(isValid, status, message, metadonnees));
         }
         catch (IllegalArgumentException e)
         {
@@ -137,8 +146,7 @@ public class DocumentVerificationController
             Document document = documentRepository.findById(docId)
                 .orElseThrow(() -> new BusinessException("Document non trouvé"));
 
-            String publicKey = document.getUploadedBy() != null
-                ? document.getUploadedBy().getPkiPublicKey() : null;
+            String publicKey = preuveIntegriteService.clePubliqueDeConfiance(document).orElse(null);
 
             return ResponseEntity.ok(new DocumentMetadataDto(
                 document.getId(),

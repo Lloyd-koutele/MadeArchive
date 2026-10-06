@@ -14,6 +14,8 @@ import made.archive.entite.User;
 import made.archive.repository.DocumentRepository;
 import made.archive.repository.UserRepository;
 import made.archive.service.audit.AuditLogService;
+import made.archive.service.integrite.PreuveIntegriteService;
+import made.archive.service.integrite.TsaAncreService;
 import made.archive.service.notification.NotificationService;
 import org.bouncycastle.asn1.cmp.PKIStatus;
 import org.bouncycastle.tsp.TSPAlgorithms;
@@ -71,6 +73,8 @@ public class HorodatageService
     private final UserRepository userRepository;
     private final CacheManager cacheManager;
     private final AuditLogService auditLogService;
+    private final TsaAncreService tsaAncreService;
+    private final PreuveIntegriteService preuveIntegriteService;
 
     private static final List<DocumentStatus> STATUTS_EXCLUS =
         List.of(DocumentStatus.DELETED, DocumentStatus.CORBEILLE);
@@ -135,6 +139,10 @@ public class HorodatageService
 
             TimeStampToken token = tsResponse.getTimeStampToken();
             Instant genTime = token.getTimeStampInfo().getGenTime().toInstant();
+
+            // Réponse EN DIRECT du TSA configuré : son certificat devient une ancre de confiance (hors base) pour
+            // la vérification ultérieure des jetons stockés.
+            tsaAncreService.memoriser(token);
 
             log.info("[Horodatage] Jeton RFC 3161 obtenu, généré le {}", genTime);
             return new HorodatageResult(token.getEncoded(), genTime);
@@ -297,6 +305,15 @@ public class HorodatageService
         int reussis = 0;
         for (Document doc : aReessayer)
         {
+            // Ne jamais faire certifier par un tiers une empreinte lue en base sans s'être assuré qu'elle est
+            // authentique : un attaquant qui réécrit le hash et efface le jeton obtiendrait sinon un jeton valide
+            // sur sa fausse valeur. Seule une signature valide sur CETTE empreinte autorise l'horodatage.
+            if (!preuveIntegriteService.empreinteAuthentique(doc))
+            {
+                log.error("[Horodatage] Document {} NON horodaté : son empreinte en base ne correspond à aucune "
+                    + "signature de confiance (preuves altérées ou clé de vérification indisponible)", doc.getId());
+                continue;
+            }
             HorodatageResult resultat = horodater(doc.getPdfaSha256());
             if (resultat == null)
             {

@@ -72,7 +72,7 @@ import made.archive.service.user.UtilisateurSystemeService;
 
 /**
  * Procès-verbal d'élimination sur une vraie base : un PV par UO et par jour, rattaché aux pierres tombales,
- * type système en sort CONSERVER, jamais regénéré, échec isolé et réessayable, aucun titre dans le PDF.
+ * type système en sort CONSERVER, jamais regénéré, échec isolé et réessayable, titres et informations dans le PDF, accès restreint.
  * La conversion PDF/A (Ghostscript) est simulée ici — elle est couverte par PdfAConversionService.
  */
 @Tag("integration")
@@ -100,7 +100,13 @@ class ProcesVerbalEliminationIntegrationTest
         @Bean PdfAConversionService pdfAConversionService() { return mock(PdfAConversionService.class); }
         @Bean StorageService storageService() { return mock(StorageService.class); }
         @Bean MeilisearchService meilisearchService() { return mock(MeilisearchService.class); }
+        @Bean made.archive.service.organisation.UniteOrganisationnelleService uniteOrganisationnelleService()
+        {
+            return mock(made.archive.service.organisation.UniteOrganisationnelleService.class);
+        }
         @Bean HorodatageService horodatageService() { return mock(HorodatageService.class); }
+        @Bean made.archive.service.integrite.PreuveIntegriteService preuveIntegriteService() { return mock(made.archive.service.integrite.PreuveIntegriteService.class); }
+        @Bean made.archive.service.integrite.ManifestePreuveService manifestePreuveService() { return mock(made.archive.service.integrite.ManifestePreuveService.class); }
         @Bean AuditLogService auditLogService() { return mock(AuditLogService.class); }
         @Bean DocumentEncryptionService documentEncryptionService()
         {
@@ -116,13 +122,18 @@ class ProcesVerbalEliminationIntegrationTest
         ProcesVerbalEliminationService procesVerbalEliminationService(
             DocumentRepository documentRepository, TypeDocumentRepository typeDocumentRepository,
             DataTypeRepository dataTypeRepository, UniteOrganisationnelleRepository uoRepository,
-            UserRepository userRepository, UtilisateurSystemeService systeme, ProcesVerbalPdfService pdf,
+            UserRepository userRepository, made.archive.repository.GroupeAccessRepository groupeAccessRepository,
+            made.archive.service.organisation.UniteOrganisationnelleService uoService,
+            UtilisateurSystemeService systeme, ProcesVerbalPdfService pdf,
             PdfAConversionService pdfA, HashService hash, DocumentEncryptionService chiffrement,
             StorageService storage, MeilisearchService meili, HorodatageService horodatage,
-            AuditLogService audit, PlatformTransactionManager tm)
+            AuditLogService audit, PlatformTransactionManager tm,
+            made.archive.service.integrite.PreuveIntegriteService preuves,
+            made.archive.service.integrite.ManifestePreuveService manifestes)
         {
             return new ProcesVerbalEliminationService(documentRepository, typeDocumentRepository, dataTypeRepository,
-                uoRepository, userRepository, systeme, pdf, pdfA, hash, chiffrement, storage, meili, horodatage, audit, tm);
+                uoRepository, userRepository, groupeAccessRepository, uoService, systeme, pdf, pdfA, hash, chiffrement,
+                storage, meili, horodatage, audit, tm, preuves, manifestes);
         }
     }
 
@@ -140,11 +151,18 @@ class ProcesVerbalEliminationIntegrationTest
     @Autowired private StorageService storageService;
     @Autowired private AuditLogService auditLogService;
     @Autowired private HorodatageService horodatageService;
+    @Autowired private made.archive.service.integrite.PreuveIntegriteService preuveIntegriteService;
+    @Autowired private made.archive.service.integrite.ManifestePreuveService manifestePreuveService;
+    @Autowired private MeilisearchService meilisearchService;
+    @Autowired private made.archive.repository.GroupeAccessRepository groupeAccessRepository;
+    @Autowired private org.springframework.transaction.PlatformTransactionManager transactionManager;
+    @Autowired private made.archive.service.organisation.UniteOrganisationnelleService uniteOrganisationnelleService;
 
     @BeforeEach
     void init() throws Exception
     {
-        reset(pdfAConversionService, storageService, auditLogService, horodatageService);
+        reset(pdfAConversionService, storageService, auditLogService, horodatageService, meilisearchService,
+            preuveIntegriteService, manifestePreuveService);
         when(pdfAConversionService.convertirEtVerifier(any(), anyString())).thenAnswer(i ->
             new PdfAConversionService.ResultatPdfA(i.getArgument(0), null));
         when(storageService.uploadBytes(any(), anyString(), anyString())).thenAnswer(i -> i.getArgument(1));
@@ -201,13 +219,16 @@ class ProcesVerbalEliminationIntegrationTest
     }
 
     @Test
-    void unPvParUoEtParJour_rattacheAuxPierresTombales_typeSystemeConserver_sansTitre_etNonRegenere() throws Exception
+    void unPvParUoEtParJour_avecTitres_accesRestreint_typeSystemeConserver_etNonRegenere() throws Exception
     {
         UniteOrganisationnelle uo1 = uo("UO-Un");
         UniteOrganisationnelle uo2 = uo("UO-Deux");
         User ed = utilisateur("pv@test.local");
         TypeDocument t1 = type(uo1, ed, "Facture");
         TypeDocument t2 = type(uo2, ed, "Contrat");
+        User responsable = utilisateur("responsable@test.local");
+        when(uniteOrganisationnelleService.getAdminUOAvecAutoriteSur(uo1.getId())).thenReturn(List.of(responsable));
+        when(uniteOrganisationnelleService.getAdminUOAvecAutoriteSur(uo2.getId())).thenReturn(List.of());
 
         Document a = pierreTombale(uo1, t1, ed, "CV de Mamadou Diop.pdf", MotifSuppression.FIN_DE_VIE, null);
         Document b = pierreTombale(uo1, t1, ed, "Relevé secret.pdf", MotifSuppression.ERREUR_ARCHIVAGE, ed);
@@ -225,17 +246,24 @@ class ProcesVerbalEliminationIntegrationTest
         assertThat(pv.getStatus()).isEqualTo(DocumentStatus.ACTIVE);
         assertThat(pv.getRetentionUntil()).isNull();                       // jamais d'échéance
         assertThat(pv.getUniteOrganisationnelle().getId()).isEqualTo(uo1.getId());
-        assertThat(pv.getPkiSignature()).isNull();                         // horodaté, pas signé
         assertThat(pv.getUploadedBy().getId())
             .isEqualTo(userRepository.findByEmail(UtilisateurSystemeService.EMAIL).orElseThrow().getId());
         assertThat(pv.getTitre()).contains("2 documents");
+
+        // Le PV reproduit des titres : accès restreint aux responsables de l'UO (jamais public dans l'UO)
+        assertThat(pv.getAccess()).isEqualTo(TypeAccess.PRIVE);
+        assertThat(pv.getGroupe()).isNotNull();
+        List<String> emailsDuGroupe = new org.springframework.transaction.support.TransactionTemplate(transactionManager)
+            .execute(status -> groupeAccessRepository.findById(pv.getGroupe().getId()).orElseThrow()
+                .getMembres().stream().map(User::getEmail).toList());
+        assertThat(emailsDuGroupe).containsExactly("responsable@test.local");
 
         TypeDocument typePv = typeDocumentRepository.findById(pv.getTypeDocument().getId()).orElseThrow();
         assertThat(typePv.isSysteme()).isTrue();
         assertThat(typePv.getRetention().getSortFinal()).isEqualTo(SortFinal.CONSERVER);
         assertThat(typePv.getRetention().getRetentionYears()).isNull();
 
-        // Le PDF archivé : identifiants, motifs et auteur — jamais les titres
+        // Le PDF archivé : titre et informations de chaque document, motifs et auteur
         ArgumentCaptor<byte[]> pdfSource = ArgumentCaptor.forClass(byte[].class);
         verify(pdfAConversionService, times(2)).convertirEtVerifier(pdfSource.capture(), anyString());
         String texte;
@@ -245,9 +273,17 @@ class ProcesVerbalEliminationIntegrationTest
         }
         assertThat(texte).contains(a.getId().toString(), b.getId().toString(), "fin de vie du document",
             "erreur d'archivage", "le système (suppression automatique)", "pv@test.local");
-        assertThat(texte).doesNotContain("Mamadou").doesNotContain("secret");
+        assertThat(texte).contains("CV de Mamadou Diop.pdf", "Relevé secret.pdf").doesNotContain("Autre UO.pdf");
+
+        // Indexé avec les titres, pour retrouver le PV à partir du document qu'il concerne
+        ArgumentCaptor<String> texteIndexe = ArgumentCaptor.forClass(String.class);
+        verify(meilisearchService, times(2)).indexDocument(any(), texteIndexe.capture(), any());
+        assertThat(texteIndexe.getAllValues().get(0)).contains("CV de Mamadou Diop.pdf", "Relevé secret.pdf");
 
         verify(horodatageService, times(2)).horodaterApresUpload(any());
+        // Chaque PV est scellé par la clé du système (pas d'éditeur) et copié dans le bucket de preuves
+        verify(preuveIntegriteService, times(2)).scellerParLeSysteme(any());
+        verify(manifestePreuveService, times(2)).ecrire(any());
         verify(auditLogService, times(2)).log(any(), eq(made.archive.entite.AuditAction.PV_ELIMINATION_GENERE),
             any(), anyString(), any(), anyString(), eq(true), any());
         verify(auditLogService, times(3)).log(any(), eq(made.archive.entite.AuditAction.DOCUMENT_INCLUS_PV_ELIMINATION),

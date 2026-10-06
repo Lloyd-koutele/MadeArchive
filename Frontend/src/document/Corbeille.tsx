@@ -45,11 +45,12 @@ function formatDate(iso: string | null | undefined): string {
  * par le serveur (403), mais autant ne pas l'afficher pour ce qu'il ne peut
  * pas faire.
  */
-function Corbeille() {
+function Corbeille({ lectureSeule = false }: { lectureSeule?: boolean } = {}) {
     const notify = useNotify();
     const confirm = useConfirm();
     const demanderMotif = useDemandeMotif();
-    const peutRestaurer = hasRole('EDITOR');
+    // Vue d'administration (lectureSeule) : aucun bouton de gestion, même pour un compte également ÉDITEUR.
+    const peutRestaurer = !lectureSeule && hasRole('EDITOR');
 
     const [documents, setDocuments] = useState<DocumentListItemDto[]>([]);
     const [total, setTotal]         = useState(0);
@@ -123,7 +124,9 @@ function Corbeille() {
         setIsLoading(true);
         try {
             const result = await getDocumentsCorbeille(p, 10);
-            setDocuments(result.content);
+            setDocuments(lectureSeule
+                ? result.content.map(d => ({ ...d, peutGererCorbeille: false, peutBloquerElimination: false, peutDebloquerElimination: false, peutSupprimerDefinitivement: false }))
+                : result.content);
             setTotal(result.totalElements);
             setTotalPages(result.totalPages);
             setPage(p);

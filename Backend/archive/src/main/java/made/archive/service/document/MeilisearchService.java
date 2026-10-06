@@ -9,12 +9,19 @@ import made.archive.config.MeilisearchProperties;
 import made.archive.dto.MeilisearchDocumentDto;
 import made.archive.entite.DataType;
 import made.archive.entite.Document;
+import made.archive.entite.DocumentStatus;
 import made.archive.util.DocumentVersionLabels;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.UUID;
 import java.util.Map;
 import java.util.Objects;
 import com.meilisearch.sdk.Client;
@@ -239,6 +246,128 @@ public class MeilisearchService
         {
             log.error("[Meilisearch] Échec mise à jour classement {} : {}", document.getId(), e.getMessage());
         }
+    }
+
+    /** Taille maximale d'un lot de mises à jour partielles envoyé à Meilisearch. */
+    private static final int TAILLE_LOT_MISE_A_JOUR = 500;
+
+    /**
+     * Resynchronise dans l'index TOUS les champs d'un document qui ne dépendent que de la base (titre, type,
+     * statut, confidentialité, groupe, échéance de rétention, libellé de version) — et, si fournies, ses
+     * valeurs de métadonnées. C'est le point d'entrée unique à appeler après n'importe quelle modification
+     * d'un document : un champ non touché est simplement réécrit avec sa valeur courante, donc il n'y a plus
+     * à choisir "quelle" mise à jour partielle appeler (voir updateDocumentStatus / updateDocumentAccess /
+     * updateDocumentClassement, qui ne couvrent chacune qu'une partie des champs).
+     *
+     * Le texte OCR n'est jamais renvoyé : il ne change pas lors d'une modification (PUT fusionne les champs
+     * fournis dans le document déjà indexé). Les documents CORRUPTED / DELETED ne sont jamais envoyés : ils
+     * ont été retirés de l'index (voir FixityCheckService, DocumentRetentionService) et un PUT partiel les y
+     * recréerait comme une entrée fantôme réduite à quelques champs.
+     *
+     * L'envoi n'a lieu qu'APRÈS le commit de la transaction en cours (s'il y en a une) : l'index n'est jamais
+     * modifié par une transaction finalement annulée. Les valeurs sont figées ICI, pendant que la session
+     * Hibernate est encore ouverte — l'envoi différé ne touche plus à aucune relation LAZY. Best-effort : un
+     * échec est logué, la base reste la source de vérité.
+     *
+     * @param metaDataValues valeurs de métadonnées à jour, ou null pour ne pas toucher à celles de l'index
+     */
+    public void synchroniserDocument(Document document, List<String> metaDataValues)
+    {
+        if (document == null || document.getId() == null
+            || document.getStatus() == DocumentStatus.DELETED || document.getStatus() == DocumentStatus.CORRUPTED)
+        {
+            return;
+        }
+
+        Map<String, Object> miseAJour = new HashMap<>();
+        miseAJour.put("id", document.getId().toString());
+        miseAJour.put("titre", document.getTitre());
+        miseAJour.put("typeDocument", document.getTypeDocument().getNom());
+        miseAJour.put("typeDocumentId", document.getTypeDocument().getId());
+        miseAJour.put("status", document.getStatus().name());
+        miseAJour.put("access", document.getAccess().name());
+        // Explicitement null (jamais omis) : un champ omis resterait inchangé côté Meilisearch.
+        miseAJour.put("groupeId", document.getGroupe() != null ? document.getGroupe().getId().toString() : null);
+        miseAJour.put("retentionUntil", document.getRetentionUntil() != null
+            ? document.getRetentionUntil().toString() : null);
+        miseAJour.put("versionLabel", DocumentVersionLabels.compute(document));
+        if (metaDataValues != null)
+        {
+            miseAJour.put("metaDataValues", List.copyOf(metaDataValues));
+        }
+
+        appliquerApresCommit(List.of(miseAJour), "document " + document.getId());
+    }
+
+    /**
+     * Répercute le renommage d'un type de document sur tous ses documents indexés : le nom du type est
+     * recherchable en texte libre (voir indexDocument), il serait sinon périmé pour chacun d'eux. Même
+     * mécanique que synchroniserDocument (envoi après commit, par lots, best-effort).
+     *
+     * @param idsDocuments documents du type à mettre à jour (hors DELETED / CORRUPTED, absents de l'index)
+     */
+    public void mettreAJourTypeDocument(Long typeDocumentId, String nomType, Collection<UUID> idsDocuments)
+    {
+        if (idsDocuments == null || idsDocuments.isEmpty())
+        {
+            return;
+        }
+
+        List<Map<String, Object>> miseAJour = new ArrayList<>(idsDocuments.size());
+        for (UUID id : idsDocuments)
+        {
+            Map<String, Object> m = new HashMap<>();
+            m.put("id", id.toString());
+            m.put("typeDocument", nomType);
+            m.put("typeDocumentId", typeDocumentId);
+            miseAJour.add(m);
+        }
+
+        appliquerApresCommit(miseAJour, idsDocuments.size() + " document(s) du type " + typeDocumentId);
+    }
+
+    private void appliquerApresCommit(List<Map<String, Object>> miseAJour, String contexte)
+    {
+        if (TransactionSynchronizationManager.isSynchronizationActive())
+        {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization()
+            {
+                @Override
+                public void afterCommit()
+                {
+                    envoyerMisesAJour(miseAJour, contexte);
+                }
+            });
+        }
+        else
+        {
+            envoyerMisesAJour(miseAJour, contexte);
+        }
+    }
+
+    private void envoyerMisesAJour(List<Map<String, Object>> miseAJour, String contexte)
+    {
+        for (int debut = 0; debut < miseAJour.size(); debut += TAILLE_LOT_MISE_A_JOUR)
+        {
+            List<Map<String, Object>> lot = miseAJour.subList(
+                debut, Math.min(debut + TAILLE_LOT_MISE_A_JOUR, miseAJour.size()));
+            try
+            {
+                buildAdminClient().put()
+                    .uri("/indexes/" + INDEX_NAME + "/documents")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(objectMapper.writeValueAsString(lot))
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+            }
+            catch (Exception e)
+            {
+                log.error("[Meilisearch] Échec resynchronisation ({}) : {}", contexte, e.getMessage());
+                return;
+            }
+        }
+        log.info("[Meilisearch] Resynchronisé : {}", contexte);
     }
 
     public void deleteDocument(String documentId)

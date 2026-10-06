@@ -153,6 +153,23 @@ public class Document
     private String pkiSignature;
 
     /**
+     * Signature, par une clé du HSM, de l'ENREGISTREMENT canonique de ce document (identifiant, SHA-256 PDF/A et
+     * original, UO, version, date de création, clé de stockage — voir service.integrite.PreuveIntegriteService).
+     * Complète pkiSignature, qui ne couvre que pdfaSha256. Écrite une seule fois (déclencheur en base).
+     */
+    @Column(name = "signature_enregistrement", columnDefinition = "TEXT")
+    private String signatureEnregistrement;
+
+    /** Alias HSM de la clé qui a signé l'enregistrement (clé de l'éditeur, ou clé système pour les documents
+     *  produits par le système et les scellements de rattrapage). */
+    @Column(name = "signature_enregistrement_alias", length = 100)
+    private String signatureEnregistrementAlias;
+
+    /** Lot d'ancrage (AncrageCatalogue) dans lequel ce document est entré — null tant qu'il n'est pas ancré. */
+    @Column(name = "ancrage_id")
+    private Long ancrageId;
+
+    /**
      * Jeton d'horodatage RFC 3161 (TimeStampToken, encodage DER brut) obtenu
      * auprès d'une autorité d'horodatage (TSA) sur pdfaSha256 — voir
      * HorodatageService. Preuve tierce indépendante de la BD elle-même que

@@ -148,6 +148,15 @@ public enum AuditAction
     /** Mention, dans le journal d'un document éliminé, du PV qui l'inclut (cible : le document). */
     DOCUMENT_INCLUS_PV_ELIMINATION,
 
+    // ── Preuves d'intégrité (voir service.integrite) ─────────────────────────────
+    /** Le fichier est conforme à sa signature d'origine mais l'enregistrement en base (empreinte, signature,
+     *  jeton...) a été modifié hors de l'application. */
+    DOCUMENT_PREUVE_ALTEREE,
+    /** Ancrage quotidien du catalogue : racine de Merkle signée et horodatée. */
+    CATALOGUE_ANCRE,
+    /** La vérification d'un ancrage ou des scellements du journal a trouvé une incohérence. */
+    CATALOGUE_ANCRAGE_ROMPU,
+
     // ── Plan de classement (voir entite.PlanClassementNoeud) ───────────────────
     PLAN_CLASSEMENT_NOEUD_CREE,
     PLAN_CLASSEMENT_NOEUD_MODIFIE,

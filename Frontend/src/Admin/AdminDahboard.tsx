@@ -631,7 +631,7 @@ function AdminDashboard() {
                             )}
 
                             {tab === 'corbeille' && (
-                                <Corbeille />
+                                <Corbeille lectureSeule />
                             )}
 
                             {tab === 'journal' && <AuditLogPanel />}
