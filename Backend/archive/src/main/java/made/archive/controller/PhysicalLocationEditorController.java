@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import lombok.extern.slf4j.Slf4j;
 import made.archive.dto.PhysicalLocationArborescenceRequestDto;
 import made.archive.dto.PhysicalLocationCreateDto;
 import made.archive.dto.PhysicalLocationTreeNodeDto;
@@ -47,6 +48,7 @@ import made.archive.service.organisation.PhysicalLocationService;
  *
  * Base : /api/editor/physical-locations
  */
+@Slf4j
 @RestController
 @RequestMapping("/api/editor/physical-locations")
 public class PhysicalLocationEditorController
@@ -75,6 +77,10 @@ public class PhysicalLocationEditorController
         {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
+        catch (Exception e)
+        {
+            return erreurInattendue(e);
+        }
     }
 
     @Secured("ROLE_EDITOR")
@@ -93,6 +99,10 @@ public class PhysicalLocationEditorController
         catch (BusinessException e)
         {
             return ResponseEntity.badRequest().body(e.getMessage());
+        }
+        catch (Exception e)
+        {
+            return erreurInattendue(e);
         }
     }
 
@@ -114,6 +124,10 @@ public class PhysicalLocationEditorController
         {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
+        catch (Exception e)
+        {
+            return erreurInattendue(e);
+        }
     }
 
     @Secured("ROLE_EDITOR")
@@ -133,6 +147,10 @@ public class PhysicalLocationEditorController
         catch (BusinessException e)
         {
             return ResponseEntity.badRequest().body(e.getMessage());
+        }
+        catch (Exception e)
+        {
+            return erreurInattendue(e);
         }
     }
 
@@ -154,6 +172,10 @@ public class PhysicalLocationEditorController
         {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
+        catch (Exception e)
+        {
+            return erreurInattendue(e);
+        }
     }
 
     @Secured("ROLE_EDITOR")
@@ -173,6 +195,10 @@ public class PhysicalLocationEditorController
         catch (BusinessException e)
         {
             return ResponseEntity.badRequest().body(e.getMessage());
+        }
+        catch (Exception e)
+        {
+            return erreurInattendue(e);
         }
     }
 
@@ -194,6 +220,10 @@ public class PhysicalLocationEditorController
         catch (BusinessException e)
         {
             return ResponseEntity.badRequest().body(e.getMessage());
+        }
+        catch (Exception e)
+        {
+            return erreurInattendue(e);
         }
     }
 
@@ -219,6 +249,10 @@ public class PhysicalLocationEditorController
         {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
+        catch (Exception e)
+        {
+            return erreurInattendue(e);
+        }
     }
 
     @Secured("ROLE_EDITOR")
@@ -238,6 +272,10 @@ public class PhysicalLocationEditorController
         {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
+        catch (Exception e)
+        {
+            return erreurInattendue(e);
+        }
     }
 
     @Secured("ROLE_EDITOR")
@@ -256,6 +294,10 @@ public class PhysicalLocationEditorController
         catch (BusinessException e)
         {
             return ResponseEntity.badRequest().body(e.getMessage());
+        }
+        catch (Exception e)
+        {
+            return erreurInattendue(e);
         }
     }
 
@@ -277,5 +319,17 @@ public class PhysicalLocationEditorController
         {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
+        catch (Exception e)
+        {
+            return erreurInattendue(e);
+        }
+    }
+
+    /** Filet de sécurité : toute erreur imprévue est journalisée et renvoyée proprement (500 + message), jamais propagée
+     *  telle quelle à l'utilisateur ni laissée faire échouer la requête sans réponse exploitable. */
+    private ResponseEntity<?> erreurInattendue(Exception e)
+    {
+        log.error("[Emplacements] Erreur inattendue : {}", e.getMessage(), e);
+        return ResponseEntity.status(500).body("Erreur interne lors du traitement de l'emplacement — réessayez ou contactez un administrateur");
     }
 }

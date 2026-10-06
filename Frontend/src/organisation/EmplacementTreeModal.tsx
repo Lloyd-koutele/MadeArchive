@@ -126,10 +126,11 @@ function versRequeteNode(n: DraftNode): PhysicalLocationTreeNodeDto {
         id: n.id,
         name: n.name.trim(),
         storagePoint: n.storagePoint,
-        capaciteMax: n.capaciteMax,
-        modeContrainte: n.modeContrainte,
-        typeDocumentId: n.typeDocumentId,
-        dossierId: n.dossierId,
+        // Un nœud chemin n'a ni capacité ni contrainte : rien de résiduel n'est envoyé.
+        capaciteMax: n.storagePoint ? n.capaciteMax : null,
+        modeContrainte: n.storagePoint ? n.modeContrainte : 'LIBRE',
+        typeDocumentId: n.storagePoint ? n.typeDocumentId : null,
+        dossierId: n.storagePoint ? n.dossierId : null,
         children: n.children.map(versRequeteNode),
     };
 }
@@ -145,6 +146,8 @@ interface EmplacementTreeModalProps {
     parentLabel?: string | null;
     /** mode="update" — nœud cliqué + sa descendance actuelle (déjà en mémoire, pas de re-fetch de l'arbre). */
     existingNode?: PhysicalLocationNodeDto;
+    /** mode="update" — true si le nœud modifié est une racine de l'UO (sans parent) : elle reste toujours un nœud chemin. */
+    existingEstRacine?: boolean;
     /** mode="update" uniquement — raccourcis "Capacité"/"Choisir" affichés sur
      *  CHAQUE nœud EXISTANT de l'organigramme (racine ET descendants —
      *  capacité/contrainte ne sont pas éditables en brouillon pour un nœud
@@ -183,7 +186,7 @@ interface EmplacementTreeModalProps {
  *   modifient via les raccourcis dédiés (onEditCapacite/onEditContrainte),
  *   jamais en brouillon ici (voir EmplacementNodeCard).
  */
-function EmplacementTreeModal({ isOpen, onClose, uoId, mode, parentId = null, parentLabel = null, existingNode, onEditCapacite, onEditContrainte, onSaved }: EmplacementTreeModalProps) {
+function EmplacementTreeModal({ isOpen, onClose, uoId, mode, parentId = null, parentLabel = null, existingNode, existingEstRacine = false, onEditCapacite, onEditContrainte, onSaved }: EmplacementTreeModalProps) {
     const notify = useNotify();
     const [root, setRoot] = useState<DraftNode | null>(null);
     const [saving, setSaving] = useState(false);
@@ -296,6 +299,7 @@ function EmplacementTreeModal({ isOpen, onClose, uoId, mode, parentId = null, pa
                                 <EmplacementNodeCard
                                     node={root}
                                     isRoot
+                                    racineDeLUO={mode === 'create' ? parentId === null : existingEstRacine}
                                     uoId={uoId}
                                     typesUO={typesUO}
                                     aDesDossiers={aDesDossiers}
@@ -333,9 +337,11 @@ function EmplacementTreeModal({ isOpen, onClose, uoId, mode, parentId = null, pa
  * visible porte ses propres actions (+ enfant à côté du badge, supprimer si
  * applicable).
  */
-function EmplacementNodeCard({ node, isRoot, uoId, typesUO, aDesDossiers, onEditCapacite, onEditContrainte, focusedKey, onFocus, onPatch, onAddChild, onRemove }: {
+function EmplacementNodeCard({ node, isRoot, racineDeLUO = false, uoId, typesUO, aDesDossiers, onEditCapacite, onEditContrainte, focusedKey, onFocus, onPatch, onAddChild, onRemove }: {
     node: DraftNode;
     isRoot: boolean;
+    /** true si ce nœud est une racine de l'UO (pas seulement la racine du brouillon) : toujours un nœud chemin. */
+    racineDeLUO?: boolean;
     uoId: number;
     typesUO: TypeDocumentDto[];
     aDesDossiers: boolean;
@@ -364,7 +370,7 @@ function EmplacementNodeCard({ node, isRoot, uoId, typesUO, aDesDossiers, onEdit
     // arrière. Un nœud racine EXISTANT (mode="update") n'est pas concerné :
     // il a pu être créé avant cette règle, ou la règle serveur sur les
     // nœuds existants (changerTypeStockage) suffit déjà à le protéger.
-    const racineNouvelleVerrouillee = isRoot && !estExistant;
+    const racineNouvelleVerrouillee = isRoot && (!estExistant || racineDeLUO);
     const type = node.storagePoint ? 'stockage' : 'chemin';
     // Le changement de type d'un nœud EXISTANT part vers le serveur tout de
     // suite (voir Javadoc du composant) — ce spinner local évite un double
@@ -399,7 +405,11 @@ function EmplacementNodeCard({ node, isRoot, uoId, typesUO, aDesDossiers, onEdit
         if (racineNouvelleVerrouillee) return;
         if (!node.storagePoint && !peutDevenirStockage) return;
         if (!estExistant) {
-            onPatch(node.key, { storagePoint: !node.storagePoint });
+            // Repasser en chemin efface tout ce qui avait été réglé pour le stockage (capacité, contrainte) : un
+            // chemin n'en a pas, rien ne doit rester en arrière-plan.
+            onPatch(node.key, node.storagePoint
+                ? { storagePoint: false, capaciteMax: null, modeContrainte: 'LIBRE', typeDocumentId: null, dossierId: null }
+                : { storagePoint: true });
             return;
         }
         setConvertingType(true);

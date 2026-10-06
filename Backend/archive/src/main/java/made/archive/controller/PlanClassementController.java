@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import made.archive.dto.PlanClassementArbreRequestDto;
 import made.archive.dto.PlanClassementNoeudRequestDto;
 import made.archive.exception.AccessDeniedException;
@@ -28,6 +29,7 @@ import made.archive.service.organisation.PlanClassementService;
  * PhysicalLocationEditorController). L'autorité réelle (éditeur de CETTE UO)
  * est vérifiée dans PlanClassementService.
  */
+@Slf4j
 @RestController
 @RequestMapping("/api/editor/plan-classement")
 @RequiredArgsConstructor
@@ -118,6 +120,12 @@ public class PlanClassementController
         catch (BusinessException e)
         {
             return ResponseEntity.badRequest().body(java.util.Map.of("message", e.getMessage()));
+        }
+        catch (Exception e)
+        {
+            log.error("[PlanClassement] Erreur inattendue : {}", e.getMessage(), e);
+            return ResponseEntity.status(500).body(java.util.Map.of("message",
+                "Erreur interne lors du traitement du plan de classement — réessayez ou contactez un administrateur"));
         }
     }
 }
