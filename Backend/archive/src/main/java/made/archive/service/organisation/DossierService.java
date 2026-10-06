@@ -81,6 +81,7 @@ public class DossierService
     private final NotificationService              notificationService;
     private final AuditLogService                  auditLogService;
     private final MeilisearchService               meilisearchService;
+    private final made.archive.repository.PhysicalLocationRepository physicalLocationRepository;
 
     // ═══════════════════════════════════════════════════════════════════
     // Création
@@ -231,6 +232,12 @@ public class DossierService
         if (nom == null || nom.isBlank())
         {
             throw new BusinessException("Le nom du dossier est obligatoire");
+        }
+        // Le formulaire "Modifier" renvoie toujours le nom, même quand seuls les types attendus changent : le verrou
+        // ne s'applique que si le nom change réellement.
+        if (!nom.equals(dossier.getNom()))
+        {
+            verifierBrancheSansDocument(dossier, "renommer");
         }
 
         Long uoId = dossier.getUniteOrganisationnelle().getId();
@@ -538,6 +545,7 @@ public class DossierService
         {
             return dossier;
         }
+        verifierBrancheSansDocument(dossier, "déplacer");
 
         // Un déplacement peut faire atterrir le dossier parmi de nouveaux
         // frères/sœurs — même vérification qu'à la création, sur la MÊME UO
@@ -697,10 +705,34 @@ public class DossierService
             ? dossierRepository.findByParentIsNullAndUniteOrganisationnelleId(uoId)
             : dossierRepository.findByParentId(parentId);
 
-        return dossiers.stream()
+        List<Dossier> visibles = dossiers.stream()
             .filter(d -> d.getUniteOrganisationnelle().getId().equals(uoId))
             .filter(p -> estVisiblePour(p, currentUser, uoVisibles))
             .toList();
+        marquerBranchesVerrouillees(uoId, visibles);
+        return visibles;
+    }
+
+    /** Un dossier est verrouillé si lui ou l'un de ses descendants contient des documents — un seul passage pour toute l'UO. */
+    private void marquerBranchesVerrouillees(Long uoId, List<Dossier> dossiers)
+    {
+        if (dossiers.isEmpty()) return;
+        Set<Long> avecDocuments = new java.util.HashSet<>(documentRepository.findDossierIdsAvecDocumentsPourUo(uoId));
+        if (avecDocuments.isEmpty()) return;
+
+        // Un dossier avec documents verrouille tous ses ancêtres : on remonte la chaîne depuis chacun.
+        Map<Long, Dossier> parId = new HashMap<>();
+        dossierRepository.findByUniteOrganisationnelleId(uoId).forEach(d -> parId.put(d.getId(), d));
+        Set<Long> verrouilles = new java.util.HashSet<>();
+        for (Long id : avecDocuments)
+        {
+            for (Dossier d = parId.get(id); d != null && verrouilles.add(d.getId());
+                 d = d.getParent() != null ? parId.get(d.getParent().getId()) : null)
+            {
+                // remonte jusqu'à la racine
+            }
+        }
+        dossiers.forEach(d -> d.setVerrouille(verrouilles.contains(d.getId())));
     }
 
     /**
@@ -790,6 +822,7 @@ public class DossierService
             .peutGererTypes(peutGererDossier(dossier, currentUser))
             .peutGererAcces(dossier.getAccess() == TypeAccess.PRIVE && peutGererGroupeDossier(dossier.getGroupe(), currentUser.getId()))
             .peutModifierAcces(peutGererDossier(dossier, currentUser))
+            .verrouille(brancheAvecDocuments(dossier))
             .build();
     }
 
@@ -934,34 +967,87 @@ public class DossierService
 
         verifierPeutGererDossier(dossier, acteur);
 
-        if (documentRepository.existsByDossierId(dossierId))
+        // Le dossier part AVEC toute sa sous-arborescence — à condition qu'aucun document n'y soit classé (nulle part
+        // dans la branche) et qu'aucun emplacement physique n'attende un de ces dossiers.
+        List<Dossier> branche = brancheDe(dossier);
+        Set<Long> ids = branche.stream().map(Dossier::getId).collect(java.util.stream.Collectors.toSet());
+
+        if (documentRepository.existsByDossierIdIn(ids))
         {
-            throw new BusinessException("Impossible de supprimer un dossier contenant des documents");
+            throw new BusinessException("Impossible de supprimer ce dossier : des documents sont classés dedans"
+                + (ids.size() > 1 ? " ou dans l'un de ses sous-dossiers" : ""));
         }
-        if (dossierRepository.existsByParentId(dossierId))
+        if (physicalLocationRepository.existsByDossierIdIn(ids))
         {
-            throw new BusinessException("Impossible de supprimer un dossier contenant des sous-dossiers");
+            throw new BusinessException("Impossible de supprimer ce dossier : des emplacements physiques "
+                + "n'acceptent que ce dossier (ou l'un de ses sous-dossiers)");
         }
 
         Long uoId = dossier.getUniteOrganisationnelle().getId();
         String nom = dossier.getNom();
-        GroupeAccess groupe = dossier.getGroupe();
 
-        dossierRepository.delete(dossier);
-
-        // Le groupe d'accès du dossier devient orphelin : aucun document ne peut
-        // le référencer puisque le dossier vient de refuser sa suppression s'il
-        // en avait (voir ci-dessus) — le seul moyen pour un document de
-        // partager ce groupe est justement d'appartenir à ce dossier.
-        if (groupe != null)
+        // Les feuilles d'abord : la clé étrangère parent_id interdit de supprimer un parent encore référencé.
+        // Le groupe d'accès de chaque dossier devient orphelin (aucun document ne peut le référencer, voir ci-dessus).
+        for (Dossier d : branche)
         {
-            groupeAccessRepository.delete(groupe);
+            GroupeAccess groupe = d.getGroupe();
+            dossierRepository.delete(d);
+            dossierRepository.flush();
+            if (groupe != null)
+            {
+                groupeAccessRepository.delete(groupe);
+            }
         }
 
-        log.info("[Dossier] '{}' supprimé (UO {}) par {}", nom, uoId, acteur.getEmail());
+        log.info("[Dossier] '{}' supprimé avec {} sous-dossier(s) (UO {}) par {}", nom, ids.size() - 1, uoId, acteur.getEmail());
 
         auditLogService.log(acteur, AuditAction.DOSSIER_SUPPRIME, AuditCible.DOSSIER,
-            dossierId.toString(), uoId, "Suppression du dossier " + nom, true);
+            dossierId.toString(), uoId, "Suppression du dossier " + nom
+                + (ids.size() > 1 ? " avec ses " + (ids.size() - 1) + " sous-dossier(s)" : ""), true);
+    }
+
+    /** Le dossier et tous ses descendants, FEUILLES D'ABORD (ordre sûr pour une suppression). */
+    private List<Dossier> brancheDe(Dossier racine)
+    {
+        Map<Long, List<Dossier>> enfants = new HashMap<>();
+        for (Dossier d : dossierRepository.findByUniteOrganisationnelleId(racine.getUniteOrganisationnelle().getId()))
+        {
+            if (d.getParent() != null)
+            {
+                enfants.computeIfAbsent(d.getParent().getId(), k -> new java.util.ArrayList<>()).add(d);
+            }
+        }
+        List<Dossier> ordre = new java.util.ArrayList<>();
+        java.util.ArrayDeque<Dossier> pile = new java.util.ArrayDeque<>();
+        pile.push(racine);
+        Set<Long> vus = new java.util.HashSet<>();
+        while (!pile.isEmpty())
+        {
+            Dossier d = pile.pop();
+            if (!vus.add(d.getId())) continue;
+            ordre.add(d);
+            enfants.getOrDefault(d.getId(), List.of()).forEach(pile::push);
+        }
+        java.util.Collections.reverse(ordre);   // parents d'abord → feuilles d'abord
+        return ordre;
+    }
+
+    /** Refuse de renommer/déplacer un dossier dont la branche (lui ou un descendant) contient des documents. */
+    private void verifierBrancheSansDocument(Dossier dossier, String action)
+    {
+        Set<Long> ids = brancheDe(dossier).stream().map(Dossier::getId).collect(java.util.stream.Collectors.toSet());
+        if (documentRepository.existsByDossierIdIn(ids))
+        {
+            throw new BusinessException("Impossible de " + action + " ce dossier : des documents sont classés dedans"
+                + (ids.size() > 1 ? " ou dans l'un de ses sous-dossiers" : ""));
+        }
+    }
+
+    /** true si ce dossier ou l'un de ses descendants contient des documents. */
+    private boolean brancheAvecDocuments(Dossier dossier)
+    {
+        return documentRepository.existsByDossierIdIn(
+            brancheDe(dossier).stream().map(Dossier::getId).collect(java.util.stream.Collectors.toSet()));
     }
 
     // ═══════════════════════════════════════════════════════════════════

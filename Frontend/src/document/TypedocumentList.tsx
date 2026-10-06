@@ -5,6 +5,8 @@ import { getTypeDocumentsByUOEditor, deleteTypeDocument, deleteTypeDocumentList 
 import type { TypeDocumentDto } from '../services/document/TypedocumentService';
 import TypeDocumentDetail from './Typedocumentdetail';
 import UpdateTypeDocument from './Updatetypedocument';
+import { positionSousElement } from '../components/ancrageMenu';
+import type { PositionMenu } from '../components/ancrageMenu';
 import Modal from '../Page/Modal';
 import { useNotify } from '../notifications/NotificationProvider';
 import { useConfirm } from '../notifications/ConfirmProvider';
@@ -40,7 +42,7 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
     // cocher, pas de "mode" à activer/désactiver, pas de glisser-déposer.
     const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
     const [isLoading, setIsLoading] = useState(true);
-    const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+    const [contextMenu, setContextMenu] = useState<PositionMenu | null>(null);
 
     // Vue liste (tableau) / grille (cartes) — même bascule que côté éditeur
     // pour les documents (voir document/DocumentsAccessible.tsx), adaptée ici
@@ -127,7 +129,19 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
         if (!selectedIds.has(id)) {
             setSelectedIds(new Set([id]));
         }
-        setContextMenu({ x: e.clientX, y: e.clientY });
+        // Ancré à la carte/ligne cliquée (comme son menu "..."), pas au curseur.
+        setContextMenu(positionSousElement(e.currentTarget as HTMLElement, 130));
+    };
+
+    /** "Modifier" du menu contextuel — une seule sélection : ouvre le formulaire de ce type. */
+    const handleContextMenuModifier = () => {
+        setContextMenu(null);
+        const [id] = [...selectedIds];
+        const td = typeDocuments.find(t => t.id === id);
+        if (selectedIds.size === 1 && td) {
+            setEditingTd(td);
+            setIsUpdateModalOpen(true);
+        }
     };
 
     const executerSuppression = async (cible: TypeDocumentDto | 'selection') => {
@@ -298,11 +312,17 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
             onContextMenu={e => { e.preventDefault(); setContextMenu(null); }}
         >
             <div
-                className="dossier-context-menu"
-                style={{ top: contextMenu.y, left: contextMenu.x }}
+                className="dossier-context-menu doc-context-menu dossier-context-menu-anchored"
+                style={{ top: contextMenu.top, bottom: contextMenu.bottom, left: contextMenu.left }}
                 onClick={e => e.stopPropagation()}
             >
-                <button type="button" onClick={handleContextMenuSupprimer} disabled={deleteInProgress}>
+                {selectedIds.size === 1 && (
+                    <button type="button" onClick={handleContextMenuModifier}>
+                        <i className="fa-solid fa-pen" />
+                        Modifier
+                    </button>
+                )}
+                <button type="button" className="danger" onClick={handleContextMenuSupprimer} disabled={deleteInProgress}>
                     <i className="fa-solid fa-trash" />
                     Supprimer{selectedIds.size > 1 ? ` (${selectedIds.size})` : ''}
                 </button>

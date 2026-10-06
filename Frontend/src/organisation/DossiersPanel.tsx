@@ -25,6 +25,8 @@ import {
     downloadPdfA,
 } from '../services/document/DocumentService';
 import type { UserDto, DocumentListItemDto, DocumentDetailDto, BulkUploadReportDto } from '../services/document/DocumentService';
+import { positionSousElement } from '../components/ancrageMenu';
+import type { PositionMenu } from '../components/ancrageMenu';
 import Modal from '../Page/Modal';
 import VersionBadge from '../document/VersionBadge';
 import GestionGroupeDossier from './GestionGroupeDossier';
@@ -265,10 +267,10 @@ function DossiersPanel({ uoId, canCreate = true, initialDossierId = null, initia
         setModalMode('create');
     };
 
-    const ouvrirEdition = () => {
-        if (!dossierActif) return;
-        setNom(dossierActif.nom);
-        setSelectedTypeIds(dossierActif.typesAttendus.map(t => t.typeDocumentId));
+    const ouvrirEdition = (detail: DossierDetailDto | null = dossierActif) => {
+        if (!detail) return;
+        setNom(detail.nom);
+        setSelectedTypeIds(detail.typesAttendus.map(t => t.typeDocumentId));
         setFiltreTypeModal('');
         setModalMode('edit');
     };
@@ -528,15 +530,30 @@ function DossiersPanel({ uoId, canCreate = true, initialDossierId = null, initia
 
     // ── Menu contextuel (clic droit) — Supprimer la sélection courante, ou
     // juste le dossier cliqué s'il n'était pas déjà dans la sélection. ──────
-    const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+    const [contextMenu, setContextMenu] = useState<PositionMenu | null>(null);
 
+    // Ctrl+clic (sur Mac, c'est un clic droit) : le menu s'ouvre sur la carte cliquée, comme son menu "...", et non au
+    // curseur. Réservé à l'éditeur (canCreate) — en lecture seule (admin) aucun menu de gestion.
     const handleContextMenuDossier = (e: React.MouseEvent, dossierId: number) => {
         e.preventDefault();
+        if (!canCreate) return;
         if (!selectedDossierIds.has(dossierId)) {
             setSelectedDossierIds(new Set([dossierId]));
         }
-        setContextMenu({ x: e.clientX, y: e.clientY });
+        setContextMenu(positionSousElement(e.currentTarget as HTMLElement, 130));
     };
+
+    /** "Modifier" depuis le menu d'une carte — ouvre le dossier puis son formulaire de modification. */
+    const handleModifierSelection = () => {
+        setContextMenu(null);
+        const [id] = [...selectedDossierIds];
+        if (selectedDossierIds.size !== 1 || id === undefined) return;
+        ouvrirDossier(id, detail => ouvrirEdition(detail));
+    };
+
+    /** Un dossier de la sélection (niveau affiché) est verrouillé : lui ou un descendant contient des documents. */
+    const selectionVerrouillee = [...selectedDossierIds].some(id =>
+        [...dossiers, ...sousDossiers].find(d => d.id === id)?.verrouille);
 
     const handleSupprimerSelection = async () => {
         setContextMenu(null);
@@ -545,8 +562,8 @@ function DossiersPanel({ uoId, canCreate = true, initialDossierId = null, initia
 
         if (!(await confirm({
             message: ids.length === 1
-                ? 'Supprimer définitivement ce dossier ?'
-                : `Supprimer définitivement ces ${ids.length} dossiers ?`,
+                ? 'Supprimer définitivement ce dossier et tous ses sous-dossiers ?'
+                : `Supprimer définitivement ces ${ids.length} dossiers et tous leurs sous-dossiers ?`,
             danger: true,
         }))) {
             return;
@@ -574,8 +591,8 @@ function DossiersPanel({ uoId, canCreate = true, initialDossierId = null, initia
             notify.success(succes > 1 ? `${succes} dossiers supprimés avec succès` : 'Dossier supprimé avec succès');
         } else {
             notify.error(
-                `${succes} dossier(s) supprimé(s), ${echecs} échec(s) — un dossier non vide `
-                + '(sous-dossiers ou documents) ne peut pas être supprimé'
+                `${succes} dossier(s) supprimé(s), ${echecs} échec(s) — un dossier dont la branche `
+                + 'contient des documents ne peut pas être supprimé'
             );
         }
     };
@@ -814,7 +831,7 @@ function DossiersPanel({ uoId, canCreate = true, initialDossierId = null, initia
 
     /** Déclenché depuis la modale "Modifier" (voir modalCreationEdition) — ferme la modale dans tous les cas. */
     const handleSupprimer = async (id: number, nomDossier: string) => {
-        if (!(await confirm({ message: `Supprimer définitivement le dossier "${nomDossier}" ?`, danger: true }))) return;
+        if (!(await confirm({ message: `Supprimer définitivement le dossier "${nomDossier}" et tous ses sous-dossiers ?`, danger: true }))) return;
         try {
             await supprimerDossier(id);
             fermerModal();
@@ -976,6 +993,9 @@ function DossiersPanel({ uoId, canCreate = true, initialDossierId = null, initia
                     placeholder="Nom du dossier *"
                     value={nom}
                     onChange={e => setNom(e.target.value)}
+                    disabled={modalMode === 'edit' && !!dossierActif?.verrouille}
+                    title={modalMode === 'edit' && dossierActif?.verrouille
+                        ? 'Des documents sont classés dans ce dossier ou l\'un de ses sous-dossiers : il ne peut plus être renommé' : undefined}
                 />
                 {/* Bascule PUBLIC ↔ PRIVÉ après coup — déplacée ici depuis la barre
                     d'outils (revu le 09/2026) : n'a de sens qu'en modification,
@@ -1136,6 +1156,9 @@ function DossiersPanel({ uoId, canCreate = true, initialDossierId = null, initia
                             type="button"
                             className="dossiers-delete-btn"
                             onClick={() => handleSupprimer(dossierActif.id, dossierActif.nom)}
+                            disabled={dossierActif.verrouille}
+                            title={dossierActif.verrouille
+                                ? 'Des documents sont classés dans ce dossier ou l\'un de ses sous-dossiers' : undefined}
                         >
                             <i className="fa-solid fa-trash" /> Supprimer
                         </button>
@@ -1156,11 +1179,25 @@ function DossiersPanel({ uoId, canCreate = true, initialDossierId = null, initia
             onContextMenu={e => { e.preventDefault(); setContextMenu(null); }}
         >
             <div
-                className="dossier-context-menu"
-                style={{ top: contextMenu.y, left: contextMenu.x }}
+                className="dossier-context-menu doc-context-menu dossier-context-menu-anchored"
+                style={{ top: contextMenu.top, bottom: contextMenu.bottom, left: contextMenu.left }}
                 onClick={e => e.stopPropagation()}
             >
-                <button type="button" onClick={handleSupprimerSelection}>
+                {/* "Modifier" : une seule carte sélectionnée (pas de modification groupée). */}
+                {selectedDossierIds.size === 1 && (
+                    <button type="button" onClick={handleModifierSelection}>
+                        <i className="fa-solid fa-pen" />
+                        Modifier
+                    </button>
+                )}
+                <button
+                    type="button"
+                    className="danger"
+                    onClick={handleSupprimerSelection}
+                    disabled={selectionVerrouillee}
+                    title={selectionVerrouillee
+                        ? 'Des documents sont classés dans ce dossier ou l\'un de ses sous-dossiers' : undefined}
+                >
                     <i className="fa-solid fa-trash" />
                     Supprimer{selectedDossierIds.size > 1 ? ` (${selectedDossierIds.size})` : ''}
                 </button>
@@ -1472,7 +1509,7 @@ function DossiersPanel({ uoId, canCreate = true, initialDossierId = null, initia
                     {peutGererTypes && (
                         <button
                             className="breadcrumb-edit-btn"
-                            onClick={ouvrirEdition}
+                            onClick={() => ouvrirEdition()}
                             aria-label="Modifier le dossier"
                             title="Modifier"
                         >
@@ -1583,7 +1620,7 @@ function DossiersPanel({ uoId, canCreate = true, initialDossierId = null, initia
                                 onClick={e => handleClickDossierCard(e, sd.id)}
                                 onContextMenuCarte={e => handleContextMenuDossier(e, sd.id)}
                                 isSelected={selectedDossierIds.has(sd.id)}
-                                draggable={canCreate}
+                                draggable={canCreate && !sd.verrouille}
                                 isDragging={idsEnCoursDeDeplacement().includes(sd.id)}
                                 isDragOver={dragOverDossierId === sd.id}
                                 onDragStartCarte={e => handleDragStartDossier(e, sd.id)}
@@ -1805,7 +1842,7 @@ function DossiersPanel({ uoId, canCreate = true, initialDossierId = null, initia
                             onClick={e => handleClickDossierCard(e, p.id)}
                             onContextMenuCarte={e => handleContextMenuDossier(e, p.id)}
                             isSelected={selectedDossierIds.has(p.id)}
-                            draggable={canCreate}
+                            draggable={canCreate && !p.verrouille}
                             isDragging={idsEnCoursDeDeplacement().includes(p.id)}
                             isDragOver={dragOverDossierId === p.id}
                             onDragStartCarte={e => handleDragStartDossier(e, p.id)}

@@ -31,6 +31,8 @@ export interface UserSummaryDto {
 export interface DossierDto {
     id: number;
     nom: string;
+    /** true si ce dossier ou l'un de ses sous-dossiers contient des documents : plus de renommage, déplacement ni suppression. */
+    verrouille?: boolean;
     creePar: UserSummaryDto;
     createAt: string;
 }
@@ -67,6 +69,8 @@ export interface DossierDetailDto {
     /** true si l'utilisateur connecté peut basculer PUBLIC ↔ PRIVÉ ce dossier
      *  (reste true même si le dossier est actuellement PUBLIC, contrairement à peutGererAcces). */
     peutModifierAcces: boolean;
+    /** true si ce dossier ou l'un de ses sous-dossiers contient des documents : plus de renommage, déplacement ni suppression. */
+    verrouille?: boolean;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

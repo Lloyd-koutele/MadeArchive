@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { positionSousElement } from '../components/ancrageMenu';
+import type { PositionMenu } from '../components/ancrageMenu';
 import Modal from '../Page/Modal';
 import GestionGroupe from '../document/GestionGroupe';
 import ImportDocuments from '../document/ImportDocuments';
@@ -159,7 +161,9 @@ function MesDocumentsEditor({
     // documents qui ne sont plus affichés (voir loadDocuments). ─────────────
     const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
     const [suppressionMasseEnCours, setSuppressionMasseEnCours] = useState(false);
-    const [contextMenu, setContextMenu] = useState<{ top: number; left: number; centre: boolean } | null>(null);
+    const [contextMenu, setContextMenu] = useState<PositionMenu | null>(null);
+    // "Modifier" du menu contextuel : ouvre le détail directement en édition des métadonnées.
+    const [metaEditAuto, setMetaEditAuto] = useState(false);
     const [isDeplacerOpen, setIsDeplacerOpen] = useState(false);
     const [isEmplacementModalOpen, setIsEmplacementModalOpen] = useState(false);
 
@@ -683,12 +687,8 @@ function MesDocumentsEditor({
             setSelectedDocIds(new Set([documentId]));
         }
         if (docsViewMode !== 'grid') return;
-        const tailleSelection = dejaSelectionne ? selectedDocIds.size : 1;
-        if (tailleSelection > 1) {
-            setContextMenu({ top: 0, left: 0, centre: true });
-        } else {
-            setContextMenu({ top: e.clientY, left: e.clientX, centre: false });
-        }
+        // Ancré à la carte cliquée (comme son menu "..."), pour une sélection unique comme multiple.
+        setContextMenu(positionSousElement(e.currentTarget as HTMLElement, 190));
     };
 
     const annulerSelection = () => {
@@ -973,10 +973,25 @@ function MesDocumentsEditor({
             onContextMenu={e => { e.preventDefault(); setContextMenu(null); }}
         >
             <div
-                className={`dossier-context-menu doc-context-menu ${contextMenu.centre ? 'dossier-context-menu-centre' : 'dossier-context-menu-anchored'}`}
-                style={contextMenu.centre ? undefined : { top: contextMenu.top, left: contextMenu.left }}
+                className="dossier-context-menu doc-context-menu dossier-context-menu-anchored"
+                style={{ top: contextMenu.top, bottom: contextMenu.bottom, left: contextMenu.left }}
                 onClick={e => e.stopPropagation()}
             >
+                {/* "Modifier" : un seul document sélectionné — ouvre son détail en édition des métadonnées. */}
+                {selectedDocIds.size === 1 && (
+                    <button
+                        type="button"
+                        disabled={docsSelectionnesGerables.length !== 1}
+                        onClick={() => {
+                            setContextMenu(null);
+                            setMetaEditAuto(true);
+                            openDetailById([...selectedDocIds][0]);
+                        }}
+                    >
+                        <i className="fa-solid fa-pen" />
+                        Modifier
+                    </button>
+                )}
                 <button
                     type="button"
                     disabled={docsSelectionnesGerables.length === 0}
@@ -995,6 +1010,7 @@ function MesDocumentsEditor({
                 </button>
                 <button
                     type="button"
+                    className="danger"
                     disabled={docsSelectionnesGerables.length === 0 || suppressionMasseEnCours}
                     onClick={() => { setContextMenu(null); handleEnvoyerCorbeilleMasse(); }}
                 >
@@ -1518,7 +1534,7 @@ function MesDocumentsEditor({
             {/* ── Modal détail ── */}
             <Modal
                 isOpen={isDetailOpen}
-                onClose={() => { setIsDetailOpen(false); setDetail(null); }}
+                onClose={() => { setIsDetailOpen(false); setDetail(null); setMetaEditAuto(false); }}
                 title="Détail du document"
             >
                 {detailLoading ? (
@@ -1537,6 +1553,8 @@ function MesDocumentsEditor({
                         attestationUrl={attestationUrl}
                         attestationLoading={attestationLoading}
                         onEmplacementChange={setDetail}
+                        demarrerEditionMeta={metaEditAuto}
+                        onEditionMetaDemarree={() => setMetaEditAuto(false)}
                     />
                 ) : (
                     <div className="td-empty"><p>Impossible de charger le détail.</p></div>
@@ -1625,6 +1643,8 @@ function DocumentDetailPanel({
     attestationUrl,
     attestationLoading,
     onEmplacementChange,
+    demarrerEditionMeta,
+    onEditionMetaDemarree,
 }: {
     detail: DocumentDetailDto;
     onSelectVersion?: (documentId: string) => void;
@@ -1636,6 +1656,8 @@ function DocumentDetailPanel({
     attestationUrl?: string | null;
     attestationLoading?: boolean;
     onEmplacementChange?: (updated: DocumentDetailDto) => void;
+    demarrerEditionMeta?: boolean;
+    onEditionMetaDemarree?: () => void;
 }) {
     const STATUS_LABELS: Record<string, string> = {
         ACTIVE: 'Actif', PENDING: 'En attente',
@@ -1781,6 +1803,8 @@ function DocumentDetailPanel({
                 detail={detail}
                 peutModifier={detail.peutModifierEmplacement}
                 onUpdated={onEmplacementChange}
+                demarrerEnEdition={demarrerEditionMeta}
+                onEditionDemarree={onEditionMetaDemarree}
             />
 
             <ReclasserSection detail={detail} onUpdated={onEmplacementChange} />
@@ -1916,10 +1940,15 @@ function MetaDataEditSection({
     detail,
     peutModifier,
     onUpdated,
+    demarrerEnEdition,
+    onEditionDemarree,
 }: {
     detail: DocumentDetailDto;
     peutModifier?: boolean;
     onUpdated?: (updated: DocumentDetailDto) => void;
+    /** Ouvre directement le formulaire (action "Modifier" du menu contextuel) — une seule fois. */
+    demarrerEnEdition?: boolean;
+    onEditionDemarree?: () => void;
 }) {
     const [editing, setEditing] = useState(false);
     const [typeDef, setTypeDef] = useState<TypeDocumentDto | null>(null);
@@ -1949,6 +1978,14 @@ function MetaDataEditSection({
             setLoadingType(false);
         }
     };
+
+    useEffect(() => {
+        if (demarrerEnEdition && peutModifier) {
+            ouvrirEdition();
+            onEditionDemarree?.();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const enregistrer = async () => {
         if (!typeDef) return;

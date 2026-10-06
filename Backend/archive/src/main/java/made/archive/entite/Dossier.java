@@ -123,4 +123,11 @@ public class Dossier
         inverseJoinColumns = @JoinColumn(name = "type_document_id")
     )
     private List<TypeDocument> typesDocumentsAttendus;
+
+    /**
+     * Calculé à la lecture (jamais stocké) : true si ce dossier OU l'un de ses sous-dossiers contient des documents —
+     * il ne peut alors plus être renommé, déplacé ni supprimé. Voir DossierService.getDossiersDeUO.
+     */
+    @jakarta.persistence.Transient
+    private boolean verrouille;
 }

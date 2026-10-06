@@ -236,6 +236,13 @@ public interface DocumentRepository extends JpaRepository<Document, UUID>, JpaSp
      */
     boolean existsByDossierId(Long dossierId);
 
+    /** Au moins un document (tout statut, pierres tombales comprises) dans l'un de ces dossiers — branche verrouillée. */
+    boolean existsByDossierIdIn(Collection<Long> dossierIds);
+
+    /** Dossiers d'une UO qui contiennent directement au moins un document — pour marquer les branches verrouillées. */
+    @Query("SELECT DISTINCT d.dossier.id FROM Document d WHERE d.dossier IS NOT NULL AND d.uniteOrganisationnelle.id = :uoId")
+    List<Long> findDossierIdsAvecDocumentsPourUo(@Param("uoId") Long uoId);
+
     /**
      * Tous les documents (vivants ou non) d'un dossier — utilisé par
      * DossierService.modifierAcces pour faire suivre PUBLIC↔PRIVÉ aux

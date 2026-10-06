@@ -51,4 +51,7 @@ public class DossierDetailDto
         private long nombreDocuments;
         private boolean fourni;
     }
+
+    /** true si ce dossier ou l'un de ses sous-dossiers contient des documents : plus de renommage, déplacement ni suppression. */
+    private boolean verrouille;
 }
