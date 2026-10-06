@@ -26,4 +26,7 @@ public interface PhysicalLocationRepository extends JpaRepository<PhysicalLocati
      *  plusieurs peuvent exister pour un même dossier volumineux, voir
      *  LocationModeContrainte.DOSSIER. */
     List<PhysicalLocation> findByDossierIdAndUniteOrganisationnelleId(Long dossierId, Long uniteOrganisationnelleId);
+
+    /** Un emplacement n'accepte que l'un de ces dossiers — ils ne peuvent pas être supprimés. */
+    boolean existsByDossierIdIn(java.util.Collection<Long> dossierIds);
 }

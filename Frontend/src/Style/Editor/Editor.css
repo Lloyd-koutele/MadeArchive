@@ -1871,7 +1871,8 @@ label.bulk-file-item { cursor: pointer; }
    désigner). Le menu générique (DossiersPanel/TypeDocumentList, positionné au
    curseur) n'utilise ni l'une ni l'autre. */
 .dossier-context-menu-anchored {
-    transform: translateY(-0.5rem);
+    /* Ancré à l'élément cliqué, bord droit contre bord droit (voir components/ancrageMenu.ts) — comme un menu "...". */
+    transform: translateX(-100%);
 }
 
 .dossier-context-menu-centre {
@@ -1902,6 +1903,19 @@ label.bulk-file-item { cursor: pointer; }
 
 .doc-context-menu button:hover {
     background: var(--cream, #FAF3EA);
+}
+
+.doc-context-menu button.danger {
+    color: var(--error, #9B3A3A);
+}
+
+.doc-context-menu button.danger:hover {
+    background: rgba(155, 58, 58, 0.08);
+}
+
+.doc-context-menu button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
 }
 
 /* ── Icône dossier — reproduction du modèle de référence, en tailles
