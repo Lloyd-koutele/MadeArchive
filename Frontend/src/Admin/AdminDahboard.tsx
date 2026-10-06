@@ -12,6 +12,7 @@ import TypeDocumentList from "../document/TypedocumentList";
 import CreateTypeDocument from "../document/Createtypedocument";
 import QuickCreateTypeDocumentsModal from '../document/QuickCreateTypeDocumentsModal';
 import DossiersPanel from '../organisation/DossiersPanel';
+import UoActionsMenu from '../components/UoActionsMenu';
 import PhysicalLocationsPanel from '../organisation/PhysicalLocationsPanel';
 import ExportPanel from '../organisation/ExportPanel';
 import AuditLogPanel from './AuditLogPanel';
@@ -498,22 +499,11 @@ function AdminDashboard() {
                             <div className="uo-page-title-row">
                                 <h2 className="uo-page-title">{currentUO.nom}</h2>
                                 {currentUO.id !== GLOBAL_VIEW_ID && (
-                                    <div className="uo-page-title-actions">
-                                        <button
-                                            className="details-close-btn"
-                                            onClick={openRenameUOModal}
-                                            disabled={actionInProgress}
-                                        >
-                                            <i className="fa-solid fa-pen" /> Renommer
-                                        </button>
-                                        <button
-                                            className="details-close-btn uo-delete-btn"
-                                            onClick={handleSupprimerUO}
-                                            disabled={actionInProgress}
-                                        >
-                                            <i className="fa-solid fa-trash" /> Supprimer
-                                        </button>
-                                    </div>
+                                    <UoActionsMenu
+                                        onRenommer={openRenameUOModal}
+                                        onSupprimer={handleSupprimerUO}
+                                        disabled={actionInProgress}
+                                    />
                                 )}
                             </div>
 
