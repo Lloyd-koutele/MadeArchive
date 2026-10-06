@@ -178,6 +178,21 @@ public interface DocumentRepository extends JpaRepository<Document, UUID>, JpaSp
     /** Un document est-il classé EXPLICITEMENT dans cette activité (exception à celle de son type) ? */
     boolean existsByPlanClassementNoeud_Id(Long noeudId);
 
+    /**
+     * Nombre de documents (TOUS statuts, pierres tombales comprises : elles gardent leur classement) dont l'activité
+     * EFFECTIVE — la leur si elle est précisée, sinon celle de leur type — figure parmi ces activités.
+     */
+    @Query("SELECT COUNT(d) FROM Document d LEFT JOIN d.planClassementNoeud dn LEFT JOIN d.typeDocument t " +
+           "LEFT JOIN t.planClassementNoeud tn WHERE dn.id IN :ids OR (dn.id IS NULL AND tn.id IN :ids)")
+    long compterDocumentsDansActivites(@Param("ids") Collection<Long> ids);
+
+    /** [activité effective, nombre de documents] pour une UO — un seul SELECT groupé. */
+    @Query("SELECT COALESCE(dn.id, tn.id), COUNT(d) FROM Document d LEFT JOIN d.planClassementNoeud dn " +
+           "LEFT JOIN d.typeDocument t LEFT JOIN t.planClassementNoeud tn " +
+           "WHERE d.uniteOrganisationnelle.id = :uoId AND COALESCE(dn.id, tn.id) IS NOT NULL " +
+           "GROUP BY COALESCE(dn.id, tn.id)")
+    List<Object[]> countDocumentsParActivitePourUo(@Param("uoId") Long uoId);
+
     /** Pierres tombales dont le procès-verbal d'élimination n'a pas encore été généré. */
     List<Document> findByStatusAndElimineLeIsNotNullAndProcesVerbalIdIsNull(DocumentStatus status);
 

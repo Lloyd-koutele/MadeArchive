@@ -108,12 +108,11 @@ class PlanClassementIntegrationTest
     @Autowired private UniteOrganisationnelleService uoServiceMock;
     @Autowired private made.archive.repository.DocumentRepository documentRepository;
 
-    private PlanClassementNoeudRequestDto req(Long uoId, Long parentId, String code, String libelle)
+    private PlanClassementNoeudRequestDto req(Long uoId, Long parentId, String libelle)
     {
         PlanClassementNoeudRequestDto d = new PlanClassementNoeudRequestDto();
         d.setUoId(uoId);
         d.setParentId(parentId);
-        d.setCode(code);
         d.setLibelle(libelle);
         return d;
     }
@@ -149,50 +148,159 @@ class PlanClassementIntegrationTest
 
     @Test
     @Transactional
-    void arbreCodeUniqueDeplacementEtSuppression()
+    void lesCodesSontGeneresSelonLaPositionDansLArbre()
     {
-        UniteOrganisationnelle uo = uo("UO-PC");
-        User ed = editeur("pc@test.local");
+        UniteOrganisationnelle uo = uo("UO-Codes");
+        User ed = editeur("codes@test.local");
         when(uoServiceMock.estEditeurDeUO(anyLong(), any())).thenReturn(true);
         when(uoServiceMock.getUOEntiteSiEditeur(anyLong(), any())).thenReturn(uo);
 
-        PlanClassementNoeudDto fin = service.creer(req(uo.getId(), null, "03", "Finances"), ed);
-        PlanClassementNoeudDto fact = service.creer(req(uo.getId(), fin.getId(), "03.2", "Factures"), ed);
+        PlanClassementNoeudDto a = service.creer(req(uo.getId(), null, "Enseignement"), ed);
+        PlanClassementNoeudDto b = service.creer(req(uo.getId(), null, "Finances"), ed);
+        PlanClassementNoeudDto c = service.creer(req(uo.getId(), null, "RH"), ed);
+        PlanClassementNoeudDto a1 = service.creer(req(uo.getId(), a.getId(), "Examens"), ed);
+        PlanClassementNoeudDto a2 = service.creer(req(uo.getId(), a.getId(), "Cours"), ed);
+        PlanClassementNoeudDto a11 = service.creer(req(uo.getId(), a1.getId(), "Sujets"), ed);
+        PlanClassementNoeudDto a12 = service.creer(req(uo.getId(), a1.getId(), "Corrigés"), ed);
+        PlanClassementNoeudDto b1 = service.creer(req(uo.getId(), b.getId(), "Budget"), ed);
 
-        // Code unique dans l'UO (insensible à la casse)
-        assertThatThrownBy(() -> service.creer(req(uo.getId(), null, "03", "Doublon"), ed))
-            .isInstanceOf(BusinessException.class);
+        assertThat(List.of(a, b, c)).extracting(PlanClassementNoeudDto::getCode).containsExactly("01", "02", "03");
+        assertThat(List.of(a1, a2)).extracting(PlanClassementNoeudDto::getCode).containsExactly("01.1", "01.2");
+        assertThat(List.of(a11, a12)).extracting(PlanClassementNoeudDto::getCode).containsExactly("01.1.1", "01.1.2");
+        assertThat(b1.getCode()).isEqualTo("02.1");
 
-        // Sous-arbre : le nœud + ses descendants
-        assertThat(service.idsAvecDescendants(fin.getId())).containsExactlyInAnyOrder(fin.getId(), fact.getId());
-        assertThat(service.idsAvecDescendants(fact.getId())).containsExactly(fact.getId());
+        // Le code saisi par le client n'existe plus : seul le libellé compte, jamais de doublon possible
+        assertThatThrownBy(() -> service.creer(req(uo.getId(), null, "  "), ed)).isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    @Transactional
+    void lOrdreEstNumeriqueEtUnRangSupprimeEnDernierEstReattribue()
+    {
+        UniteOrganisationnelle uo = uo("UO-Ordre");
+        User ed = editeur("ordre@test.local");
+        when(uoServiceMock.estEditeurDeUO(anyLong(), any())).thenReturn(true);
+        when(uoServiceMock.getUOEntiteSiEditeur(anyLong(), any())).thenReturn(uo);
+
+        PlanClassementNoeudDto racine = service.creer(req(uo.getId(), null, "Racine"), ed);
+        PlanClassementNoeudDto dernier = null;
+        for (int i = 1; i <= 11; i++)
+        {
+            dernier = service.creer(req(uo.getId(), racine.getId(), "Enfant " + i), ed);
+        }
+        assertThat(dernier.getCode()).isEqualTo("01.11");
+
+        // 01.10 se range après 01.9, pas après 01.1
+        List<String> codes = service.getArbre(uo.getId(), ed).get(0).getChildren().stream()
+            .map(PlanClassementNoeudDto::getCode).toList();
+        assertThat(codes).containsExactly("01.1", "01.2", "01.3", "01.4", "01.5", "01.6", "01.7", "01.8", "01.9", "01.10", "01.11");
+
+        // Supprimer un rang du milieu ne renumérote rien ; supprimer le dernier libère son numéro
+        PlanClassementNoeud milieu = noeudRepository.findByUniteOrganisationnelleId(uo.getId()).stream()
+            .filter(n -> n.getCode().equals("01.4")).findFirst().orElseThrow();
+        service.supprimer(milieu.getId(), ed);
+        service.supprimer(dernier.getId(), ed);
+        assertThat(service.creer(req(uo.getId(), racine.getId(), "Nouveau"), ed).getCode()).isEqualTo("01.11");
+    }
+
+    @Test
+    @Transactional
+    void suppressionEnCascadeSansDocument_etDetachementDesTypes()
+    {
+        UniteOrganisationnelle uo = uo("UO-Cascade");
+        User ed = editeur("cascade@test.local");
+        when(uoServiceMock.estEditeurDeUO(anyLong(), any())).thenReturn(true);
+        when(uoServiceMock.getUOEntiteSiEditeur(anyLong(), any())).thenReturn(uo);
+
+        PlanClassementNoeudDto fin = service.creer(req(uo.getId(), null, "Finances"), ed);
+        PlanClassementNoeudDto fact = service.creer(req(uo.getId(), fin.getId(), "Factures"), ed);
+        PlanClassementNoeudDto fournisseurs = service.creer(req(uo.getId(), fact.getId(), "Fournisseurs"), ed);
+        PlanClassementNoeudDto autre = service.creer(req(uo.getId(), null, "RH"), ed);
+
+        // Un type sans aucun document peut y être rattaché : il sera simplement détaché
+        TypeDocument t = type(uo, ed, "Facture fournisseur");
+        service.rattacherType(t.getId(), fournisseurs.getId(), ed);
+
+        assertThat(service.idsAvecDescendants(fin.getId()))
+            .containsExactlyInAnyOrder(fin.getId(), fact.getId(), fournisseurs.getId());
+
+        // Le parent se supprime d'un coup avec toutes ses sous-activités
+        service.supprimer(fin.getId(), ed);
+
+        assertThat(noeudRepository.findByUniteOrganisationnelleId(uo.getId())).extracting(PlanClassementNoeud::getId)
+            .containsExactly(autre.getId());
+        assertThat(typeDocumentRepository.findById(t.getId()).orElseThrow().getPlanClassementNoeud()).isNull();
+    }
+
+    @Test
+    @Transactional
+    void desDocumentsClassesVerrouillentL_activiteSesParentsEtSaSuppression()
+    {
+        UniteOrganisationnelle uo = uo("UO-Verrou");
+        User ed = editeur("verrou@test.local");
+        when(uoServiceMock.estEditeurDeUO(anyLong(), any())).thenReturn(true);
+        when(uoServiceMock.getUOEntiteSiEditeur(anyLong(), any())).thenReturn(uo);
+
+        PlanClassementNoeudDto fin = service.creer(req(uo.getId(), null, "Finances"), ed);
+        PlanClassementNoeudDto fact = service.creer(req(uo.getId(), fin.getId(), "Factures"), ed);
+        PlanClassementNoeudDto libre = service.creer(req(uo.getId(), fin.getId(), "Budget"), ed);
+        PlanClassementNoeudDto autre = service.creer(req(uo.getId(), null, "RH"), ed);
+
+        // Le document HÉRITE de l'activité de son type : c'est lui qui verrouille 01.1
+        TypeDocument type = type(uo, ed, "Facture");
+        service.rattacherType(type.getId(), fact.getId(), ed);
+        documentRepository.save(document(uo, type, ed));
+
+        PlanClassementNoeudDto fin2 = service.getArbre(uo.getId(), ed).stream()
+            .filter(n -> n.getId().equals(fin.getId())).findFirst().orElseThrow();
+        assertThat(fin2.isVerrouille()).isTrue();                                   // parent d'une activité verrouillée
+        assertThat(fin2.getChildren()).filteredOn(n -> n.getId().equals(fact.getId()))
+            .singleElement().satisfies(n -> { assertThat(n.isVerrouille()).isTrue(); assertThat(n.getNbDocuments()).isEqualTo(1); });
+        assertThat(fin2.getChildren()).filteredOn(n -> n.getId().equals(libre.getId()))
+            .singleElement().satisfies(n -> assertThat(n.isVerrouille()).isFalse()); // sœur sans document : libre
+
+        PlanClassementNoeudRequestDto r = req(uo.getId(), null, "Nouveau nom");
+        assertThatThrownBy(() -> service.modifier(fact.getId(), r, ed)).isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> service.modifier(fin.getId(), r, ed)).isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> service.deplacer(fact.getId(), autre.getId(), ed)).isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> service.deplacer(fin.getId(), null, ed)).isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> service.supprimer(fact.getId(), ed)).isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> service.supprimer(fin.getId(), ed)).isInstanceOf(BusinessException.class); // sous-arbre verrouillé
+
+        // On peut encore AJOUTER une sous-activité sous une activité verrouillée, et agir sur la branche libre
+        assertThat(service.creer(req(uo.getId(), fact.getId(), "Fournisseurs"), ed).getCode()).isEqualTo("01.1.1");
+        assertThat(service.modifier(libre.getId(), req(uo.getId(), null, "Budget annuel"), ed).getLibelle())
+            .isEqualTo("Budget annuel");
+        service.supprimer(libre.getId(), ed);
+    }
+
+    @Test
+    @Transactional
+    void deplacerRecalculeLeCodeDeLActiviteEtDeSesDescendants()
+    {
+        UniteOrganisationnelle uo = uo("UO-Deplacement");
+        User ed = editeur("deplacement@test.local");
+        when(uoServiceMock.estEditeurDeUO(anyLong(), any())).thenReturn(true);
+        when(uoServiceMock.getUOEntiteSiEditeur(anyLong(), any())).thenReturn(uo);
+
+        PlanClassementNoeudDto a = service.creer(req(uo.getId(), null, "A"), ed);
+        service.creer(req(uo.getId(), a.getId(), "A-1"), ed);
+        PlanClassementNoeudDto b = service.creer(req(uo.getId(), null, "B"), ed);
+        PlanClassementNoeudDto b1 = service.creer(req(uo.getId(), b.getId(), "B-1"), ed);
+        service.creer(req(uo.getId(), b1.getId(), "B-1-1"), ed);
 
         // Pas de déplacement sous soi-même / un descendant
-        assertThatThrownBy(() -> service.deplacer(fin.getId(), fact.getId(), ed))
-            .isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> service.deplacer(b.getId(), b1.getId(), ed)).isInstanceOf(BusinessException.class);
 
-        // Arbre reconstruit avec le bon chemin
-        List<PlanClassementNoeudDto> arbre = service.getArbre(uo.getId(), ed);
-        assertThat(arbre).hasSize(1);
-        assertThat(arbre.get(0).getChildren()).extracting(PlanClassementNoeudDto::getCode).containsExactly("03.2");
-        PlanClassementNoeud feuille = noeudRepository.findById(fact.getId()).orElseThrow();
-        assertThat(PlanClassementService.chemin(feuille)).isEqualTo("03 Finances › 03.2 Factures");
+        // B (02) devient enfant de A (01) : 01.2, et ses descendants suivent (01.2.1, 01.2.1.1)
+        assertThat(service.deplacer(b.getId(), a.getId(), ed).getCode()).isEqualTo("01.2");
+        assertThat(noeudRepository.findByUniteOrganisationnelleId(uo.getId())).extracting(PlanClassementNoeud::getCode)
+            .containsExactlyInAnyOrder("01", "01.1", "01.2", "01.2.1", "01.2.1.1");
 
-        // Suppression refusée avec une sous-activité
-        assertThatThrownBy(() -> service.supprimer(fin.getId(), ed)).isInstanceOf(BusinessException.class);
-
-        // Un type DÉJÀ existant se rattache après coup ; la feuille est alors non supprimable
-        TypeDocument t = type(uo, ed, "Facture fournisseur");
-        service.rattacherType(t.getId(), fact.getId(), ed);
-        assertThat(typeDocumentRepository.findById(t.getId()).orElseThrow().getPlanClassementNoeud().getId())
-            .isEqualTo(fact.getId());
-        assertThatThrownBy(() -> service.supprimer(fact.getId(), ed)).isInstanceOf(BusinessException.class);
-
-        // Détaché, la feuille puis le parent se suppriment
-        service.rattacherType(t.getId(), null, ed);
-        service.supprimer(fact.getId(), ed);
-        service.supprimer(fin.getId(), ed);
-        assertThat(noeudRepository.findByUniteOrganisationnelleId(uo.getId())).isEmpty();
+        // Retour à la racine : prochain numéro libre
+        assertThat(service.deplacer(b.getId(), null, ed).getCode()).isEqualTo("02");
+        assertThat(noeudRepository.findByUniteOrganisationnelleId(uo.getId())).extracting(PlanClassementNoeud::getCode)
+            .containsExactlyInAnyOrder("01", "01.1", "02", "02.1", "02.1.1");
     }
 
     @Test
@@ -206,7 +314,7 @@ class PlanClassementIntegrationTest
         when(uoServiceMock.getUOEntiteSiEditeur(anyLong(), any())).thenAnswer(i ->
             ((Long) i.getArgument(0)).equals(uo1.getId()) ? uo1 : uo2);
 
-        PlanClassementNoeudDto autre = service.creer(req(uo2.getId(), null, "01", "Autre UO"), ed);
+        PlanClassementNoeudDto autre = service.creer(req(uo2.getId(), null, "Autre UO"), ed);
         TypeDocument t = type(uo1, ed, "Type UO-A");
 
         assertThatThrownBy(() -> service.rattacherType(t.getId(), autre.getId(), ed))
@@ -242,10 +350,10 @@ class PlanClassementIntegrationTest
         when(uoServiceMock.estEditeurDeUO(anyLong(), any())).thenReturn(true);
         when(uoServiceMock.getUOEntiteSiEditeur(anyLong(), any())).thenReturn(uo);
 
-        PlanClassementNoeudDto fin = service.creer(req(uo.getId(), null, "03", "Finances"), ed);
-        PlanClassementNoeudDto fact = service.creer(req(uo.getId(), fin.getId(), "03.2", "Factures"), ed);
-        PlanClassementNoeudDto achats = service.creer(req(uo.getId(), fin.getId(), "03.4", "Achats ponctuels"), ed);
-        PlanClassementNoeudDto rh = service.creer(req(uo.getId(), null, "02", "RH"), ed);
+        PlanClassementNoeudDto fin = service.creer(req(uo.getId(), null, "Finances"), ed);
+        PlanClassementNoeudDto fact = service.creer(req(uo.getId(), fin.getId(), "Factures"), ed);
+        PlanClassementNoeudDto achats = service.creer(req(uo.getId(), fin.getId(), "Achats ponctuels"), ed);
+        PlanClassementNoeudDto rh = service.creer(req(uo.getId(), null, "RH"), ed);
 
         TypeDocument type = type(uo, ed, "Facture");
         service.rattacherType(type.getId(), fact.getId(), ed);          // activité par défaut : 03.2

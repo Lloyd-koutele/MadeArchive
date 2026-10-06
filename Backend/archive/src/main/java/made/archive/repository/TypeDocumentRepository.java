@@ -22,6 +22,8 @@ public interface TypeDocumentRepository extends JpaRepository<TypeDocument, Long
 
     boolean existsByPlanClassementNoeudId(Long noeudId);
 
+    List<TypeDocument> findByPlanClassementNoeudIdIn(java.util.Collection<Long> noeudIds);
+
     /** [noeudId, nombre de types rattachés] pour tous les nœuds d'une UO — un seul SELECT groupé. */
     @org.springframework.data.jpa.repository.Query(
         "SELECT t.planClassementNoeud.id, COUNT(t) FROM TypeDocument t " +

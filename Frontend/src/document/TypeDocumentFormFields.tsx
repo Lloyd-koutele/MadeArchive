@@ -1,10 +1,17 @@
 import type { MetaDataDto, SortFinal } from '../services/document/TypedocumentService';
 import type { PlanClassementOption } from '../services/organisation/PlanClassementService';
 
+// Libellés courts dans la liste ; le détail n'apparaît qu'au survol (attribut title).
 const SORT_FINAL_LABELS: Record<SortFinal, string> = {
-    CONSERVER: 'Conserver — jamais purgé automatiquement',
-    DETRUIRE: 'Détruire — purge automatique après le délai de grâce',
-    TRIER: 'Trier — pas de purge automatique, tri à faire plus tard',
+    CONSERVER: 'Conserver',
+    TRIER: 'Trier',
+    DETRUIRE: 'Détruire',
+};
+
+const SORT_FINAL_DETAILS: Record<SortFinal, string> = {
+    CONSERVER: 'Jamais purgé automatiquement',
+    TRIER: 'Pas de purge automatique, tri à faire plus tard',
+    DETRUIRE: 'Purge automatique après le délai de grâce',
 };
 
 interface TypeDocumentFormFieldsProps {
@@ -99,7 +106,7 @@ function TypeDocumentFormFields({
                     {onDelaiGraceChange && (
                         <div className="form-field td-span2">
                             <label className="form-field-label" htmlFor={`${idPrefix}-delai-grace`}>
-                                Délai de grâce avant suppression définitive (jours, 6 par défaut)
+                                Délai de grâce (en jours)
                             </label>
                             <input
                                 id={`${idPrefix}-delai-grace`}
@@ -143,9 +150,10 @@ function TypeDocumentFormFields({
                                 className="form-field-input up-select"
                                 value={sortFinal ?? 'CONSERVER'}
                                 onChange={e => onSortFinalChange(e.target.value as SortFinal)}
+                                title={SORT_FINAL_DETAILS[sortFinal ?? 'CONSERVER']}
                             >
                                 {(Object.keys(SORT_FINAL_LABELS) as SortFinal[]).map(s => (
-                                    <option key={s} value={s}>{SORT_FINAL_LABELS[s]}</option>
+                                    <option key={s} value={s} title={SORT_FINAL_DETAILS[s]}>{SORT_FINAL_LABELS[s]}</option>
                                 ))}
                             </select>
                         </div>

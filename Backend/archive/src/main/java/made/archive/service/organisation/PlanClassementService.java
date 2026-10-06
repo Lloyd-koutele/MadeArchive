@@ -63,6 +63,11 @@ public class PlanClassementService
         {
             comptes.put((Long) r[0], (Long) r[1]);
         }
+        Map<Long, Long> documents = new HashMap<>();
+        for (Object[] r : documentRepository.countDocumentsParActivitePourUo(uoId))
+        {
+            documents.put((Long) r[0], (Long) r[1]);
+        }
         Map<Long, List<PlanClassementNoeud>> enfants = tous.stream()
             .filter(n -> n.getParent() != null)
             .collect(Collectors.groupingBy(n -> n.getParent().getId()));
@@ -70,30 +75,52 @@ public class PlanClassementService
         return tous.stream()
             .filter(n -> n.getParent() == null)
             .sorted(parCode())
-            .map(n -> versDto(n, enfants, comptes))
+            .map(n -> versDto(n, enfants, comptes, documents))
             .toList();
     }
 
     private PlanClassementNoeudDto versDto(PlanClassementNoeud n, Map<Long, List<PlanClassementNoeud>> enfants,
-                                           Map<Long, Long> comptes)
+                                           Map<Long, Long> comptes, Map<Long, Long> documents)
     {
         List<PlanClassementNoeudDto> fils = enfants.getOrDefault(n.getId(), List.of()).stream()
             .sorted(parCode())
-            .map(e -> versDto(e, enfants, comptes))
+            .map(e -> versDto(e, enfants, comptes, documents))
             .toList();
+        long directs = documents.getOrDefault(n.getId(), 0L);
+        // Verrouillé dès qu'un document est classé ici OU dans une sous-activité (le code de celle-ci en dépend).
+        boolean verrouille = directs > 0 || fils.stream().anyMatch(PlanClassementNoeudDto::isVerrouille);
         return PlanClassementNoeudDto.builder()
             .id(n.getId())
             .code(n.getCode())
             .libelle(n.getLibelle())
             .parentId(n.getParent() != null ? n.getParent().getId() : null)
             .nbTypes(comptes.getOrDefault(n.getId(), 0L))
+            .nbDocuments(directs)
+            .verrouille(verrouille)
             .children(fils)
             .build();
     }
 
+    /** Tri par segments numériques (01.2 avant 01.10) ; un segment non numérique (ancien code libre) se compare en texte. */
     private Comparator<PlanClassementNoeud> parCode()
     {
-        return Comparator.comparing(PlanClassementNoeud::getCode, String.CASE_INSENSITIVE_ORDER);
+        return (a, b) -> comparerCodes(a.getCode(), b.getCode());
+    }
+
+    static int comparerCodes(String a, String b)
+    {
+        String[] x = a.split("\\.");
+        String[] y = b.split("\\.");
+        for (int i = 0; i < Math.min(x.length, y.length); i++)
+        {
+            boolean nx = x[i].matches("\\d{1,9}");
+            boolean ny = y[i].matches("\\d{1,9}");
+            int c = nx && ny
+                ? Integer.compare(Integer.parseInt(x[i]), Integer.parseInt(y[i]))
+                : x[i].compareToIgnoreCase(y[i]);
+            if (c != 0) return c;
+        }
+        return Integer.compare(x.length, y.length);
     }
 
     /** "01 Enseignement › 01.2 Examens" — null si pas de nœud. Public : réutilisé pour afficher
@@ -156,6 +183,10 @@ public class PlanClassementService
 
     // ── Écriture (éditeur de l'UO) ───────────────────────────────────────
 
+    /**
+     * Crée une activité. Le CODE n'est jamais saisi : il est attribué selon la position dans l'arbre — 01, 02, 03…
+     * à la racine, puis 01.1, 01.2… sous 01, 01.1.1… sous 01.1 (voir prochainCode).
+     */
     @Transactional
     public PlanClassementNoeudDto creer(PlanClassementNoeudRequestDto dto, User currentUser)
     {
@@ -165,15 +196,14 @@ public class PlanClassementService
         }
         UniteOrganisationnelle uo = uniteOrganisationnelleService.getUOEntiteSiEditeur(dto.getUoId(), currentUser);
 
-        String code = nettoyer(dto.getCode(), "Le code");
         String libelle = nettoyer(dto.getLibelle(), "Le libellé");
-        verifierCodeUnique(uo.getId(), code, null);
 
         PlanClassementNoeud parent = null;
         if (dto.getParentId() != null)
         {
             parent = chargerDansUo(dto.getParentId(), uo.getId());
         }
+        String code = prochainCode(uo.getId(), parent, Set.of());
 
         PlanClassementNoeud noeud = new PlanClassementNoeud();
         noeud.setCode(code);
@@ -189,30 +219,31 @@ public class PlanClassementService
         return simple(noeud);
     }
 
+    /** Renomme (libellé seulement : le code découle de la position). Refusé si des documents sont classés ici
+     *  ou dans une sous-activité. */
     @Transactional
     public PlanClassementNoeudDto modifier(Long id, PlanClassementNoeudRequestDto dto, User currentUser)
     {
         PlanClassementNoeud noeud = charger(id);
         Long uoId = noeud.getUniteOrganisationnelle().getId();
         verifierEditeur(uoId, currentUser);
+        verifierNonVerrouille(noeud, "renommer");
 
-        String code = nettoyer(dto.getCode(), "Le code");
         String libelle = nettoyer(dto.getLibelle(), "Le libellé");
-        verifierCodeUnique(uoId, code, id);
 
         String avant = noeud.getCode() + " " + noeud.getLibelle();
-        noeud.setCode(code);
         noeud.setLibelle(libelle);
         noeudRepository.save(noeud);
 
         auditLogService.log(currentUser, AuditAction.PLAN_CLASSEMENT_NOEUD_MODIFIE, AuditCible.PLAN_CLASSEMENT,
             id.toString(), uoId,
-            "Activité \"" + avant + "\" renommée en \"" + code + " " + libelle + "\"", true);
+            "Activité \"" + avant + "\" renommée en \"" + noeud.getCode() + " " + libelle + "\"", true);
 
         return simple(noeud);
     }
 
-    /** newParentId null = déplacer à la racine du plan. */
+    /** newParentId null = déplacer à la racine du plan. L'activité et ses sous-activités reçoivent de nouveaux
+     *  codes, calculés d'après leur nouvelle position. Refusé si des documents y sont classés. */
     @Transactional
     public PlanClassementNoeudDto deplacer(Long id, Long newParentId, User currentUser)
     {
@@ -221,27 +252,38 @@ public class PlanClassementService
         verifierEditeur(uoId, currentUser);
 
         PlanClassementNoeud nouveauParent = null;
+        Set<Long> sousArbre = idsAvecDescendants(id);
         if (newParentId != null)
         {
             nouveauParent = chargerDansUo(newParentId, uoId);
-            if (idsAvecDescendants(id).contains(newParentId))
+            if (sousArbre.contains(newParentId))
             {
                 throw new BusinessException("Impossible de déplacer une activité sous elle-même ou sous l'une de ses sous-activités");
             }
         }
+        verifierNonVerrouille(noeud, "déplacer");
 
+        String avant = noeud.getCode();
         noeud.setParent(nouveauParent);
-        noeudRepository.save(noeud);
+        noeud.setCode(prochainCode(uoId, nouveauParent, sousArbre));
+        noeudRepository.saveAndFlush(noeud);
+        renumeroterDescendants(noeud);
 
         auditLogService.log(currentUser, AuditAction.PLAN_CLASSEMENT_NOEUD_DEPLACE, AuditCible.PLAN_CLASSEMENT,
             id.toString(), uoId,
-            "Activité \"" + noeud.getCode() + " " + noeud.getLibelle() + "\" déplacée "
-                + (nouveauParent != null ? "sous \"" + nouveauParent.getCode() + " " + nouveauParent.getLibelle() + "\"" : "à la racine"),
+            "Activité \"" + avant + " " + noeud.getLibelle() + "\" déplacée "
+                + (nouveauParent != null ? "sous \"" + nouveauParent.getCode() + " " + nouveauParent.getLibelle() + "\"" : "à la racine")
+                + " (nouveau code : " + noeud.getCode() + ")",
             true);
 
         return simple(noeud);
     }
 
+    /**
+     * Supprime une activité ET toutes ses sous-activités, du moment qu'aucun document n'est classé dedans (ni la
+     * leur, ni via leur type). Les types de documents rattachés à l'une d'elles — forcément sans document — sont
+     * simplement détachés.
+     */
     @Transactional
     public void supprimer(Long id, User currentUser)
     {
@@ -249,24 +291,32 @@ public class PlanClassementService
         Long uoId = noeud.getUniteOrganisationnelle().getId();
         verifierEditeur(uoId, currentUser);
 
-        if (noeudRepository.existsByParentId(id))
+        Set<Long> sousArbre = idsAvecDescendants(id);
+        if (documentRepository.compterDocumentsDansActivites(sousArbre) > 0)
         {
-            throw new BusinessException("Cette activité contient des sous-activités — supprimez-les ou déplacez-les d'abord");
+            throw new BusinessException("Des documents sont classés dans cette activité"
+                + (sousArbre.size() > 1 ? " ou l'une de ses sous-activités" : "")
+                + " — reclassez-les d'abord");
         }
-        if (typeDocumentRepository.existsByPlanClassementNoeudId(id))
+
+        List<TypeDocument> types = typeDocumentRepository.findByPlanClassementNoeudIdIn(sousArbre);
+        types.forEach(t -> t.setPlanClassementNoeud(null));
+        typeDocumentRepository.saveAll(types);
+
+        // Les feuilles d'abord : la clé étrangère parent_id interdit de supprimer un parent encore référencé.
+        List<PlanClassementNoeud> aSupprimer = new ArrayList<>(noeudRepository.findAllById(sousArbre));
+        aSupprimer.sort(Comparator.comparingInt((PlanClassementNoeud n) -> profondeur(n)).reversed());
+        for (PlanClassementNoeud n : aSupprimer)
         {
-            throw new BusinessException("Des types de documents sont encore rattachés à cette activité — détachez-les d'abord");
-        }
-        if (documentRepository.existsByPlanClassementNoeud_Id(id))
-        {
-            throw new BusinessException("Des documents sont encore classés dans cette activité — reclassez-les d'abord");
+            noeudRepository.delete(n);
+            noeudRepository.flush();
         }
 
         String libelle = noeud.getCode() + " " + noeud.getLibelle();
-        noeudRepository.delete(noeud);
-
         auditLogService.log(currentUser, AuditAction.PLAN_CLASSEMENT_NOEUD_SUPPRIME, AuditCible.PLAN_CLASSEMENT,
-            id.toString(), uoId, "Activité \"" + libelle + "\" supprimée du plan de classement", true);
+            id.toString(), uoId, "Activité \"" + libelle + "\" supprimée du plan de classement"
+                + (sousArbre.size() > 1 ? " avec ses " + (sousArbre.size() - 1) + " sous-activité(s)" : "")
+                + (types.isEmpty() ? "" : " — " + types.size() + " type(s) de document détaché(s)"), true);
     }
 
     /**
@@ -332,13 +382,78 @@ public class PlanClassementService
         return n;
     }
 
-    private void verifierCodeUnique(Long uoId, String code, Long exclutId)
+    private void verifierNonVerrouille(PlanClassementNoeud noeud, String action)
     {
-        boolean existe = noeudRepository.findByUniteOrganisationnelleId(uoId).stream()
-            .anyMatch(n -> n.getCode().equalsIgnoreCase(code) && (exclutId == null || !n.getId().equals(exclutId)));
-        if (existe)
+        if (documentRepository.compterDocumentsDansActivites(idsAvecDescendants(noeud.getId())) > 0)
         {
-            throw new BusinessException("Le code \"" + code + "\" est déjà utilisé dans le plan de classement de cette UO");
+            throw new BusinessException("Impossible de " + action + " cette activité : des documents y sont classés "
+                + "(ou dans l'une de ses sous-activités). Son code et son libellé figurent dans leurs exports.");
+        }
+    }
+
+    private int profondeur(PlanClassementNoeud n)
+    {
+        int p = 0;
+        Set<Long> vus = new HashSet<>();
+        for (PlanClassementNoeud c = n.getParent(); c != null && vus.add(c.getId()); c = c.getParent())
+        {
+            p++;
+        }
+        return p;
+    }
+
+    /**
+     * Prochain code libre pour un enfant de {@code parent} (null = racine) : le plus grand rang existant + 1.
+     * Racine : 01, 02, 03… (au moins deux chiffres). Sous un parent de code "01.1" : 01.1.1, 01.1.2…
+     * Un rang supprimé en dernier est réattribué (le code d'une activité supprimée n'existe plus nulle part) ; un
+     * ancien code libre ("FIN") sert tel quel de préfixe à ses enfants ("FIN.1"). {@code exclus} : nœuds ignorés
+     * (ceux qu'on est en train de déplacer).
+     */
+    String prochainCode(Long uoId, PlanClassementNoeud parent, Set<Long> exclus)
+    {
+        List<PlanClassementNoeud> tous = noeudRepository.findByUniteOrganisationnelleId(uoId).stream()
+            .filter(n -> !exclus.contains(n.getId())).toList();
+        Set<String> pris = tous.stream().map(n -> n.getCode().toLowerCase()).collect(Collectors.toSet());
+
+        String prefixe = parent != null ? parent.getCode() + "." : "";
+        int max = 0;
+        for (PlanClassementNoeud n : tous)
+        {
+            boolean frere = parent == null ? n.getParent() == null
+                : n.getParent() != null && n.getParent().getId().equals(parent.getId());
+            if (!frere) continue;
+            String reste = n.getCode().startsWith(prefixe) ? n.getCode().substring(prefixe.length()) : "";
+            if (reste.matches("\\d{1,9}"))
+            {
+                max = Math.max(max, Integer.parseInt(reste));
+            }
+        }
+
+        int rang = max + 1;
+        String code;
+        do
+        {
+            code = prefixe + (parent == null ? String.format("%02d", rang) : String.valueOf(rang));
+            rang++;
+        }
+        while (pris.contains(code.toLowerCase()));
+        return code;
+    }
+
+    /** Après un déplacement : recalcule le code de chaque descendant d'après le nouveau code de son parent. */
+    private void renumeroterDescendants(PlanClassementNoeud parent)
+    {
+        List<PlanClassementNoeud> enfants = noeudRepository.findByUniteOrganisationnelleId(
+                parent.getUniteOrganisationnelle().getId()).stream()
+            .filter(n -> n.getParent() != null && n.getParent().getId().equals(parent.getId()))
+            .sorted(parCode())
+            .toList();
+        int rang = 1;
+        for (PlanClassementNoeud enfant : enfants)
+        {
+            enfant.setCode(parent.getCode() + "." + rang++);
+            noeudRepository.saveAndFlush(enfant);
+            renumeroterDescendants(enfant);
         }
     }
 

@@ -30,7 +30,6 @@ function PlanClassementPanel({ uoId }: Props) {
     const [arbre, setArbre] = useState<PlanClassementNoeudDto[]>([]);
     const [loading, setLoading] = useState(false);
     const [form, setForm] = useState<FormState | null>(null);
-    const [code, setCode] = useState('');
     const [libelle, setLibelle] = useState('');
     const [parentChoisi, setParentChoisi] = useState<string>('');
     const [saving, setSaving] = useState(false);
@@ -61,7 +60,6 @@ function PlanClassementPanel({ uoId }: Props) {
 
     const ouvrir = (f: FormState) => {
         setForm(f);
-        setCode(f.mode === 'modifier' ? f.noeud.code : '');
         setLibelle(f.mode === 'modifier' ? f.noeud.libelle : '');
         setParentChoisi(f.mode === 'deplacer'
             ? (f.noeud.parentId != null ? String(f.noeud.parentId) : '')
@@ -74,10 +72,10 @@ function PlanClassementPanel({ uoId }: Props) {
         setSaving(true);
         try {
             if (form.mode === 'creer') {
-                await creerNoeudPlanClassement(uoId, code, libelle, parentChoisi ? Number(parentChoisi) : null);
+                await creerNoeudPlanClassement(uoId, libelle, parentChoisi ? Number(parentChoisi) : null);
                 notify.success('Activité ajoutée');
             } else if (form.mode === 'modifier') {
-                await modifierNoeudPlanClassement(form.noeud.id, code, libelle);
+                await modifierNoeudPlanClassement(form.noeud.id, libelle);
                 notify.success('Activité modifiée');
             } else {
                 await deplacerNoeudPlanClassement(form.noeud.id, parentChoisi ? Number(parentChoisi) : null);
@@ -92,10 +90,16 @@ function PlanClassementPanel({ uoId }: Props) {
         }
     };
 
+    const compterDescendants = (n: PlanClassementNoeudDto): number =>
+        n.children.reduce((total, c) => total + 1 + compterDescendants(c), 0);
+
     const handleSupprimer = async (n: PlanClassementNoeudDto) => {
+        const sous = compterDescendants(n);
         const ok = await confirm({
             title: 'Supprimer cette activité',
-            message: `Supprimer "${n.code} ${n.libelle}" ? Possible seulement si elle n'a ni sous-activité ni type de document rattaché.`,
+            message: `Supprimer "${n.code} ${n.libelle}"`
+                + (sous > 0 ? ` et ses ${sous} sous-activité${sous > 1 ? 's' : ''}` : '')
+                + ' ? Les types de documents qui y sont rattachés seront détachés.',
             confirmLabel: 'Supprimer',
         });
         if (!ok) return;
@@ -117,21 +121,31 @@ function PlanClassementPanel({ uoId }: Props) {
                         <span className="pc-libelle">{n.libelle}</span>
                         <span className="pc-count">
                             {n.nbTypes} type{n.nbTypes > 1 ? 's' : ''}
+                            {n.nbDocuments > 0 && ` · ${n.nbDocuments} document${n.nbDocuments > 1 ? 's' : ''}`}
                         </span>
+                        {n.verrouille && (
+                            <i className="fa-solid fa-lock" title="Des documents sont classés ici ou dans une sous-activité : modification, déplacement et suppression impossibles" />
+                        )}
                         <span className="pc-actions">
                             <button type="button" className="action-button" title="Ajouter une sous-activité"
                                 onClick={() => ouvrir({ mode: 'creer', parentId: n.id })}>
                                 <i className="fa-solid fa-plus" />
                             </button>
-                            <button type="button" className="action-button edit" title="Renommer"
+                            <button type="button" className="action-button edit"
+                                title={n.verrouille ? 'Verrouillée : des documents sont classés dans cette activité' : 'Renommer'}
+                                disabled={n.verrouille}
                                 onClick={() => ouvrir({ mode: 'modifier', noeud: n })}>
                                 <i className="fa-solid fa-pen" />
                             </button>
-                            <button type="button" className="action-button" title="Déplacer"
+                            <button type="button" className="action-button"
+                                title={n.verrouille ? 'Verrouillée : des documents sont classés dans cette activité' : 'Déplacer'}
+                                disabled={n.verrouille}
                                 onClick={() => ouvrir({ mode: 'deplacer', noeud: n })}>
                                 <i className="fa-solid fa-arrows-up-down-left-right" />
                             </button>
-                            <button type="button" className="action-button delete" title="Supprimer"
+                            <button type="button" className="action-button delete"
+                                title={n.verrouille ? 'Verrouillée : des documents sont classés dans cette activité' : 'Supprimer'}
+                                disabled={n.verrouille}
                                 onClick={() => handleSupprimer(n)}>
                                 <i className="fa-solid fa-trash-can" />
                             </button>
@@ -154,11 +168,6 @@ function PlanClassementPanel({ uoId }: Props) {
                     Ajouter une activité
                 </button>
             </div>
-            <p className="pc-intro">
-                Le plan de classement décrit à quoi servent vos documents (fonctions et activités de l'UO),
-                indépendamment de l'organigramme. Rattachez ensuite chaque type de document à une activité
-                depuis le formulaire du type : ses documents en héritent.
-            </p>
 
             {loading ? (
                 <p className="pc-empty"><i className="fa-solid fa-spinner fa-spin" /> Chargement...</p>
@@ -171,14 +180,16 @@ function PlanClassementPanel({ uoId }: Props) {
                     {form?.mode !== 'deplacer' && (
                         <>
                             <div className="form-field">
-                                <input className="form-field-input" placeholder="Code (ex. 03.2)" aria-label="Code"
-                                    value={code} onChange={e => setCode(e.target.value)} maxLength={30} required />
-                            </div>
-                            <div className="form-field">
                                 <input className="form-field-input" placeholder="Libellé (ex. Factures et paiements)" aria-label="Libellé"
                                     value={libelle} onChange={e => setLibelle(e.target.value)} maxLength={150} required />
                             </div>
                         </>
+                    )}
+                    {form?.mode === 'creer' && (
+                        <p className="pc-empty">Le code est attribué automatiquement (01, 02… à la racine, puis 01.1, 01.1.1…).</p>
+                    )}
+                    {form?.mode === 'deplacer' && (
+                        <p className="pc-empty">Le code de l'activité et de ses sous-activités sera recalculé selon sa nouvelle position.</p>
                     )}
                     {form?.mode !== 'modifier' && (
                         <div className="form-field">
