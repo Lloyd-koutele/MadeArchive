@@ -185,12 +185,6 @@ function PlanClassementPanel({ uoId }: Props) {
                             </div>
                         </>
                     )}
-                    {form?.mode === 'creer' && (
-                        <p className="pc-empty">Le code est attribué automatiquement (01, 02… à la racine, puis 01.1, 01.1.1…).</p>
-                    )}
-                    {form?.mode === 'deplacer' && (
-                        <p className="pc-empty">Le code de l'activité et de ses sous-activités sera recalculé selon sa nouvelle position.</p>
-                    )}
                     {form?.mode !== 'modifier' && (
                         <div className="form-field">
                             <label className="form-field-label" htmlFor="pc-parent">Activité parente</label>
