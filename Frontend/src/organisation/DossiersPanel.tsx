@@ -1911,6 +1911,7 @@ function DossierCard({
             onDrop={onDropCarte}
         >
             <div className="folder-icon-wrap">
+                <span className="ctx-anchor" data-ctx-anchor aria-hidden="true" />
                 <div className="folder-tab" />
                 <div className="folder-back" />
                 <div className="glass-pocket" />
