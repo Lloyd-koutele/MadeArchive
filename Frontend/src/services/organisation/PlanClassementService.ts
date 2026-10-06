@@ -35,20 +35,29 @@ export const getPlanClassement = async (uoId: number): Promise<PlanClassementNoe
     } catch (e) { return erreur(e); }
 };
 
-/** Le code (01, 01.1, 01.1.1…) est attribué par le serveur d'après la position dans l'arbre. */
-export const creerNoeudPlanClassement = async (
-    uoId: number, libelle: string, parentId: number | null,
+/** Brouillon d'activité (organigramme de création) : pas de code, le serveur le génère (01, 01.1, 01.1.1…). */
+export interface PlanClassementBrouillon {
+    /** Absent = nouvelle activité ; renseigné = activité existante (mise à jour). */
+    id?: number;
+    libelle: string;
+    children: PlanClassementBrouillon[];
+}
+
+/** Crée une activité avec toute sa descendance en un seul appel. parentId null = racine du plan. */
+export const creerArborescencePlanClassement = async (
+    uoId: number, parentId: number | null, node: PlanClassementBrouillon,
 ): Promise<PlanClassementNoeudDto> => {
     try {
-        return (await api.post('/editor/plan-classement', { uoId, libelle, parentId })).data;
+        return (await api.post('/editor/plan-classement/arborescence', { uoId, parentId, node })).data;
     } catch (e) { return erreur(e); }
 };
 
-export const modifierNoeudPlanClassement = async (
-    id: number, libelle: string,
+/** Met à jour une activité et sa descendance (libellés, nouvelles sous-activités) en un seul appel. */
+export const mettreAJourArborescencePlanClassement = async (
+    id: number, node: PlanClassementBrouillon,
 ): Promise<PlanClassementNoeudDto> => {
     try {
-        return (await api.put(`/editor/plan-classement/${id}`, { libelle })).data;
+        return (await api.put(`/editor/plan-classement/${id}/arborescence`, node)).data;
     } catch (e) { return erreur(e); }
 };
 
