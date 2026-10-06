@@ -9,6 +9,10 @@ export interface PlanClassementNoeudDto {
     parentId: number | null;
     /** Types de documents directement rattachés à ce nœud (hors sous-activités). */
     nbTypes: number;
+    /** Documents dont l'activité effective est ce nœud (la leur, ou celle de leur type). */
+    nbDocuments: number;
+    /** true si ce nœud ou l'une de ses sous-activités a des documents : plus modifiable ni supprimable. */
+    verrouille: boolean;
     children: PlanClassementNoeudDto[];
 }
 
@@ -31,19 +35,20 @@ export const getPlanClassement = async (uoId: number): Promise<PlanClassementNoe
     } catch (e) { return erreur(e); }
 };
 
+/** Le code (01, 01.1, 01.1.1…) est attribué par le serveur d'après la position dans l'arbre. */
 export const creerNoeudPlanClassement = async (
-    uoId: number, code: string, libelle: string, parentId: number | null,
+    uoId: number, libelle: string, parentId: number | null,
 ): Promise<PlanClassementNoeudDto> => {
     try {
-        return (await api.post('/editor/plan-classement', { uoId, code, libelle, parentId })).data;
+        return (await api.post('/editor/plan-classement', { uoId, libelle, parentId })).data;
     } catch (e) { return erreur(e); }
 };
 
 export const modifierNoeudPlanClassement = async (
-    id: number, code: string, libelle: string,
+    id: number, libelle: string,
 ): Promise<PlanClassementNoeudDto> => {
     try {
-        return (await api.put(`/editor/plan-classement/${id}`, { code, libelle })).data;
+        return (await api.put(`/editor/plan-classement/${id}`, { libelle })).data;
     } catch (e) { return erreur(e); }
 };
 

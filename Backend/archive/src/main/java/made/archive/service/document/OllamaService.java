@@ -313,10 +313,15 @@ public class OllamaService
             // pour qu'il laisse regexGenerated=false et retente plus tard (voir
             // RegexGenerationService.retenterEchecs) plutôt que de figer le type
             // sur des regex inutiles qui ne seront plus jamais régénérées.
-            String description = externalLlmProperties.estConfiguree()
-                ? "l'API LLM externe configurée (" + externalLlmProperties.getApiUrl() + ")"
-                : "Ollama local (" + ollamaProperties.getBaseUrl() + ")";
-            alerterAdminLlmInvalide(description);
+            // Aucun LLM configuré : ce n'est pas une panne, juste une fonction désactivée (voir init) — jamais
+            // d'alerte "indisponible" pour un LLM que personne n'a demandé.
+            if (externalLlmProperties.estConfiguree() || ollamaProperties.estConfiguree())
+            {
+                String description = externalLlmProperties.estConfiguree()
+                    ? "l'API LLM externe configurée (" + externalLlmProperties.getApiUrl() + ")"
+                    : "Ollama local (" + ollamaProperties.getBaseUrl() + ")";
+                alerterAdminLlmInvalide(description);
+            }
 
             log.warn("[LLM] Aucune réponse du LLM sur les {} champ(s) — rien stocké, à retenter plus tard",
                 metaDataList.size());

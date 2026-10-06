@@ -16,5 +16,10 @@ public class PlanClassementNoeudDto
     private Long parentId;
     /** Nombre de types de documents directement rattachés à ce nœud (hors descendants). */
     private long nbTypes;
+    /** Documents dont l'activité effective est exactement ce nœud (la leur, ou celle de leur type). */
+    private long nbDocuments;
+    /** true si ce nœud OU l'un de ses descendants a des documents : il n'est plus modifiable (libellé, position,
+     *  suppression) — le code et le libellé figurent dans les exports et procès-verbaux déjà produits. */
+    private boolean verrouille;
     private List<PlanClassementNoeudDto> children;
 }
