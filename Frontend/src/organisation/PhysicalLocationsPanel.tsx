@@ -591,6 +591,7 @@ function PhysicalLocationsPanel({ uoId, mode = 'lecture', onOuvrirDansDossier }:
                     parentId={treeModal.mode === 'create' ? treeModal.parentId : undefined}
                     parentLabel={treeModal.mode === 'create' ? treeModal.parentLabel : undefined}
                     existingNode={treeModal.mode === 'update' ? treeModal.node : undefined}
+                    existingEstRacine={treeModal.mode === 'update' ? arbre.some(r => r.id === treeModal.node.id) : false}
                     onEditCapacite={treeModal.mode === 'update' ? (cible: CibleEditionExistante) => {
                         setTreeModal({ open: false });
                         // Descripteur minimal (id/name/nombreDocuments/capaciteMax/...)
@@ -946,10 +947,13 @@ function PlNode({
                                             <button onClick={() => { onCloseMenu(); onEdit(node); }} className="action-menu-item">
                                                 <i className="fa-solid fa-pen" /> Modifier
                                             </button>
-                                            <button onClick={() => { onCloseMenu(); onToggleType(node); }} className="action-menu-item">
-                                                <i className="fa-solid fa-shuffle" />{' '}
-                                                {node.storagePoint ? 'Convertir en chemin' : 'Convertir en stockage'}
-                                            </button>
+                                            {/* Une racine de l'UO reste toujours un nœud chemin : jamais proposée en stockage. */}
+                                            {(node.storagePoint || depth > 0) && (
+                                                <button onClick={() => { onCloseMenu(); onToggleType(node); }} className="action-menu-item">
+                                                    <i className="fa-solid fa-shuffle" />{' '}
+                                                    {node.storagePoint ? 'Convertir en chemin' : 'Convertir en stockage'}
+                                                </button>
+                                            )}
                                             <button onClick={() => { onCloseMenu(); onToggleStatus(node); }} className="action-menu-item">
                                                 <i className={`fa-solid ${isInactive ? 'fa-toggle-off' : 'fa-toggle-on'}`} />{' '}
                                                 {isInactive ? 'Réactiver' : 'Désactiver'}

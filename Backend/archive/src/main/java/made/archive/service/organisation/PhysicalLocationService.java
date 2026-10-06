@@ -274,12 +274,10 @@ public class PhysicalLocationService
                 "\"" + node.getName() + "\" est un point de stockage, il ne peut pas avoir d'enfant");
         }
 
-        if (node.getCapaciteMax() != null && !node.isStoragePoint())
-        {
-            throw new BusinessException(
-                "\"" + node.getName() + "\" est un nœud chemin, il ne peut pas avoir de capacité maximale");
-        }
-        if (node.getCapaciteMax() != null && node.getCapaciteMax() < 1)
+        // Un nœud chemin n'a pas de capacité : une valeur résiduelle (un point de stockage dont on a donné la capacité
+        // avant de le repasser en chemin) est simplement ignorée, jamais une erreur.
+        Integer capaciteMax = node.isStoragePoint() ? node.getCapaciteMax() : null;
+        if (capaciteMax != null && capaciteMax < 1)
         {
             throw new BusinessException("La capacité maximale doit être d'au moins 1 document");
         }
@@ -290,7 +288,7 @@ public class PhysicalLocationService
         loc.setName(node.getName());
         loc.setDescription(node.getDescription());
         loc.setStoragePoint(node.isStoragePoint());
-        loc.setCapaciteMax(node.getCapaciteMax());
+        loc.setCapaciteMax(capaciteMax);
         loc.setParent(parent);
         loc.setUniteOrganisationnelle(uo);
         loc.setStatus(LocationStatus.ACTIVE);
@@ -438,12 +436,9 @@ public class PhysicalLocationService
                 throw new BusinessException(
                     "\"" + dto.getName() + "\" est un point de stockage, il ne peut pas avoir d'enfant");
             }
-            if (dto.getCapaciteMax() != null && !dto.isStoragePoint())
-            {
-                throw new BusinessException(
-                    "\"" + dto.getName() + "\" est un nœud chemin, il ne peut pas avoir de capacité maximale");
-            }
-            if (dto.getCapaciteMax() != null && dto.getCapaciteMax() < 1)
+            // Capacité résiduelle d'un nœud devenu chemin : ignorée (voir creerNoeudArborescence).
+            Integer capaciteMax = dto.isStoragePoint() ? dto.getCapaciteMax() : null;
+            if (capaciteMax != null && capaciteMax < 1)
             {
                 throw new BusinessException("La capacité maximale doit être d'au moins 1 document");
             }
@@ -453,7 +448,7 @@ public class PhysicalLocationService
             loc.setName(dto.getName());
             loc.setDescription(dto.getDescription());
             loc.setStoragePoint(dto.isStoragePoint());
-            loc.setCapaciteMax(dto.getCapaciteMax());
+            loc.setCapaciteMax(capaciteMax);
             loc.setParent(parentAttendu);
             loc.setUniteOrganisationnelle(uo);
             loc.setStatus(LocationStatus.ACTIVE);
@@ -628,8 +623,21 @@ public class PhysicalLocationService
             throw new BusinessException(
                 "Impossible de devenir un point de stockage : cet emplacement a des enfants");
         }
+        if (nouveauStoragePoint && loc.getParent() == null)
+        {
+            throw new BusinessException(
+                "Impossible de devenir un point de stockage : une racine reste toujours un nœud chemin");
+        }
 
         loc.setStoragePoint(nouveauStoragePoint);
+        if (!nouveauStoragePoint)
+        {
+            // Un chemin n'a ni capacité ni contrainte d'acceptation : ce qui restait du point de stockage disparaît.
+            loc.setCapaciteMax(null);
+            loc.setModeContrainte(LocationModeContrainte.LIBRE);
+            loc.setTypeDocumentAccepte(null);
+            loc.setDossier(null);
+        }
         loc.setUpdatedBy(currentUser);
         loc.setUpdatedAt(LocalDateTime.now());
         PhysicalLocation saved = locationRepository.save(loc);
