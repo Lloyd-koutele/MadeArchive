@@ -21,14 +21,23 @@ import org.springframework.stereotype.Service;
 /**
  * Dessine le PDF d'un procès-verbal d'élimination (liste des documents éliminés, un bloc par document, sur
  * autant de pages que nécessaire). Produit un PDF ordinaire avec les polices standard : il est ensuite
- * converti en PDF/A par PdfAConversionService (voir ProcesVerbalEliminationService). Aucun TITRE de document
- * n'y figure — il peut contenir des données personnelles, et ce procès-verbal est conservé définitivement.
+ * converti en PDF/A par PdfAConversionService (voir ProcesVerbalEliminationService). Chaque bloc reproduit le
+ * TITRE et les informations qui permettent d'identifier le document éliminé (type, activité, version, dossier,
+ * emplacement, métadonnées, déposant, dates, empreinte, motif) : sans cela, le procès-verbal dirait pourquoi et
+ * comment on a supprimé, mais pas QUOI. Ces informations pouvant être sensibles, le procès-verbal est archivé en
+ * accès restreint (voir ProcesVerbalEliminationService).
  */
 @Service
 public class ProcesVerbalPdfService
 {
-    public record Ligne(String identifiant, String type, String activite, LocalDate archiveLe, String conservation,
-                        String empreinteSha256, String motif, String eliminePar, String elimineLe) {}
+    /**
+     * Un document éliminé. {@code version}, {@code dossier}, {@code emplacement} et {@code deposePar} peuvent être
+     * null (rien à indiquer) ; {@code metadonnees} est une liste de « nom : valeur » (peut être vide).
+     */
+    public record Ligne(String identifiant, String titre, String type, String activite, String version, String dossier,
+                        String emplacement, String deposePar, LocalDate archiveLe, String conservation,
+                        List<String> metadonnees, String empreinteSha256, String motif, String eliminePar,
+                        String elimineLe) {}
 
     public record Donnees(String uoNom, LocalDate dateElimination, LocalDateTime etabliLe, List<Ligne> lignes) {}
 
@@ -55,19 +64,34 @@ public class ProcesVerbalPdfService
                 "Établi le : " + d.etabliLe().format(HEURE) + " — nombre de documents éliminés : " + d.lignes().size())));
             blocs.add(new Bloc(POLICE_TEXTE, 8.5f, enveloppe(
                 "Les documents ci-dessous ont été éliminés de MadeArchive : leur fichier et leur entrée de recherche ont été "
-                + "supprimés ; seule une trace (identifiant, type, dates, empreinte, motif) est conservée. Aucun titre de "
-                + "document n'est reproduit ici, il pourrait contenir des données personnelles.", POLICE_TEXTE, 8.5f, largeur)));
+                + "supprimés ; seules sont conservées les informations qui permettent de les identifier (titre, type, "
+                + "métadonnées, dates, empreinte SHA-256, motif). Ce procès-verbal est à accès restreint.",
+                POLICE_TEXTE, 8.5f, largeur)));
 
             int n = 0;
             for (Ligne l : d.lignes())
             {
                 n++;
                 List<String> lignes = new ArrayList<>();
-                lignes.add(n + ". Document " + l.identifiant());
+                lignes.addAll(enveloppe(n + ". " + titreOuTiret(l.titre()), POLICE_TITRE, 9.5f, largeur));
+                lignes.add("   Document " + l.identifiant());
                 lignes.addAll(enveloppe("   Type : " + l.type() + (l.activite() != null ? " — Activité : " + l.activite() : ""),
                     POLICE_TEXTE, 9, largeur));
-                lignes.addAll(enveloppe("   Archivé le " + l.archiveLe().format(JOUR) + " — " + l.conservation(),
+                String classement = joindre(
+                    l.version() != null ? "Version : " + l.version() : null,
+                    l.dossier() != null ? "Dossier : " + l.dossier() : null,
+                    l.emplacement() != null ? "Emplacement physique : " + l.emplacement() : null);
+                if (classement != null)
+                {
+                    lignes.addAll(enveloppe("   " + classement, POLICE_TEXTE, 9, largeur));
+                }
+                lignes.addAll(enveloppe("   Archivé le " + l.archiveLe().format(JOUR)
+                    + (l.deposePar() != null ? " par " + l.deposePar() : "") + " — " + l.conservation(),
                     POLICE_TEXTE, 9, largeur));
+                if (l.metadonnees() != null && !l.metadonnees().isEmpty())
+                {
+                    lignes.addAll(enveloppe("   Métadonnées : " + String.join(" ; ", l.metadonnees()), POLICE_TEXTE, 9, largeur));
+                }
                 lignes.add("   SHA-256 : " + l.empreinteSha256());
                 lignes.addAll(enveloppe("   Motif : " + l.motif() + " — éliminé le " + l.elimineLe() + " par " + l.eliminePar(),
                     POLICE_TEXTE, 9, largeur));
@@ -93,7 +117,8 @@ public class ProcesVerbalPdfService
                 }
                 for (String ligne : b.lignes)
                 {
-                    PDFont police = b.avecSha && ligne.startsWith("   SHA-256") ? POLICE_CODE : b.police;
+                    PDFont police = b.avecSha && ligne.startsWith("   SHA-256") ? POLICE_CODE
+                        : b.avecSha && ligne.matches("^\\d+\\. .*") ? POLICE_TITRE : b.police;
                     float taille = police == POLICE_CODE ? 7.5f : b.taille;
                     y -= taille + 3;
                     cs.beginText();
@@ -114,6 +139,21 @@ public class ProcesVerbalPdfService
         {
             throw new IllegalStateException("Génération du PDF du procès-verbal impossible", e);
         }
+    }
+
+    private static String titreOuTiret(String titre)
+    {
+        return titre == null || titre.isBlank() ? "(sans titre)" : "« " + titre.trim() + " »";
+    }
+
+    private static String joindre(String... morceaux)
+    {
+        List<String> gardes = new ArrayList<>();
+        for (String m : morceaux)
+        {
+            if (m != null) gardes.add(m);
+        }
+        return gardes.isEmpty() ? null : String.join(" — ", gardes);
     }
 
     private static final class Bloc

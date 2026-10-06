@@ -45,6 +45,8 @@ import made.archive.repository.UserRepository;
 import made.archive.security.DocumentEncryptionService;
 import made.archive.security.HsmKeyStoreService;
 import made.archive.service.audit.AuditLogService;
+import made.archive.service.integrite.ManifestePreuveService;
+import made.archive.service.integrite.PreuveIntegriteService;
 import made.archive.service.notification.NotificationService;
 import made.archive.service.organisation.UniteOrganisationnelleService;
 import made.archive.service.storage.StorageService;
@@ -89,6 +91,8 @@ public class DocumentUploadeService
     private final RegexGenerationService                                    regexGenerationService;
     private final HorodatageService                                        horodatageService;
     private final made.archive.repository.PlanClassementNoeudRepository     planClassementNoeudRepository;
+    private final PreuveIntegriteService                                    preuveIntegriteService;
+    private final ManifestePreuveService                                    manifestePreuveService;
 
     private TransactionTemplate transactionTemplate;
 
@@ -449,12 +453,19 @@ public class DocumentUploadeService
                     // ce try/catch.
                     Document saved = documentRepository.saveAndFlush(document);
 
+                    // Scellement de l'enregistrement par la clé HSM de l'éditeur — dans la même transaction que
+                    // la création : le document n'existe jamais sans sa preuve. L'identifiant n'est connu qu'ici.
+                    preuveIntegriteService.sceller(saved, uploadedBy.getPkiKeyAlias());
+
                     // Le prédécesseur n'est plus la version actuelle — bascule
                     // atomique avec la création de cette nouvelle version.
                     if (documentPrecedent != null)
                     {
                         documentPrecedent.setDerniereVersion(false);
                         documentRepository.save(documentPrecedent);
+                        // Son libellé de version change ("Final" -> "Version N") : l'index suit, après le commit
+                        // de cette transaction (rien n'est envoyé si la nouvelle version est finalement refusée).
+                        meilisearchService.synchroniserDocument(documentPrecedent, null);
                     }
 
                     dataTypesToSave.forEach(dt -> dt.setDocument(saved));
@@ -504,6 +515,9 @@ public class DocumentUploadeService
             }
             log.info("[Upload-Phase2] Document créé : {} ({} métadonnée(s))",
                 savedDocument.getId(), dataTypesToSave.size());
+
+            // Manifeste des preuves dans le bucket verrouillé — seconde copie hors base (best-effort).
+            manifestePreuveService.ecrire(savedDocument);
 
             // ── 10b. Notification "document ajouté" ─────────────────────────────
             // PUBLIC → tous les membres de l'UO ; PRIVE → seulement les membres
@@ -624,7 +638,9 @@ public class DocumentUploadeService
                 (documentPrecedent != null
                     ? "Nouvelle version (v" + nouvelleVersion + ") de " + typeDocument.getNom()
                     : "Upload de " + typeDocument.getNom())
-                    + " par " + uploadedBy.getEmail(),
+                    + " par " + uploadedBy.getEmail()
+                    // L'empreinte entre dans la chaîne du journal, donc dans ses scellements horodatés.
+                    + " — SHA-256 PDF/A : " + savedDocument.getPdfaSha256(),
                 true);
 
             // ── 14. Résultat ───────────────────────────────────────────────────

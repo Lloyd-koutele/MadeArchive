@@ -21,10 +21,12 @@ import made.archive.entite.AuditAction;
 import made.archive.entite.AuditCible;
 import made.archive.entite.DataType;
 import made.archive.entite.Document;
+import made.archive.entite.GroupeAccess;
 import made.archive.entite.DocumentStatus;
 import made.archive.entite.IntegrityLevel;
 import made.archive.entite.MetaData;
 import made.archive.entite.MotifSuppression;
+import made.archive.entite.Role_Name;
 import made.archive.entite.Retention;
 import made.archive.entite.SortFinal;
 import made.archive.entite.TypeAccess;
@@ -34,12 +36,17 @@ import made.archive.exception.PdfAConversionException;
 import made.archive.entite.User;
 import made.archive.repository.DataTypeRepository;
 import made.archive.repository.DocumentRepository;
+import made.archive.repository.GroupeAccessRepository;
 import made.archive.repository.TypeDocumentRepository;
 import made.archive.repository.UniteOrganisationnelleRepository;
 import made.archive.repository.UserRepository;
 import made.archive.security.DocumentEncryptionService;
 import made.archive.service.audit.AuditLogService;
+import made.archive.service.integrite.ManifestePreuveService;
+import made.archive.service.integrite.PreuveIntegriteService;
 import made.archive.service.organisation.PlanClassementService;
+import made.archive.service.organisation.UniteOrganisationnelleService;
+import made.archive.util.DocumentVersionLabels;
 import made.archive.service.storage.StorageService;
 import made.archive.service.user.UtilisateurSystemeService;
 
@@ -48,9 +55,11 @@ import made.archive.service.user.UtilisateurSystemeService;
  * quel que soit le motif), un PV (PDF/A, horodaté RFC 3161) est archivé DANS MadeArchive, comme document
  * d'un type système « Procès-verbal d'élimination » en sort CONSERVER — donc jamais éliminable lui-même.
  *
- * Un PV par UO et par jour de purge, listant identifiant, type, activité, dates, règle de conservation,
- * empreinte SHA-256, motif et auteur — JAMAIS les titres (données personnelles possibles, PV conservé
- * définitivement).
+ * Un PV par UO et par jour de purge, listant pour chaque document éliminé son TITRE et les informations qui
+ * permettent de l'identifier (identifiant, type, activité, version, dossier, emplacement, métadonnées, déposant,
+ * dates, règle de conservation, empreinte SHA-256, motif et auteur) : sans cela, le PV dirait pourquoi et comment
+ * on a supprimé, mais pas QUOI. Les titres et métadonnées pouvant être sensibles (ou contenir des données
+ * personnelles), le PV est à ACCÈS RESTREINT : voir groupeDesResponsables.
  *
  * La purge d'abord, le PV ensuite : l'élimination n'est jamais retardée par une panne de génération (PDF/A
  * via Ghostscript, stockage...). Tant qu'un PV échoue, Document.procesVerbalId reste null et chaque nuit
@@ -60,8 +69,9 @@ import made.archive.service.user.UtilisateurSystemeService;
  *
  * Document déposé par le compte technique « Système MadeArchive » (voir UtilisateurSystemeService), donc
  * horodaté mais non signé (pas de clé PKI applicative : un PV signé par l'application elle-même ne
- * prouverait rien de plus que l'horodatage indépendant et le sceau du journal chaîné). Accès PUBLIC dans
- * l'UO : il ne contient ni titre ni donnée personnelle.
+ * prouverait rien de plus que l'horodatage indépendant et le sceau du journal chaîné). Accès PRIVÉ : seuls les
+ * éditeurs et les administrateurs d'UO de l'UO concernée (voir groupeDesResponsables) le voient et le trouvent
+ * en recherche — y compris par le titre d'un document éliminé.
  */
 @Slf4j
 @Service
@@ -80,6 +90,8 @@ public class ProcesVerbalEliminationService
     private final DataTypeRepository             dataTypeRepository;
     private final UniteOrganisationnelleRepository uoRepository;
     private final UserRepository                 userRepository;
+    private final GroupeAccessRepository         groupeAccessRepository;
+    private final UniteOrganisationnelleService  uniteOrganisationnelleService;
     private final UtilisateurSystemeService      utilisateurSystemeService;
     private final ProcesVerbalPdfService         pdfService;
     private final PdfAConversionService          pdfAConversionService;
@@ -90,6 +102,8 @@ public class ProcesVerbalEliminationService
     private final HorodatageService              horodatageService;
     private final AuditLogService                auditLogService;
     private final PlatformTransactionManager     transactionManager;
+    private final PreuveIntegriteService         preuveIntegriteService;
+    private final ManifestePreuveService         manifestePreuveService;
 
     /** Un lot à documenter : les pierres tombales d'une même UO purgées le même jour. */
     private record Groupe(Long uoId, LocalDate jour, List<UUID> documentIds) {}
@@ -197,7 +211,8 @@ public class ProcesVerbalEliminationService
 
         Document pv = new Document();
         pv.setTitre(titre);
-        pv.setAccess(TypeAccess.PUBLIC);
+        pv.setAccess(TypeAccess.PRIVE);
+        pv.setGroupe(groupeDesResponsables(uo));
         pv.setOriginalSha256(hashService.calculateFromBytes(pdfSource));
         pv.setPdfaSha256(hashService.calculateFromBytes(pdfA));
         pv.setStorageKey(cleStockee);
@@ -212,6 +227,11 @@ public class ProcesVerbalEliminationService
         pv.setRetentionUntil(null);
         Document pvEnregistre = documentRepository.saveAndFlush(pv);
 
+        // Un PV n'a pas d'éditeur : signé par la clé du système, comme le sont les enregistrements de rattrapage.
+        preuveIntegriteService.scellerParLeSysteme(pvEnregistre);
+        documentRepository.save(pvEnregistre);
+        manifestePreuveService.ecrire(pvEnregistre);
+
         Map<String, MetaData> defs = new LinkedHashMap<>();
         type.getMetaData().forEach(m -> defs.put(m.getNom(), m));
         List<DataType> valeurs = new ArrayList<>();
@@ -225,8 +245,11 @@ public class ProcesVerbalEliminationService
         }
         documentRepository.saveAll(eliminees);
 
+        // Texte indexé : les titres et métadonnées des documents éliminés, pour retrouver un PV à partir du document
+        // qu'il concerne (la recherche respecte l'accès restreint du PV).
         StringBuilder texte = new StringBuilder(titre).append('\n').append(uo.getNom()).append('\n');
-        lignes.forEach(l -> texte.append(l.identifiant()).append(' ').append(l.type()).append(' ').append(l.motif()).append('\n'));
+        lignes.forEach(l -> texte.append(l.titre()).append(' ').append(l.identifiant()).append(' ').append(l.type())
+            .append(' ').append(String.join(" ", l.metadonnees())).append(' ').append(l.motif()).append('\n'));
         meilisearchService.indexDocument(pvEnregistre, texte.toString(), valeurs);
 
         return new Genere(pvEnregistre.getId(), uo.getId(), titre,
@@ -250,16 +273,76 @@ public class ProcesVerbalEliminationService
             ? "le système (suppression automatique)"
             : userRepository.findById(d.getEliminePar()).map(User::getEmail).orElse("l'utilisateur " + d.getEliminePar());
 
+        User depose = d.getUploadedBy();
+        String deposePar = depose == null ? null
+            : ((depose.getPrenom() != null ? depose.getPrenom() + " " : "") + (depose.getNom() != null ? depose.getNom() : "")).trim()
+                + " (" + depose.getEmail() + ")";
+
+        List<String> metadonnees = new ArrayList<>();
+        if (d.getData() != null)
+        {
+            for (DataType dt : d.getData())
+            {
+                if (dt.getValeur() == null || dt.getValeur().isBlank()) continue;
+                String nom = dt.getMetaData() != null && dt.getMetaData().getNom() != null ? dt.getMetaData().getNom() : "(champ)";
+                metadonnees.add(nom + " : " + dt.getValeur().trim());
+            }
+        }
+
         return new ProcesVerbalPdfService.Ligne(
             d.getId().toString(),
+            d.getTitre(),
             type.getNom(),
             PlanClassementService.chemin(PlanClassementService.activiteEffective(d)),
+            libelleVersion(DocumentVersionLabels.compute(d)),
+            d.getDossier() != null ? d.getDossier().getNom() : null,
+            d.getPhysicalLocation() != null ? d.getPhysicalLocation().getName() : null,
+            deposePar,
             d.getCreateAt().toLocalDate(),
             conservation,
+            metadonnees,
             d.getPdfaSha256(),
             libelleMotif(d),
             eliminePar,
             d.getElimineLe().atZone(FUSEAU).format(HEURE));
+    }
+
+    /**
+     * Les personnes qui peuvent lire le PV d'une UO : ses éditeurs (ceux qui gèrent et suppriment les documents) et
+     * les administrateurs d'UO ayant autorité sur elle. Instantané au moment de la génération du PV : un éditeur
+     * nommé plus tard ne verra pas les PV déjà établis. Le PV n'est pas public dans l'UO : il reproduit les titres
+     * de documents qui pouvaient être privés.
+     */
+    private GroupeAccess groupeDesResponsables(UniteOrganisationnelle uo)
+    {
+        Map<UUID, User> membres = new LinkedHashMap<>();
+        for (User u : userRepository.findByUniteOrganisationnelleId(uo.getId()))
+        {
+            boolean editeur = u.getRoles().stream().anyMatch(r -> r.getName() == Role_Name.EDITOR);
+            if (editeur && u.isActif())
+            {
+                membres.put(u.getId(), u);
+            }
+        }
+        for (User u : uniteOrganisationnelleService.getAdminUOAvecAutoriteSur(uo.getId()))
+        {
+            if (u.isActif())
+            {
+                membres.put(u.getId(), u);
+            }
+        }
+
+        GroupeAccess groupe = new GroupeAccess();
+        groupe.setCreateAt(LocalDate.now());
+        groupe.setMembres(new ArrayList<>(membres.values()));
+        return groupeAccessRepository.save(groupe);
+    }
+
+    /** « Version 2 » -> « 2 », « Final » -> « finale » (le PV affiche « Version : … »), null si document sans versions. */
+    private static String libelleVersion(String libelle)
+    {
+        if (libelle == null) return null;
+        return libelle.startsWith("Version ") ? libelle.substring("Version ".length()) : "finale";
     }
 
     private static String libelleMotif(Document d)

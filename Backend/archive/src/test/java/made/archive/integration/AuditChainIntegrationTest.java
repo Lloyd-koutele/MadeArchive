@@ -79,6 +79,7 @@ class AuditChainIntegrationTest
     @Autowired private JdbcTemplate             jdbc;
 
     @MockitoBean private HorodatageService horodatage;
+    @MockitoBean private made.archive.service.integrite.HorodatageVerificationService jetons;
 
     private int compteur;
 

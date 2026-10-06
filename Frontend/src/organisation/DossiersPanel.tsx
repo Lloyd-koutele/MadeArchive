@@ -419,6 +419,11 @@ function DossiersPanel({ uoId, canCreate = true, initialDossierId = null, initia
         getDossierDetail(dossierActif.id).then(setDossierActif).catch(() => {});
     };
 
+    // Gestion (archiver, modifier, retirer un type…) : réservée à l'éditeur. Un compte
+    // admin/admin_uo qui cumule le rôle EDITOR garde l'interface d'administration en
+    // lecture seule (canCreate=false) — la permission serveur reste inchangée.
+    const peutGererTypes = canCreate && !!dossierActif?.peutGererTypes;
+
     // ─────────────────────────────────────────────────────────────────────
     // Archiver directement dans le dossier ouvert — voir ImportDocuments
     // (preselectedDossierId/preselectedTypeId, tous deux modifiables) et le
@@ -1126,7 +1131,7 @@ function DossiersPanel({ uoId, canCreate = true, initialDossierId = null, initia
                         (verifierPeutGererDossier) — refusé de toute façon si le
                         dossier contient des documents ou des sous-dossiers, voir
                         handleSupprimer. */}
-                    {modalMode === 'edit' && dossierActif?.peutGererTypes && (
+                    {modalMode === 'edit' && peutGererTypes && (
                         <button
                             type="button"
                             className="dossiers-delete-btn"
@@ -1211,6 +1216,16 @@ function DossiersPanel({ uoId, canCreate = true, initialDossierId = null, initia
                     <span className="breadcrumb-count">
                         ({docsTotal} document{docsTotal > 1 ? 's' : ''})
                     </span>
+
+                    {peutGererTypes && (
+                        <button
+                            className="breadcrumb-add-btn breadcrumb-archive-btn"
+                            onClick={e => ouvrirUpload(typeActif.typeDocumentId, e)}
+                            title={`Archiver un document de type ${typeActif.nom} dans ce dossier`}
+                        >
+                            <i className="fa-solid fa-box-archive" /> Archiver
+                        </button>
+                    )}
 
                     <div className="docs-view-toggle" role="group" aria-label="Mode d'affichage">
                         <button
@@ -1407,6 +1422,20 @@ function DossiersPanel({ uoId, canCreate = true, initialDossierId = null, initia
                     </>
                 )}
 
+                {/* ── Modal archivage — dossier et type déjà pré-remplis (voir ouvrirUpload). ── */}
+                <Modal
+                    isOpen={isUploadOpen}
+                    onClose={fermerUpload}
+                    title="Archiver des documents"
+                    size="large"
+                >
+                    <ImportDocuments
+                        onsuccess={handleUploadSuccess}
+                        preselectedDossierId={dossierActif.id}
+                        preselectedTypeId={uploadTypeId}
+                    />
+                </Modal>
+
                 {/* ── Modal détail (lecture seule) ── */}
                 <Modal
                     isOpen={isDocDetailOpen}
@@ -1440,7 +1469,7 @@ function DossiersPanel({ uoId, canCreate = true, initialDossierId = null, initia
                         <i className="fa-solid fa-arrow-left" /> {dossierActif?.parentNom ?? 'Dossiers'}
                     </button>
                     <i className="fa-solid fa-chevron-right breadcrumb-sep" />
-                    {dossierActif?.peutGererTypes && (
+                    {peutGererTypes && (
                         <button
                             className="breadcrumb-edit-btn"
                             onClick={ouvrirEdition}
@@ -1467,7 +1496,7 @@ function DossiersPanel({ uoId, canCreate = true, initialDossierId = null, initia
                                 <i className="fa-solid fa-user-group" /> Accès
                             </button>
                         )}
-                        {dossierActif?.peutGererTypes && (
+                        {peutGererTypes && (
                             <button
                                 className="breadcrumb-add-btn breadcrumb-add-btn-icon-only breadcrumb-archive-btn"
                                 onClick={e => ouvrirUpload(null, e)}
@@ -1477,7 +1506,7 @@ function DossiersPanel({ uoId, canCreate = true, initialDossierId = null, initia
                                 <i className="fa-solid fa-box-archive" />
                             </button>
                         )}
-                        {dossierActif?.peutGererTypes && (
+                        {peutGererTypes && (
                             <button
                                 className="breadcrumb-add-btn breadcrumb-add-btn-icon-only"
                                 onClick={() => ouvrirCreation(dossierActif.id, dossierActif.access === 'PRIVE')}
@@ -1577,7 +1606,7 @@ function DossiersPanel({ uoId, canCreate = true, initialDossierId = null, initia
                                 {/* Retrait rapide — uniquement si ce type n'a encore aucun
                                     document dans ce dossier et si l'utilisateur peut gérer les
                                     types de ce dossier. Pas besoin de passer par "Modifier". */}
-                                {dossierActif?.peutGererTypes && !t.fourni && (
+                                {peutGererTypes && !t.fourni && (
                                     <button
                                         className="folder-add-btn"
                                         style={{ background: 'var(--error)' }}
@@ -1602,7 +1631,7 @@ function DossiersPanel({ uoId, canCreate = true, initialDossierId = null, initia
                                         pré-remplis (voir ouvrirUpload/ImportDocuments), en
                                         bas-droite pour ne jamais chevaucher le retrait rapide
                                         (haut-gauche) ni le compteur (haut-droite). */}
-                                    {dossierActif?.peutGererTypes && (
+                                    {peutGererTypes && (
                                         <button
                                             className="folder-quick-add-btn"
                                             onClick={e => ouvrirUpload(t.typeDocumentId, e)}

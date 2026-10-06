@@ -26,6 +26,7 @@ import made.archive.entite.UniteOrganisationnelle;
 import made.archive.entite.User;
 import made.archive.exception.AccessDeniedException;
 import made.archive.exception.BusinessException;
+import made.archive.entite.DocumentStatus;
 import made.archive.repository.DocumentRepository;
 import made.archive.repository.TypeDocumentRepository;
 import made.archive.repository.UserRepository;
@@ -665,6 +666,13 @@ public class TypeDocumentService
             String ancienNom = typeDocument.getNom();
             typeDocument.setNom(nouveauNom);
             typeDocumentRepository.save(typeDocument);
+
+            // Le nom du type est indexé (recherche en texte libre) pour CHAQUE document du type : sans cette mise à
+            // jour, tous resteraient trouvables sous l'ancien nom. Les documents CORRUPTED / DELETED ne sont plus
+            // dans l'index et ne doivent pas y être recréés.
+            meilisearchService.mettreAJourTypeDocument(id, nouveauNom,
+                documentRepository.findIdsByTypeDocumentIdAndStatusNotIn(id,
+                    java.util.List.of(DocumentStatus.DELETED, DocumentStatus.CORRUPTED)));
 
             auditLogService.log(currentUser, AuditAction.TYPE_DOCUMENT_MODIFIE, AuditCible.TYPE_DOCUMENT,
                 id.toString(), typeDocument.getUniteOrganisationnelle().getId(),

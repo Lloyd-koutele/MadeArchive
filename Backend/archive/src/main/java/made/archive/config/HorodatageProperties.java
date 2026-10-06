@@ -38,6 +38,17 @@ public class HorodatageProperties
     private String username;
     private String password;
 
+    /**
+     * Fichier des empreintes de certificats de TSA "ancrées" (une par ligne, SHA-256 hex) — vide = à côté du
+     * KeyStore HSM (même volume, donc hors base de données). Alimenté automatiquement par chaque réponse EN
+     * DIRECT d'un TSA (voir TsaAncreService) ; jamais par un jeton lu en base.
+     */
+    private String ancresPath;
+
+    /** Empreintes SHA-256 (hex, séparées par des virgules) de certificats de TSA à considérer comme ancrés
+     *  d'emblée — pour provisionner un TSA payant avant sa première réponse. */
+    private String ancresSupplementaires;
+
     public boolean payantConfigure()
     {
         return StringUtils.hasText(tsaUrlPayant);

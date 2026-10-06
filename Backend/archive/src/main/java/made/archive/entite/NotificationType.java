@@ -69,5 +69,10 @@ public enum NotificationType
     HORODATAGE_INDISPONIBLE,
 
     /** Documents en corbeille que le système va supprimer dans moins de 3 jours (une alerte par jour). */
-    DOCUMENT_SUPPRESSION_IMMINENTE
+    DOCUMENT_SUPPRESSION_IMMINENTE,
+
+    /** Les preuves d'intégrité en base d'un document (empreinte, signature, jeton, ancrage) ont été modifiées
+     *  hors de l'application, ou la vérification d'un ancrage/scellement a échoué — envoyée aux ADMIN globaux
+     *  et aux ADMIN_UO ayant autorité. Voir service.integrite.PreuveIntegriteService. */
+    INTEGRITE_PREUVE_ALTEREE
 }

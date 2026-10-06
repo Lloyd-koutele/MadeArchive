@@ -47,6 +47,26 @@ import '../Style/document/Typedocument.css';
 
 interface DocumentsAccessiblesProps {
     uoId?: number | null;
+    /**
+     * Vue d'administration (Admin / Admin_UO) : consultation seule. Aucun bouton de gestion de document (corbeille,
+     * dossier, emplacement, accès, reclassement) n'est affiché, même si le compte porte aussi le rôle ÉDITEUR —
+     * ces actions se font depuis l'espace Éditeur.
+     */
+    modeAdministration?: boolean;
+}
+
+/** Retire de ce qui est affiché toute possibilité de gérer un document (vue d'administration). */
+function sansGestion<T extends Partial<DocumentListItemDto & DocumentDetailDto>>(d: T): T {
+    return {
+        ...d,
+        peutGererCorbeille: false,
+        peutSupprimerDefinitivement: false,
+        peutBloquerElimination: false,
+        peutDebloquerElimination: false,
+        peutModifierEmplacement: false,
+        peutModifierDossier: false,
+        peutModifierAcces: false,
+    };
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -99,7 +119,7 @@ const FILTRES_VIDES: Filtres = {
 // Composant principal
 // ─────────────────────────────────────────────────────────────────────────────
 
-function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
+function DocumentsAccessibles({ uoId = null, modeAdministration = false }: DocumentsAccessiblesProps) {
     const notify = useNotify();
     const confirm = useConfirm();
     const demanderMotif = useDemandeMotif();
@@ -299,7 +319,7 @@ function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
                 page:           p,
                 size:           10,
             });
-            setDocuments(result.content);
+            setDocuments(modeAdministration ? result.content.map(sansGestion) : result.content);
             setTotal(result.totalElements);
             setTotalPages(result.totalPages);
             setPage(p);
@@ -431,7 +451,7 @@ function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
         setAttestationUrl(null);
         try {
             const d = await getDocumentDetail(documentId);
-            setDetail(d);
+            setDetail(modeAdministration ? sansGestion(d) : d);
         } finally {
             setDetailLoading(false);
         }
@@ -1300,7 +1320,7 @@ function DocumentsAccessibles({ uoId = null }: DocumentsAccessiblesProps) {
                         onGenererAttestation={handleGenererAttestation}
                         attestationUrl={attestationUrl}
                         attestationLoading={attestationLoading}
-                        onEmplacementChange={setDetail}
+                        onEmplacementChange={(d) => setDetail(modeAdministration ? sansGestion(d) : d)}
                     />
                 ) : (
                     <div className="td-empty"><p>Impossible de charger le détail.</p></div>

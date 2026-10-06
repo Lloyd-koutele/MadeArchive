@@ -22,11 +22,15 @@ import java.security.Key;
 import java.security.KeyPair;
 import java.security.KeyStore;
 import java.security.PrivateKey;
+import java.security.PublicKey;
 import java.security.Security;
 import java.security.Signature;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
+import java.util.Base64;
 import java.util.Date;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 
@@ -168,6 +172,92 @@ public class HsmKeyStoreService
         finally
         {
             lock.readLock().unlock();
+        }
+    }
+
+    /**
+     * Clés publiques déjà lues dans le KeyStore — une clé d'alias donné n'est jamais remplacée (voir
+     * UserService.provisionnerClePki : seulement si l'alias est vide), donc la mémoriser est sûre. Seules les clés
+     * TROUVÉES sont mémorisées : un alias absent est relu à chaque fois (il peut être créé ensuite).
+     */
+    private final ConcurrentHashMap<String, PublicKey> clesPubliques = new ConcurrentHashMap<>();
+
+    /**
+     * Clé publique d'un alias, lue dans le certificat du KeyStore — c'est la RACINE DE CONFIANCE de toute
+     * vérification de signature : elle ne vient JAMAIS de la base de données (users.pki_public_key), qu'un
+     * attaquant ayant accès à PostgreSQL peut réécrire. Vide si l'alias n'existe pas dans ce KeyStore.
+     */
+    public Optional<PublicKey> clePublique(String alias)
+    {
+        if (alias == null || alias.isBlank())
+        {
+            return Optional.empty();
+        }
+        PublicKey connue = clesPubliques.get(alias);
+        if (connue != null)
+        {
+            return Optional.of(connue);
+        }
+
+        lock.readLock().lock();
+        try
+        {
+            Certificate certificat = loadKeyStore().getCertificate(alias);
+            if (certificat == null)
+            {
+                return Optional.empty();
+            }
+            clesPubliques.put(alias, certificat.getPublicKey());
+            return Optional.of(certificat.getPublicKey());
+        }
+        catch (Exception e)
+        {
+            log.warn("[HSM] Lecture de la clé publique '{}' impossible : {}", alias, e.getMessage());
+            return Optional.empty();
+        }
+        finally
+        {
+            lock.readLock().unlock();
+        }
+    }
+
+    /** Clé publique d'un alias au format PEM (X.509), pour affichage — vide si l'alias est inconnu. */
+    public Optional<String> clePubliquePem(String alias)
+    {
+        return clePublique(alias).map(cle -> "-----BEGIN PUBLIC KEY-----\n"
+            + Base64.getMimeEncoder(64, "\n".getBytes()).encodeToString(cle.getEncoded())
+            + "\n-----END PUBLIC KEY-----");
+    }
+
+    /**
+     * Vérifie une signature produite par {@link #sign} avec la clé publique du KeyStore (jamais celle de la base).
+     *
+     * @return vide si la clé de confiance est introuvable (alias absent du KeyStore, KeyStore illisible) — l'état
+     *         est alors INDÉTERMINÉ, pas "falsifié" ; true/false sinon.
+     */
+    public Optional<Boolean> verifier(String alias, String sha256Hex, String signatureHex)
+    {
+        Optional<PublicKey> cle = clePublique(alias);
+        if (cle.isEmpty())
+        {
+            return Optional.empty();
+        }
+        if (sha256Hex == null || signatureHex == null || sha256Hex.isBlank() || signatureHex.isBlank()
+            || sha256Hex.length() % 2 != 0 || signatureHex.length() % 2 != 0
+            || !sha256Hex.matches("[0-9a-fA-F]+") || !signatureHex.matches("[0-9a-fA-F]+"))
+        {
+            return Optional.of(false);
+        }
+        try
+        {
+            Signature signature = Signature.getInstance(SIGNATURE_ALGORITHM);
+            signature.initVerify(cle.get());
+            signature.update(hexStringToByteArray(sha256Hex));
+            return Optional.of(signature.verify(hexStringToByteArray(signatureHex)));
+        }
+        catch (Exception e)
+        {
+            return Optional.of(false);
         }
     }
 

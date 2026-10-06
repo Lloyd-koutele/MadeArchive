@@ -511,7 +511,7 @@ public class DocumentService
         doc.setAlerteSuppressionLe(null);
         doc.setSuppressionPrevueLe(LocalDate.now().plusDays(delaiGraceJours(doc.getTypeDocument())));
         documentRepository.save(doc);
-        meilisearchService.updateDocumentStatus(doc);
+        meilisearchService.synchroniserDocument(doc, null);
 
         java.util.Map<String, Object> details = new java.util.LinkedHashMap<>();
         details.put("motif", motif.name());
@@ -574,7 +574,8 @@ public class DocumentService
             doc.setRetentionUntil(anneesRetention != null ? LocalDate.now().plusYears(anneesRetention) : null);
         }
         documentRepository.save(doc);
-        meilisearchService.updateDocumentStatus(doc);
+        // Statut ET échéance de rétention (renouvelée si elle était dépassée) : tout est resynchronisé d'un coup.
+        meilisearchService.synchroniserDocument(doc, null);
 
         auditLogService.log(user, AuditAction.DOCUMENT_RESTAURE_CORBEILLE, AuditCible.DOCUMENT,
             doc.getId().toString(),
@@ -1081,6 +1082,10 @@ public class DocumentService
 
         documentRepository.save(doc);
 
+        // Le rattachement / détachement peut remplacer le groupe d'accès du document (groupe du dossier, ou copie
+        // du groupe quand le document est détaché) : groupeId, filtre de visibilité en recherche, doit suivre.
+        meilisearchService.synchroniserDocument(doc, null);
+
         auditLogService.log(user, AuditAction.DOCUMENT_DOSSIER_MODIFIE, AuditCible.DOCUMENT,
             doc.getId().toString(),
             doc.getUniteOrganisationnelle() != null ? doc.getUniteOrganisationnelle().getId() : null,
@@ -1195,6 +1200,12 @@ public class DocumentService
 
         dataTypeRepository.deleteByDocumentId(documentId);
         dataTypeRepository.saveAll(aEnregistrer);
+
+        // Les valeurs de métadonnées sont indexées (recherche en texte libre) : l'index doit refléter la correction.
+        meilisearchService.synchroniserDocument(doc, aEnregistrer.stream()
+            .map(DataType::getValeur)
+            .filter(java.util.Objects::nonNull)
+            .toList());
 
         auditLogService.log(user, AuditAction.DOCUMENT_METADATA_MODIFIEE, AuditCible.DOCUMENT,
             doc.getId().toString(),
