@@ -1,9 +1,12 @@
 package made.archive.service.integrite;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.springframework.stereotype.Service;
 
@@ -62,6 +65,38 @@ public class AlerteIntegriteService
         auditLogService.log(null, AuditAction.DOCUMENT_PREUVE_ALTEREE, AuditCible.DOCUMENT,
             document.getId().toString(), uoId,
             "Preuves d'intégrité altérées pour le document \"" + document.getTitre() + "\" — " + raison, false);
+    }
+
+    /** Une alerte de clé au plus toutes les 6 h : un contrôle qui échoue en boucle ne doit pas inonder les admins. */
+    private static final Duration INTERVALLE_ALERTE_CLE = Duration.ofHours(6);
+    private final AtomicReference<Instant> derniereAlerteCle = new AtomicReference<>(Instant.EPOCH);
+
+    /**
+     * La clé de chiffrement des archives est absente ou n'est plus la bonne : erreur de configuration (aucun
+     * document n'est marqué corrompu). Réservée aux ADMIN globaux, avec limitation de fréquence.
+     */
+    public void cleChiffrementAnormale(String description)
+    {
+        Instant maintenant = Instant.now();
+        Instant derniere = derniereAlerteCle.get();
+        if (Duration.between(derniere, maintenant).compareTo(INTERVALLE_ALERTE_CLE) < 0
+            || !derniereAlerteCle.compareAndSet(derniere, maintenant))
+        {
+            return;
+        }
+        try
+        {
+            notificationService.notifier(userRepository.findByRoleName(Role_Name.ADMIN),
+                NotificationType.INTEGRITE_PREUVE_ALTEREE,
+                "ALERTE CONFIGURATION — " + description
+                + " Les documents ne sont pas marqués corrompus : archivage et contrôles d'intégrité suspendus "
+                + "tant que la clé n'est pas rétablie.");
+        }
+        catch (Exception e)
+        {
+            log.warn("[CleChiffrement] Notification (best-effort) échouée : {}", e.getMessage());
+        }
+        auditLogService.log(null, AuditAction.CLE_CHIFFREMENT_ANOMALIE, description, false);
     }
 
     /** Anomalie globale (ancrage du catalogue, scellement du journal) — pas rattachée à un document. */

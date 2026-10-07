@@ -356,6 +356,7 @@ public class DocumentController
                 .metaDataSuggestions(sessionData.suggestions)
                 .message(determinePhase1Message(sessionData))
                 .documentSimilaire(sessionData.documentSimilaire)
+                .avertissements(sessionData.avertissements.isEmpty() ? null : sessionData.avertissements)
                 .build());
         }
         catch (BusinessException e)
@@ -524,11 +525,12 @@ public class DocumentController
      */
     @Secured("ROLE_EDITOR")
     @PostMapping("/docs/bulk/same-type/web/preview")
-    public ResponseEntity<?> bulkSameTypeWebPreview(@RequestBody WebImportPreviewRequestDto requete)
+    public ResponseEntity<?> bulkSameTypeWebPreview(@RequestBody WebImportPreviewRequestDto requete,
+                                                    @AuthenticationPrincipal UserDetailsImpl currentUser)
     {
         try
         {
-            WebImportPreviewResponseDto response = webImportService.previewer(requete);
+            WebImportPreviewResponseDto response = webImportService.previewer(requete, currentUser.getUser());
             return ResponseEntity.ok(response);
         }
         catch (BusinessException e)

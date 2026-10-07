@@ -66,6 +66,9 @@ public class OcrSessionCache
         /** Null si aucun document similaire trouvé, ou si non visible par l'uploadeur. */
         public DocumentSimilaireDto documentSimilaire;
 
+        /** Avertissements du contrôle de type (ex. .doc nommé .docx) — montrés à l'éditeur, jamais bloquants. */
+        public java.util.List<String> avertissements = java.util.List.of();
+
         /**
          * Plus petite taille de police (points) mesurée dans le PDF converti —
          * null si non pertinent (pas un tableur, voir

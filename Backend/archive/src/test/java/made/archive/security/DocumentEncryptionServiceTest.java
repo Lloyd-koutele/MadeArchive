@@ -33,7 +33,7 @@ class DocumentEncryptionServiceTest
         StorageEncryptionProperties proprietes = new StorageEncryptionProperties();
         proprietes.setKey(Base64.getEncoder().encodeToString(cle));
 
-        service = new DocumentEncryptionService(proprietes);
+        service = new DocumentEncryptionService(proprietes, org.mockito.Mockito.mock(ControleCleChiffrementService.class));
     }
 
     @Test

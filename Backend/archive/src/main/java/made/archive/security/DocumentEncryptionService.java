@@ -37,6 +37,7 @@ public class DocumentEncryptionService
     private static final int    GCM_IV_LENGTH_BYTES   = 12;
 
     private final StorageEncryptionProperties properties;
+    private final ControleCleChiffrementService controleCle;
 
     /**
      * Chiffre des octets en clair. Retourne IV (12 octets) + chiffré
@@ -44,6 +45,8 @@ public class DocumentEncryptionService
      */
     public byte[] encrypt(byte[] plaintext)
     {
+        // Jamais de nouvelle archive chiffrée avec une clé qui n'est pas celle des archives existantes.
+        controleCle.exigerCleValide();
         try
         {
             byte[] iv = new byte[GCM_IV_LENGTH_BYTES];
@@ -69,8 +72,36 @@ public class DocumentEncryptionService
      * Déchiffre des octets produits par encrypt(). Lève une BusinessException
      * si le tag d'authentification GCM ne correspond pas (contenu altéré) ou
      * si la clé est invalide.
+     *
+     * La clé est contrôlée AVANT (ControleCleChiffrementService) : une clé absente ou différente de celle des
+     * archives lève une CleChiffrementException (erreur de configuration), distincte de la BusinessException
+     * d'un contenu réellement altéré — l'appelant ne doit alors rien conclure sur le fichier.
      */
     public byte[] decrypt(byte[] ivAndCiphertext)
+    {
+        controleCle.exigerCleValide();
+        return dechiffrer(ivAndCiphertext);
+    }
+
+    /**
+     * Vrai si ces octets se déchiffrent avec la clé configurée, sans contrôle préalable de la clé. Réservé à
+     * l'initialisation de la référence (InitialisationCleChiffrement) : on prouve que la clé ouvre une archive
+     * existante AVANT d'en enregistrer l'empreinte.
+     */
+    public boolean peutDechiffrer(byte[] ivAndCiphertext)
+    {
+        try
+        {
+            dechiffrer(ivAndCiphertext);
+            return true;
+        }
+        catch (Exception e)
+        {
+            return false;
+        }
+    }
+
+    private byte[] dechiffrer(byte[] ivAndCiphertext)
     {
         if (ivAndCiphertext == null || ivAndCiphertext.length <= GCM_IV_LENGTH_BYTES)
         {

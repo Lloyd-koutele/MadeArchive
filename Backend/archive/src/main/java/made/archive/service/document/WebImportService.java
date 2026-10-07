@@ -7,30 +7,31 @@ import made.archive.config.WebImportHttpProperties;
 import made.archive.dto.WebImportFileDto;
 import made.archive.dto.WebImportPreviewRequestDto;
 import made.archive.dto.WebImportPreviewResponseDto;
+import made.archive.entite.AuditAction;
+import made.archive.entite.User;
 import made.archive.exception.BusinessException;
+import made.archive.service.audit.AuditLogService;
+import made.archive.service.importweb.AdressesInterdites;
+import made.archive.service.importweb.ClientHttpSecurise;
+import made.archive.service.importweb.LienRefuseException;
+import made.archive.service.importweb.LimiteurImports;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.io.IOException;
 import java.net.InetAddress;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.net.UnknownHostException;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
@@ -47,31 +48,26 @@ import java.util.regex.Pattern;
  *  2. {@link #telecharger} — télécharge uniquement les fichiers confirmés,
  *     appelé depuis BulkUploadSameTypeService.startOcrPreviewFromWeb.
  *
- * Protection SSRF : seuls http/https sont acceptés, et toute adresse résolue
- * vers un réseau privé/interne/loopback/lien-local est refusée — avant le
- * premier appel ET avant chaque téléchargement de fichier découvert (une page
- * scrapée pourrait sinon pointer vers une adresse interne). Ceci reste une
- * protection best-effort (une résolution DNS distincte a lieu au moment de la
- * connexion réelle) — acceptable ici car la fonctionnalité est réservée aux
- * éditeurs authentifiés (ROLE_EDITOR), pas exposée publiquement.
+ * Protection SSRF — voir {@link ClientHttpSecurise} : seuls http/https sont acceptés ; la résolution DNS est faite
+ * UNE fois, par le client lui-même, et c'est ce résultat contrôlé qui sert à la connexion (pas de « DNS rebinding ») ;
+ * toute adresse privée, interne, loopback, lien-local, partagée ou réservée est refusée, à chaque saut de redirection
+ * comme au premier appel ; la lecture du corps s'arrête dès la taille maximale dépassée. Chaque lien refusé pour une
+ * adresse interne est tracé dans le journal d'audit, et le nombre d'accès par utilisateur et par minute est plafonné.
  *
- * Trois cas particuliers reconnus par motif d'URL, traités différemment du
- * lien générique, avant tout appel réseau — voir {@link #previewer} :
+ * Deux cas particuliers reconnus par motif d'URL, traités avant tout appel réseau — voir {@link #previewer} :
  *  - Google Docs/Slides/Sheets natif  → réécriture vers l'URL d'export officielle
  *    (aucun navigateur nécessaire, simple règle d'URL — voir docs Google).
  *  - Fichier Google Drive unique      → réécriture vers l'URL de téléchargement direct.
- *  - Dossier Google Drive             → aucune réécriture possible (Google n'expose
- *    aucune URL d'export pour un dossier entier) ; délégué à
- *    {@link HeadlessBrowserImportService#telechargerDossierDrive}, qui ouvre
- *    réellement la page et récupère le ZIP généré par le bouton "Tout télécharger".
+ *  Un DOSSIER Drive complet est refusé : il exigerait de télécharger puis de DÉCOMPRESSER une archive, et l'application
+ *  ne décompresse jamais rien.
  *
  * Pour tout autre lien HTML dont le scraping statique (Jsoup) ne trouve aucun
  * document, un dernier repli tente un rendu via navigateur headless avant
  * d'abandonner — couvre le cas générique d'une page dont le contenu dépend du
  * JavaScript, pas seulement Google Drive.
  *
- * Chaque téléchargement HTTP est bufferisé entièrement en mémoire (jusqu'à
- * 50 Mo/fichier) — {@link WebImportHttpProperties} borne le nombre de
+ * Chaque téléchargement HTTP est bufferisé en mémoire (jusqu'à
+ * 50 Mo/fichier, lecture interrompue au-delà) — {@link WebImportHttpProperties} borne le nombre de
  * téléchargements simultanés (voir {@link #executer}) pour qu'un afflux de
  * demandes ne consomme pas plusieurs Go de tas JVM et ne dégrade pas le reste
  * de l'application, qui partage le même processus (même principe que
@@ -109,13 +105,9 @@ public class WebImportService
         Map.entry("image/bmp", "bmp")
     );
 
-    private static final Duration TIMEOUT               = Duration.ofSeconds(15);
     private static final long     TAILLE_MAX_PAGE_OCTETS = 5L * 1024 * 1024;   // 5 Mo — page HTML à scraper
     static final long             TAILLE_MAX_FICHIER     = 50L * 1024 * 1024;  // 50 Mo — par fichier téléchargé
     static final int              MAX_LIENS_DECOUVERTS   = 50;
-
-    /** cache://{sessionId}/{index} — identifiant synthétique des fichiers d'un dossier déjà téléchargé (voir WebImportFolderCache). */
-    private static final String PREFIXE_CACHE = "cache://";
 
     private static final Pattern PATTERN_DRIVE_DOSSIER = Pattern.compile(
         "drive\\.google\\.com/drive/(?:u/\\d+/)?folders/([a-zA-Z0-9_-]+)");
@@ -146,13 +138,10 @@ public class WebImportService
     private static final byte[] SIGNATURE_TIFF_BE  = {'M', 'M', 0x00, 0x2A}; // big-endian
 
     private final HeadlessBrowserImportService headlessBrowserImportService;
-    private final WebImportFolderCache         folderCache;
+    private final ClientHttpSecurise           clientHttp;
     private final WebImportHttpProperties      proprietesHttp;
-
-    private final HttpClient client = HttpClient.newBuilder()
-        .connectTimeout(TIMEOUT)
-        .followRedirects(HttpClient.Redirect.NEVER) // gérés à la main, avec re-validation SSRF à chaque saut
-        .build();
+    private final LimiteurImports              limiteur;
+    private final AuditLogService              auditLogService;
 
     private Semaphore permis;
 
@@ -166,21 +155,37 @@ public class WebImportService
     // Découverte (aperçu, sans téléchargement)
     // ═══════════════════════════════════════════════════════════════
 
-    public WebImportPreviewResponseDto previewer(WebImportPreviewRequestDto requete)
+    public WebImportPreviewResponseDto previewer(WebImportPreviewRequestDto requete, User acteur)
     {
         if (!StringUtils.hasText(requete.getUrl()))
         {
             throw new BusinessException("Le lien est obligatoire");
         }
 
+        limiteur.consommer(acteur != null ? acteur.getId() : null, 1, proprietesHttp.getLimiteParMinute());
+
+        try
+        {
+            return previewerValide(requete);
+        }
+        catch (LienRefuseException e)
+        {
+            tracerRefus(acteur, requete.getUrl(), e);
+            throw e;
+        }
+    }
+
+    private WebImportPreviewResponseDto previewerValide(WebImportPreviewRequestDto requete)
+    {
         URI uri = resoudreEtValider(requete.getUrl());
 
-        // Dossier Google Drive : aucune réécriture d'URL possible pour "tout le
-        // dossier" — délégué directement au navigateur headless, avant tout
-        // appel HTTP classique.
+        // Dossier Google Drive : refusé. Il n'existe aucune URL par fichier : il faudrait cliquer « Tout télécharger »
+        // dans un navigateur puis décompresser l'archive produite — l'application ne décompresse jamais rien.
         if (estDossierDrive(uri.toString()))
         {
-            return previewerDossierDrive(uri);
+            throw new BusinessException(
+                "Les dossiers Google Drive complets ne sont pas pris en charge : partagez les fichiers un par un "
+                + "(lien de chaque fichier) ou téléchargez-les puis déposez-les directement.");
         }
 
         // Google Docs/Slides/Sheets natif ou fichier Drive unique : simple
@@ -188,7 +193,7 @@ public class WebImportService
         // reste du traitement (HTTP classique ci-dessous) est inchangé.
         uri = reecrireLienGoogleSiApplicable(uri);
 
-        HttpResponse<byte[]> reponse = executer(uri, TAILLE_MAX_PAGE_OCTETS);
+        ClientHttpSecurise.Reponse reponse = executer(uri, TAILLE_MAX_PAGE_OCTETS);
         String contentType = enTeteContentType(reponse);
 
         // Cas particulier connu : pour un gros fichier (~25 Mo+), Drive renvoie
@@ -208,7 +213,7 @@ public class WebImportService
         if (estTypeHtml(contentType))
         {
             List<WebImportFileDto> fichiers = extraireLiensDocuments(
-                new String(reponse.body(), StandardCharsets.UTF_8), uri.toString());
+                new String(reponse.corps(), StandardCharsets.UTF_8), uri.toString());
 
             if (fichiers.isEmpty())
             {
@@ -247,42 +252,6 @@ public class WebImportService
             .build();
     }
 
-    /**
-     * Dossier Google Drive public : téléchargé intégralement dès l'aperçu (pas
-     * d'URL par fichier stable à re-télécharger plus tard, contrairement aux
-     * autres types) — les octets sont mis en cache (WebImportFolderCache) en
-     * attendant la confirmation utilisateur ; {@link #telecharger} les relit
-     * depuis ce cache via l'identifiant synthétique "cache://{session}/{index}".
-     */
-    private WebImportPreviewResponseDto previewerDossierDrive(URI uri)
-    {
-        List<FichierDistant> fichiers = headlessBrowserImportService.telechargerDossierDrive(uri);
-
-        if (fichiers.isEmpty())
-        {
-            throw new BusinessException(
-                "Aucun document exploitable trouvé dans ce dossier (extensions prises en charge : "
-                + String.join(", ", EXTENSIONS_SUPPORTEES) + ")");
-        }
-
-        UUID sessionId = folderCache.storer(fichiers);
-
-        List<WebImportFileDto> dtos = new ArrayList<>();
-        for (int i = 0; i < fichiers.size(); i++)
-        {
-            dtos.add(WebImportFileDto.builder()
-                .nomFichier(fichiers.get(i).nomFichier())
-                .url(PREFIXE_CACHE + sessionId + "/" + i)
-                .build());
-        }
-
-        return WebImportPreviewResponseDto.builder()
-            .sourceUrl(uri.toString())
-            .type("DOSSIER")
-            .fichiers(dtos)
-            .build();
-    }
-
     /** Best-effort : ne lève jamais — retourne null si le navigateur headless échoue ou est indisponible. */
     private String tenterViaNavigateurHeadless(URI uri)
     {
@@ -303,10 +272,8 @@ public class WebImportService
      * téléchargement direct — convention documentée par Google, pas du
      * scraping. Retourne l'URI inchangée si aucun motif ne correspond.
      */
-    /** Vrai si l'URL pointe sur un DOSSIER Google Drive complet (délégué au
-     *  navigateur headless — voir previewer()). Visibilité package-private
-     *  délibérée : détail d'implémentation, mais testable directement plutôt
-     *  que seulement via previewer() (qui ferait un vrai appel réseau). */
+    /** Vrai si l'URL pointe sur un DOSSIER Google Drive complet (refusé — voir previewer()). Visibilité
+     *  package-private délibérée : testable directement plutôt que seulement via previewer() (appel réseau). */
     boolean estDossierDrive(String url)
     {
         return PATTERN_DRIVE_DOSSIER.matcher(url).find();
@@ -338,12 +305,14 @@ public class WebImportService
     // Téléchargement des fichiers confirmés
     // ═══════════════════════════════════════════════════════════════
 
-    public List<FichierDistant> telecharger(List<String> urls)
+    public List<FichierDistant> telecharger(List<String> urls, User acteur)
     {
         if (urls == null || urls.isEmpty())
         {
             throw new BusinessException("Aucun fichier confirmé à importer");
         }
+
+        limiteur.consommer(acteur != null ? acteur.getId() : null, urls.size(), proprietesHttp.getLimiteParMinute());
 
         List<FichierDistant> resultats = new ArrayList<>();
 
@@ -351,42 +320,25 @@ public class WebImportService
         {
             try
             {
-                // Fichier d'un dossier déjà téléchargé à l'aperçu (voir
-                // previewerDossierDrive) — pas de nouvelle requête HTTP, juste
-                // une relecture du cache.
-                if (url.startsWith(PREFIXE_CACHE))
-                {
-                    FichierDistant fichier = resoudreDepuisCache(url);
-                    if (fichier == null)
-                    {
-                        log.warn("[WebImport] Session dossier expirée ou introuvable : {}", url);
-                        continue;
-                    }
-                    resultats.add(fichier);
-                    continue;
-                }
-
                 URI uri = resoudreEtValider(url);
-                HttpResponse<byte[]> reponse = executer(uri, TAILLE_MAX_FICHIER);
+                ClientHttpSecurise.Reponse reponse = executer(uri, TAILLE_MAX_FICHIER);
 
-                byte[] contenu = reponse.body();
-                if (contenu.length > TAILLE_MAX_FICHIER)
-                {
-                    log.warn("[WebImport] Ignoré (trop volumineux : {} octets) : {}", contenu.length, url);
-                    continue;
-                }
-
-                resultats.add(new FichierDistant(
-                    nommerFichierDirect(uri, reponse), contenu));
-                log.info("[WebImport] Téléchargé : {} ({} octets)", url, contenu.length);
+                byte[] contenu = reponse.corps();
+                resultats.add(new FichierDistant(nommerFichierDirect(uri, reponse), contenu));
+                log.info("[WebImport] Téléchargé : {} ({} octets)", ClientHttpSecurise.hoteDe(url), contenu.length);
+            }
+            catch (LienRefuseException e)
+            {
+                tracerRefus(acteur, url, e);
+                log.warn("[WebImport] Lien refusé ({}) : {}", e.getMessage(), ClientHttpSecurise.hoteDe(url));
             }
             catch (BusinessException e)
             {
-                log.warn("[WebImport] Ignoré ({}) : {}", e.getMessage(), url);
+                log.warn("[WebImport] Ignoré ({}) : {}", e.getMessage(), ClientHttpSecurise.hoteDe(url));
             }
             catch (Exception e)
             {
-                log.warn("[WebImport] Échec du téléchargement de {} : {}", url, e.getMessage());
+                log.warn("[WebImport] Échec du téléchargement de {} : {}", ClientHttpSecurise.hoteDe(url), e.getMessage());
             }
         }
 
@@ -398,29 +350,29 @@ public class WebImportService
         return resultats;
     }
 
+    /** Un lien refusé pour une raison de sécurité laisse une trace (l'hôte seul, jamais l'URL complète, qui peut porter un jeton). */
+    private void tracerRefus(User acteur, String url, LienRefuseException e)
+    {
+        try
+        {
+            auditLogService.log(acteur, AuditAction.IMPORT_LIEN_REFUSE,
+                "Lien d'import refusé — " + e.getMessage() + " (hôte : " + ClientHttpSecurise.hoteDe(url) + ")", false);
+        }
+        catch (Exception ignore)
+        {
+            // best-effort
+        }
+    }
+
     // ═══════════════════════════════════════════════════════════════
     // Helpers privés
     // ═══════════════════════════════════════════════════════════════
 
-    /** Parse "cache://{sessionId}/{index}" et relit le fichier correspondant dans WebImportFolderCache. */
-    private FichierDistant resoudreDepuisCache(String url)
-    {
-        try
-        {
-            String reste = url.substring(PREFIXE_CACHE.length()); // "{sessionId}/{index}"
-            int sep = reste.lastIndexOf('/');
-            UUID sessionId = UUID.fromString(reste.substring(0, sep));
-            int index = Integer.parseInt(reste.substring(sep + 1));
-            return folderCache.recuperer(sessionId, index);
-        }
-        catch (Exception e)
-        {
-            log.warn("[WebImport] Identifiant de cache invalide : {}", url);
-            return null;
-        }
-    }
-
-    /** Résout l'URL, valide le schéma et l'adresse (protection SSRF), et suit manuellement les redirections. */
+    /**
+     * Valide le schéma et l'adresse AVANT toute requête (refus rapide, message clair). Le contrôle qui fait foi est
+     * celui du client HTTP à la connexion — voir ClientHttpSecurise : une adresse IP littérale n'y passe pas par le DNS,
+     * d'où cette vérification préalable qui la couvre aussi.
+     */
     private URI resoudreEtValider(String url)
     {
         URI uri;
@@ -430,13 +382,13 @@ public class WebImportService
         }
         catch (IllegalArgumentException e)
         {
-            throw new BusinessException("Lien invalide : " + url);
+            throw new BusinessException("Lien invalide : " + ClientHttpSecurise.hoteDe(url));
         }
 
         String schema = uri.getScheme();
         if (schema == null || !(schema.equalsIgnoreCase("http") || schema.equalsIgnoreCase("https")))
         {
-            throw new BusinessException("Seuls les liens http:// ou https:// sont pris en charge");
+            throw new LienRefuseException("Seuls les liens http:// ou https:// sont pris en charge");
         }
 
         String host = uri.getHost();
@@ -457,11 +409,9 @@ public class WebImportService
 
         for (InetAddress adresse : adresses)
         {
-            if (adresse.isAnyLocalAddress() || adresse.isLoopbackAddress()
-                || adresse.isLinkLocalAddress() || adresse.isSiteLocalAddress()
-                || adresse.isMulticastAddress() || estAdresseIpv6UniqueLocale(adresse))
+            if (AdressesInterdites.estInterdite(adresse))
             {
-                throw new BusinessException(
+                throw new LienRefuseException(
                     "Cette adresse pointe vers un réseau interne/privé — import refusé : " + host);
             }
         }
@@ -469,19 +419,12 @@ public class WebImportService
         return uri;
     }
 
-    /** fc00::/7 (IPv6 unique local) — non couvert par InetAddress.isSiteLocalAddress(). */
-    private boolean estAdresseIpv6UniqueLocale(InetAddress adresse)
-    {
-        byte[] octets = adresse.getAddress();
-        return octets.length == 16 && (octets[0] & 0xfe) == 0xfc;
-    }
-
     /**
-     * Une seule acquisition de permis par appel — les sauts de redirection
-     * internes à cette méthode font partie de la même opération logique
-     * ("récupérer ce lien"), pas d'acquisitions séparées.
+     * Une seule acquisition de permis par appel — les sauts de redirection font partie de la même opération logique
+     * ("récupérer ce lien"). Le téléchargement lui-même, avec ses redirections contrôlées, ses délais et sa limite de
+     * taille, est entièrement délégué à ClientHttpSecurise.
      */
-    private HttpResponse<byte[]> executer(URI uri, long tailleMaxOctets)
+    private ClientHttpSecurise.Reponse executer(URI uri, long tailleMaxOctets)
     {
         if (!acquerirPermis())
         {
@@ -491,53 +434,7 @@ public class WebImportService
 
         try
         {
-            HttpRequest requete = HttpRequest.newBuilder(uri)
-                .timeout(TIMEOUT)
-                .header("User-Agent", "MadeArchive-Import/1.0")
-                .GET()
-                .build();
-
-            HttpResponse<byte[]> reponse = client.send(requete, HttpResponse.BodyHandlers.ofByteArray());
-
-            // Redirection suivie manuellement (max 3 sauts), avec re-validation SSRF de la cible.
-            int sauts = 0;
-            while (reponse.statusCode() >= 300 && reponse.statusCode() < 400 && sauts < 3)
-            {
-                String location = reponse.headers().firstValue("Location")
-                    .orElseThrow(() -> new BusinessException("Redirection sans destination"));
-                URI cible = uri.resolve(location);
-                URI cibleValidee = resoudreEtValider(cible.toString());
-
-                HttpRequest requeteSuivante = HttpRequest.newBuilder(cibleValidee)
-                    .timeout(TIMEOUT)
-                    .header("User-Agent", "MadeArchive-Import/1.0")
-                    .GET()
-                    .build();
-                reponse = client.send(requeteSuivante, HttpResponse.BodyHandlers.ofByteArray());
-                uri = cibleValidee;
-                sauts++;
-            }
-
-            if (reponse.statusCode() < 200 || reponse.statusCode() >= 300)
-            {
-                throw new BusinessException("Le serveur distant a répondu avec le code " + reponse.statusCode());
-            }
-
-            if (reponse.body().length > tailleMaxOctets)
-            {
-                throw new BusinessException("Contenu trop volumineux à cette adresse");
-            }
-
-            return reponse;
-        }
-        catch (BusinessException e)
-        {
-            throw e;
-        }
-        catch (IOException | InterruptedException e)
-        {
-            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-            throw new BusinessException("Impossible de joindre cette adresse : " + e.getMessage());
+            return clientHttp.telecharger(uri, tailleMaxOctets);
         }
         finally
         {
@@ -559,9 +456,9 @@ public class WebImportService
         }
     }
 
-    private String enTeteContentType(HttpResponse<byte[]> reponse)
+    private String enTeteContentType(ClientHttpSecurise.Reponse reponse)
     {
-        return reponse.headers().firstValue("Content-Type")
+        return reponse.premierEntete("Content-Type")
             .map(v -> v.split(";")[0].trim().toLowerCase(Locale.ROOT))
             .orElse("");
     }
@@ -624,7 +521,7 @@ public class WebImportService
      *     dernier recours quand ni l'URL, ni Content-Disposition, ni
      *     Content-Type ne donnent d'indice exploitable.
      */
-    private String nommerFichierDirect(URI uri, HttpResponse<byte[]> reponse)
+    private String nommerFichierDirect(URI uri, ClientHttpSecurise.Reponse reponse)
     {
         String extensionExistante = extraireExtension(uri.toString());
         if (extensionExistante != null && EXTENSIONS_SUPPORTEES.contains(extensionExistante))
@@ -649,7 +546,7 @@ public class WebImportService
             return "document." + extensionDepuisType;
         }
 
-        String extensionSignature = detecterExtensionParSignature(reponse.body());
+        String extensionSignature = detecterExtensionParSignature(reponse.corps());
         if (extensionSignature != null)
         {
             String base = nomDisposition != null ? sansExtension(nomDisposition) : "document";
@@ -666,9 +563,9 @@ public class WebImportService
      * caractères non-ASCII) à la forme simple ("filename=...") si les deux
      * sont présentes.
      */
-    private String nomDepuisContentDisposition(HttpResponse<byte[]> reponse)
+    private String nomDepuisContentDisposition(ClientHttpSecurise.Reponse reponse)
     {
-        String valeur = reponse.headers().firstValue("Content-Disposition").orElse(null);
+        String valeur = reponse.premierEntete("Content-Disposition").orElse(null);
         if (valeur == null) return null;
 
         Matcher mEtoile = PATTERN_DISPOSITION_FILENAME_ETOILE.matcher(valeur);

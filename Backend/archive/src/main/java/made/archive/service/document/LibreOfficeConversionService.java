@@ -42,25 +42,16 @@ public class LibreOfficeConversionService
     private final WebClient.Builder   webClientBuilder;
     private final Tika                tika = new Tika();
 
-    // Formats supportés par LibreOffice
-    private static final Set<String> SUPPORTED_MIME = Set.of(
-        "application/msword",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "application/vnd.ms-excel",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "application/vnd.ms-powerpoint",
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        "application/vnd.oasis.opendocument.text",
-        "application/vnd.oasis.opendocument.spreadsheet",
-        "application/vnd.oasis.opendocument.presentation",
-        "text/plain",
-        "text/csv",
-        "image/jpeg",
-        "image/png",
-        "image/tiff",
-        "image/bmp",
-        "image/gif"
-    );
+    static
+    {
+        // Un classeur .xlsx est ouvert par Apache POI (voir appliquerAjustementLargeurUnePage) : bornes explicites contre
+        // une bombe de décompression, en plus des contrôles faits en amont (ControleTypeFichierService).
+        org.apache.poi.openxml4j.util.ZipSecureFile.setMinInflateRatio(0.01);
+        org.apache.poi.openxml4j.util.ZipSecureFile.setMaxEntrySize(1024L * 1024 * 1024);
+    }
+
+    // Formats supportés par LibreOffice — liste unique, partagée avec le contrôle de type (TypesFichiers).
+    private static final Set<String> SUPPORTED_MIME = made.archive.service.fichier.TypesFichiers.MIMES_CONVERTIBLES;
 
     private static final Set<String> ALREADY_PDF = Set.of(
         "application/pdf"
@@ -124,6 +115,10 @@ public class LibreOfficeConversionService
             );
         }
 
+        // Gotenberg/LibreOffice choisit son filtre d'import d'après l'EXTENSION du nom : on lui envoie donc un nom portant
+        // l'extension du type RÉEL (détecté dans le contenu), jamais celle, éventuellement mensongère, du nom d'origine.
+        originalFilename = nomAvecExtensionReelle(originalFilename, mimeType);
+
         boolean isSpreadsheet = SPREADSHEET_MIME.contains(mimeType);
         byte[] bytesAEnvoyer = fileBytes;
         boolean demanderSinglePageSheets = isSpreadsheet;
@@ -144,6 +139,17 @@ public class LibreOfficeConversionService
 
         byte[] pdfBytes = convertWithGotenberg(bytesAEnvoyer, originalFilename, demanderSinglePageSheets);
         return new ConversionResult(pdfBytes, isSpreadsheet);
+    }
+
+    /** « rapport.xlsx » pour un fichier réellement Word devient « rapport.docx » ; sans extension connue : inchangé. */
+    static String nomAvecExtensionReelle(String nomOriginal, String mimeReel)
+    {
+        String extension = made.archive.service.fichier.TypesFichiers.extensionPour(mimeReel);
+        if (extension == null) return nomOriginal;
+        String nom = nomOriginal == null || nomOriginal.isBlank() ? "document" : nomOriginal;
+        int idx = nom.lastIndexOf('.');
+        String base = idx > 0 ? nom.substring(0, idx) : nom;
+        return base + "." + extension;
     }
 
     /**

@@ -15,6 +15,8 @@ import made.archive.entite.User;
 import made.archive.repository.DocumentRepository;
 import made.archive.repository.FixityCheckResultRepository;
 import made.archive.repository.UserRepository;
+import made.archive.exception.CleChiffrementException;
+import made.archive.security.ControleCleChiffrementService;
 import made.archive.security.DocumentEncryptionService;
 import made.archive.service.audit.AuditLogService;
 import made.archive.service.integrite.AlerteIntegriteService;
@@ -51,6 +53,7 @@ public class FixityCheckService
     private final MeilisearchService meilisearchService;
     private final PreuveIntegriteService preuveIntegriteService;
     private final AlerteIntegriteService alerteIntegriteService;
+    private final ControleCleChiffrementService controleCle;
 
     /**
      * Vérifie l'intégrité d'une liste de documents par leurs IDs.
@@ -58,6 +61,7 @@ public class FixityCheckService
     @Transactional
     public List<Document> verifyDocumentsByIds(List<UUID> documentIds) 
     {
+        verifierCleAvantControle();
         try
         {
             List<Document> documents = documentRepository.findAllById(documentIds);
@@ -77,6 +81,7 @@ public class FixityCheckService
     @Transactional
     public List<Document> verifyDocumentsByType(Long typeDocumentId) 
     {
+        verifierCleAvantControle();
         try
         {
             List<Document> documents = documentRepository.findByTypeDocument_Id(typeDocumentId);
@@ -96,6 +101,7 @@ public class FixityCheckService
     @Transactional
     public List<Document> verifyAllDocuments() 
     {
+        verifierCleAvantControle();
         try
         {
             List<Document> documents = documentRepository.findAll();
@@ -106,6 +112,25 @@ public class FixityCheckService
         catch(Exception e)
         {
             throw new RuntimeException("Erreur lors verification des integrites des documents", e);
+        }
+    }
+
+    /**
+     * Contrôle la clé de chiffrement AVANT de parcourir les documents : une clé absente ou différente de celle des
+     * archives fait échouer tout déchiffrement, ce qui ressemblerait à une corruption de masse. On s'arrête, on
+     * alerte l'administration, et aucun document n'est touché.
+     */
+    private void verifierCleAvantControle()
+    {
+        try
+        {
+            controleCle.exigerCleValide();
+        }
+        catch (CleChiffrementException e)
+        {
+            log.error("[Fixity] Contrôle d'intégrité suspendu : {}", e.getMessage());
+            alerteIntegriteService.cleChiffrementAnormale(e.getMessage());
+            throw e;
         }
     }
 
@@ -153,6 +178,13 @@ public class FixityCheckService
         try
         {
             decryptedBytes = documentEncryptionService.decrypt(encryptedBytes);
+        }
+        catch (CleChiffrementException e)
+        {
+            // Problème de clé, pas de fichier : ne rien conclure sur ce document (jamais CORRUPTED pour ça).
+            log.error("[Fixity] Document {} non vérifié, clé de chiffrement en cause : {}", document.getId(), e.getMessage());
+            alerteIntegriteService.cleChiffrementAnormale(e.getMessage());
+            return;
         }
         catch (Exception e)
         {

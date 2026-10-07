@@ -31,4 +31,7 @@ public class WebImportHttpProperties
 {
     private int maxConcurrent       = 100;
     private int attenteSlotSecondes = 10;
+
+    /** Accès sortants (aperçu d'un lien, téléchargement d'un fichier) autorisés par utilisateur et par minute — voir LimiteurImports. */
+    private int limiteParMinute     = 30;
 }

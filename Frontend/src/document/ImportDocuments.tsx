@@ -97,6 +97,8 @@ interface FileValidationState {
      *  mesurée dans le PDF converti — en dessous de 8pt, l'éditeur doit
      *  confirmer explicitement avant l'archivage (voir handleFinalize). */
     policeMinPt?: number;
+    /** Avertissements du contrôle du type réel du fichier (ex. .doc au lieu de .docx, sans extension). */
+    avertissements?: string[];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -376,6 +378,7 @@ function ImportDocuments({ onsuccess, preselectedTypeId, preselectedDossierId, p
                 errorMessage: item.sessionId ? undefined : item.message,
                 documentSimilaire: item.documentSimilaire,
                 policeMinPt: item.policeMinPt,
+                avertissements: item.avertissements,
             };
         });
 
@@ -1090,6 +1093,14 @@ function ImportDocuments({ onsuccess, preselectedTypeId, preselectedDossierId, p
                         </div>
                     ) : (
                         <>
+                        {fileStates[currentIdx].avertissements?.map((msg, i) => (
+                            <div key={i} className="up-alert up-alert-warning">
+                                <span>
+                                    <i className="fa-solid fa-triangle-exclamation" style={{ marginRight: '0.5rem' }} />
+                                    {msg}
+                                </span>
+                            </div>
+                        ))}
                         {fileStates[currentIdx].documentSimilaire && (
                             <div className="up-alert up-alert-warning">
                                 <span>
