@@ -287,7 +287,7 @@ public class DocumentService
             .statutAvantCorbeille(doc.getStatutAvantCorbeille() != null ? doc.getStatutAvantCorbeille().name() : null)
             .suppressionPrevueLe(doc.getSuppressionPrevueLe())
             .activite(made.archive.service.organisation.PlanClassementService
-                .chemin(made.archive.service.organisation.PlanClassementService.activiteEffective(doc)))
+                .cheminLibelles(made.archive.service.organisation.PlanClassementService.activiteEffective(doc)))
             .activiteNoeudId(made.archive.service.organisation.PlanClassementService.activiteEffective(doc) != null
                 ? made.archive.service.organisation.PlanClassementService.activiteEffective(doc).getId() : null)
             .activiteSurDocument(doc.getPlanClassementNoeud() != null)
