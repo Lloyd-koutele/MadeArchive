@@ -594,20 +594,16 @@ function DocumentsAccessibles({ uoId = null, modeAdministration = false }: Docum
 
     /** Clic droit — sélectionne SEULEMENT la carte/ligne cliquée si elle
      *  n'était pas déjà dans la sélection courante, même logique que
-     *  DossiersPanel.handleContextMenuDossier. En vue GRILLE seulement, ouvre
-     *  en plus le petit menu (Déplacer/Changer l'emplacement/Supprimer) —
-     *  posé directement au point de clic pour une sélection unique (comme un
-     *  menu contextuel natif), centré à l'écran pour une sélection multiple
-     *  (pas de carte unique à désigner). En vue LISTE, la barre de sélection
-     *  déjà affichée suffit — pas de menu flottant en plus, qui la
-     *  recouvrait et encombrait l'écran. */
+     *  DossiersPanel.handleContextMenuDossier. Ouvre le petit menu (Modifier
+     *  si une seule sélection / Déplacer / Changer l'emplacement / Supprimer),
+     *  en vue GRILLE comme en vue LISTE, ancré à la carte (bouton "..."
+     *  fantôme) ou à la ligne cliquée. */
     const handleContextMenuCard = (e: React.MouseEvent, documentId: string) => {
         e.preventDefault();
         const dejaSelectionne = selectedDocIds.has(documentId);
         if (!dejaSelectionne) {
             setSelectedDocIds(new Set([documentId]));
         }
-        if (viewMode !== 'grid') return;
         // Ancré à la carte cliquée (comme son menu "..."), pour une sélection unique comme multiple.
         setContextMenu(positionSousElement(e.currentTarget as HTMLElement, 190));
     };

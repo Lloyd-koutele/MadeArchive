@@ -65,7 +65,29 @@ services:
       - "127.0.0.1:11434:11434"
     volumes:
       - ollama_data:/root/.ollama
-    entrypoint: ["/bin/sh", "-c", "ollama serve & sleep 10 && ollama pull ${OLLAMA_MODEL:-qwen2.5-coder:14b} && wait"]
+    restart: unless-stopped
+    # Le téléchargement du modèle ne doit JAMAIS faire tomber le serveur : avec l'ancien "pull && wait", un registre
+    # injoignable (timeout réseau passager) faisait sortir le conteneur en erreur — même quand le modèle (9 Go) était
+    # déjà dans le volume. Maintenant : on ne télécharge que si le modèle est ABSENT, avec plusieurs essais espacés, et le
+    # serveur reste de toute façon en route (le "$$" est l'échappement Compose du "$" du shell).
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        ollama serve &
+        SERVEUR=$$!
+        for i in $$(seq 1 30); do ollama list >/dev/null 2>&1 && break; sleep 2; done
+        MODELE="$${OLLAMA_MODEL:-qwen2.5-coder:14b}"
+        if ollama list | grep -q "^$$MODELE"; then
+          echo "[ollama] modèle $$MODELE déjà présent, rien à télécharger"
+        else
+          for essai in 1 2 3 4 5; do
+            ollama pull "$$MODELE" && break
+            echo "[ollama] téléchargement de $$MODELE échoué (essai $$essai/5), nouvel essai dans 60 s"
+            sleep 60
+          done
+        fi
+        wait $$SERVEUR
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 60s
