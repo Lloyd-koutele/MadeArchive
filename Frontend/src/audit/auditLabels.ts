@@ -39,6 +39,9 @@ const LIBELLES: Record<string, string> = {
     PV_ELIMINATION_GENERE: "Procès-verbal d'élimination généré", DOCUMENT_INCLUS_PV_ELIMINATION: "Élimination consignée dans un procès-verbal",
     PLAN_CLASSEMENT_NOEUD_CREE: 'Activité ajoutée au plan', PLAN_CLASSEMENT_NOEUD_MODIFIE: 'Activité modifiée',
     PLAN_CLASSEMENT_NOEUD_DEPLACE: 'Activité déplacée', PLAN_CLASSEMENT_NOEUD_SUPPRIME: 'Activité supprimée',
+    DOCUMENT_PREUVE_ALTEREE: 'Preuve d\'intégrité altérée', CATALOGUE_ANCRE: 'Catalogue ancré', CATALOGUE_ANCRAGE_ROMPU: 'Ancrage du catalogue rompu',
+    CLE_CHIFFREMENT_ANOMALIE: 'Clé de chiffrement absente ou différente',
+    FICHIER_REFUSE: 'Fichier refusé (type ou structure invalide)', IMPORT_LIEN_REFUSE: 'Lien d\'import refusé (adresse interdite)',
 };
 
 export const libelleAction = (action: string | null | undefined): string =>

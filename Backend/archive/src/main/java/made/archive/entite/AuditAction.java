@@ -152,6 +152,11 @@ public enum AuditAction
     /** Le fichier est conforme à sa signature d'origine mais l'enregistrement en base (empreinte, signature,
      *  jeton...) a été modifié hors de l'application. */
     DOCUMENT_PREUVE_ALTEREE,
+    /** Un fichier déposé a été refusé : type réel différent du type annoncé, archive, format non supporté, fichier corrompu ou piégé. */
+    FICHIER_REFUSE,
+    CLE_CHIFFREMENT_ANOMALIE,
+    /** Un lien d'import a été refusé : adresse interne ou privée, schéma interdit (tentative d'accès au réseau interne). */
+    IMPORT_LIEN_REFUSE,
     /** Ancrage quotidien du catalogue : racine de Merkle signée et horodatée. */
     CATALOGUE_ANCRE,
     /** La vérification d'un ancrage ou des scellements du journal a trouvé une incohérence. */

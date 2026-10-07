@@ -97,6 +97,11 @@ services:
   gotenberg:
     image: gotenberg/gotenberg:8
     container_name: gotenberg
+    # LibreOffice ouvre les documents des utilisateurs : un fichier piégé (bombe de décompression, document démesuré) ne
+    # doit pouvoir consommer que CE conteneur, pas la machine. Les contrôles faits en amont par l'application
+    # (ControleTypeFichierService) sont la première barrière, ces plafonds la seconde.
+    mem_limit: 3g
+    cpus: 2.0
     ports:
       - "127.0.0.1:3000:3000"
     healthcheck:
@@ -121,6 +126,12 @@ services:
     container_name: madearchive-chromium
     mem_limit: 1g
     cpus: 1.0
+    # Réseau ISOLÉ : Chromium exécute le code de pages tierces (import par lien). Il ne partage donc AUCUN réseau avec
+    # MinIO, PostgreSQL, Redis, Meilisearch, Ollama ou Gotenberg — seulement avec "app", qui le pilote. Même si une page
+    # contournait le filtre de requêtes de l'application (HeadlessBrowserImportService.nouveauContexte), il n'y aurait
+    # rien d'interne à atteindre. L'accès Internet sortant reste, c'est son rôle.
+    networks:
+      - import_isole
     ports:
       - "127.0.0.1:3001:3000"
     environment:
@@ -170,6 +181,10 @@ services:
 
     image: ghcr.io/lloyd-koutele/madearchive-app:latest
     container_name: madearchive-app
+    # Réseau normal (base, stockage, recherche...) + réseau isolé partagé avec Chromium, pour le piloter.
+    networks:
+      - default
+      - import_isole
 
     env_file:
       - .env
@@ -217,3 +232,8 @@ volumes:
   ollama_data:
   hsm_data:
   traefik_certs:
+
+networks:
+  # Voir le service "chromium" : réseau où ne vit que le navigateur d'import, avec "app".
+  import_isole:
+    driver: bridge

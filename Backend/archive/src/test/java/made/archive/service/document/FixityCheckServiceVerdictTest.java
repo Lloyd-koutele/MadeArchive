@@ -1,6 +1,7 @@
 package made.archive.service.document;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
@@ -58,6 +59,7 @@ class FixityCheckServiceVerdictTest
     @Mock MeilisearchService meilisearchService;
     @Mock PreuveIntegriteService preuveIntegriteService;
     @Mock AlerteIntegriteService alerteIntegriteService;
+    @Mock made.archive.security.ControleCleChiffrementService controleCle;
     @InjectMocks FixityCheckService service;
 
     private Document document;
@@ -91,6 +93,45 @@ class FixityCheckServiceVerdictTest
         assertThat(document.getStatus()).isEqualTo(DocumentStatus.ACTIVE);
         verify(alerteIntegriteService, never()).documentPreuveAlteree(any(), anyString());
         verify(notificationService, never()).notifier(any(), any(), anyString());
+    }
+
+    @Test
+    void cleDeChiffrementDifferente_neCorrompPasLesDocuments_etSuspendLeControle()
+    {
+        org.mockito.Mockito.doThrow(new made.archive.exception.CleChiffrementException("clé différente"))
+            .when(controleCle).exigerCleValide();
+
+        assertThatThrownBy(() -> service.verifyDocumentsByIds(List.of(document.getId())))
+            .isInstanceOf(made.archive.exception.CleChiffrementException.class);
+
+        assertThat(document.getStatus()).isEqualTo(DocumentStatus.ACTIVE);
+        verify(alerteIntegriteService).cleChiffrementAnormale("clé différente");
+        verify(storageService, never()).download(anyString());
+        verify(meilisearchService, never()).deleteDocument(anyString());
+        verify(notificationService, never()).notifier(any(), any(), anyString());
+    }
+
+    @Test
+    void echecDeDechiffrementCauseParLaCle_neMarquePasCorrompu()
+    {
+        when(documentEncryptionService.decrypt(any()))
+            .thenThrow(new made.archive.exception.CleChiffrementException("clé différente"));
+
+        service.verifyDocumentsByIds(List.of(document.getId()));
+
+        assertThat(document.getStatus()).isEqualTo(DocumentStatus.ACTIVE);
+        verify(alerteIntegriteService).cleChiffrementAnormale("clé différente");
+        verify(meilisearchService, never()).deleteDocument(anyString());
+    }
+
+    @Test
+    void echecDeDechiffrementAvecCleValide_resteUneVraieCorruption()
+    {
+        when(documentEncryptionService.decrypt(any())).thenThrow(new made.archive.exception.BusinessException("tag GCM invalide"));
+
+        service.verifyDocumentsByIds(List.of(document.getId()));
+
+        assertThat(document.getStatus()).isEqualTo(DocumentStatus.CORRUPTED);
     }
 
     @Test

@@ -83,7 +83,7 @@ public class BulkUploadSameTypeService
         User uploadedBy = userRepository.findById(requete.getUploadedById())
             .orElseThrow(() -> new BusinessException("Utilisateur introuvable : " + requete.getUploadedById()));
 
-        List<WebImportService.FichierDistant> fichiers = webImportService.telecharger(requete.getFichiersUrls());
+        List<WebImportService.FichierDistant> fichiers = webImportService.telecharger(requete.getFichiersUrls(), uploadedBy);
 
         List<OcrPreviewResponseDto> previews = new ArrayList<>();
 
@@ -126,6 +126,7 @@ public class BulkUploadSameTypeService
                 .message(buildPreviewMessage(nomFichier, sessionData))
                 .documentSimilaire(sessionData.documentSimilaire)
                 .policeMinPt(sessionData.policeMinPt)
+                .avertissements(sessionData.avertissements.isEmpty() ? null : sessionData.avertissements)
                 .build();
         }
         catch (PdfAConversionException e)

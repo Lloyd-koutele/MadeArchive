@@ -691,6 +691,8 @@ export interface OcrPreviewResponseDto {
     sessionId: string;
     metaDataSuggestions: Record<string, string>;
     message?: string;
+    /** Avertissements de contrôle du type de fichier (jamais bloquants) — ex. .doc au lieu de .docx, fichier sans extension. */
+    avertissements?: string[];
 }
 
 /**
@@ -798,6 +800,8 @@ export interface OcrPreviewItemDto {
      *  échouée. Sinon, plus petite taille de police (pt) trouvée dans le PDF
      *  converti — voir DocumentOcrService.mesurerPoliceMinimalePt côté serveur. */
     policeMinPt?:        number;
+    /** Avertissements du contrôle du type réel du fichier : l'éditeur assume l'archivage tel quel. */
+    avertissements?:     string[];
 }
 
 export interface BulkOcrPreviewResponseDto {

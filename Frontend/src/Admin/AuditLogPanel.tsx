@@ -59,6 +59,9 @@ const ACTION_LABELS: Record<AuditAction, string> = {
     DOSSIER_TYPES_AJOUTES: 'Types ajoutés au dossier',
     DOSSIER_SUPPRIME: 'Dossier supprimé',
     CHAINE_AUDIT_VERIFICATION_DEMANDEE: 'Vérification de la chaîne demandée',
+    CLE_CHIFFREMENT_ANOMALIE: 'Clé de chiffrement absente ou différente',
+    FICHIER_REFUSE: 'Fichier refusé (type ou structure invalide)',
+    IMPORT_LIEN_REFUSE: "Lien d'import refusé (adresse interdite)",
 };
 
 const CIBLE_LABELS: Record<AuditCible, string> = {

@@ -41,6 +41,8 @@ public class DocumentOcrService
     private final OcrPositionalExtractionService ocrPositionalExtractionService;
     /** Uniquement pour resolveDocumentSiVisible (avertissement doc. similaire) — voir sa Javadoc. */
     private final DocumentService              documentService;
+    /** Contrôle du type réel du fichier, AVANT toute conversion — voir ControleTypeFichierService. */
+    private final made.archive.service.fichier.ControleTypeFichierService controleTypeFichierService;
 
     /**
      * Point d'entrée historique — upload navigateur (multipart/form-data).
@@ -80,6 +82,12 @@ public class DocumentOcrService
     {
         log.info("[OCR-Phase1] Démarrage pour type: {}, fichier: {}",
                  typeDocumentId, originalFilename);
+
+        // Type réel (lu dans le contenu) comparé au type annoncé par le nom ; archives, formats non supportés, fichiers
+        // corrompus ou piégés refusés ICI, avant toute conversion. Les avertissements (.doc/.docx échangés, extension
+        // absente) suivent la session jusqu'à l'éditeur, qui valide en connaissance de cause.
+        made.archive.service.fichier.ControleTypeFichierService.Resultat controleType =
+            controleTypeFichierService.verifier(originalFilename, originalBytes, uploadedBy);
 
         try
         {
@@ -239,6 +247,7 @@ public class DocumentOcrService
             sessionData.pdfABytes             = pdfABytes;
             sessionData.originalBytes         = originalBytes;
             sessionData.originalFilename      = originalFilename;
+            sessionData.avertissements        = controleType.avertissements();
             sessionData.extractedText         = extractedText;
             sessionData.suggestions           = suggestions;
             sessionData.originalSha256        = originalSha256;

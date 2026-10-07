@@ -52,6 +52,13 @@ public class OcrPreviewResponseDto
      */
     private Double policeMinPt;
 
+    /**
+     * Absent si rien à signaler. Sinon, mises en garde du contrôle de type de fichier (fichier sans extension, .doc
+     * nommé .docx...) : l'éditeur doit en tenir compte et assume la validation de l'archivage. Jamais bloquant ici —
+     * un type incohérent, lui, est refusé avant même d'arriver à cette réponse.
+     */
+    private java.util.List<String> avertissements;
+
     // Optionnel : pour debug
     private String extractedTextPreview;
 }
