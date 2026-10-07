@@ -138,6 +138,19 @@ public class PlanClassementService
         return String.join(SEPARATEUR_CHEMIN, segments);
     }
 
+    /** "Enseignement › Examens" — comme {@link #chemin} mais SANS les codes, pour l'affichage (détail d'un document). */
+    public static String cheminLibelles(PlanClassementNoeud noeud)
+    {
+        if (noeud == null) return null;
+        List<String> segments = new ArrayList<>();
+        Set<Long> vus = new HashSet<>();
+        for (PlanClassementNoeud n = noeud; n != null && vus.add(n.getId()); n = n.getParent())
+        {
+            segments.add(0, n.getLibelle());
+        }
+        return String.join(SEPARATEUR_CHEMIN, segments);
+    }
+
     /**
      * L'activité qui s'applique à CE document : celle qui lui est propre si elle a été précisée, sinon celle
      * de son type. Null = non classé. Seule règle de dérivation : l'affichage, le filtre de recherche, l'export

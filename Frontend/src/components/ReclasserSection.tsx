@@ -143,10 +143,6 @@ function ReclasserSection({ detail, onUpdated }: Props) {
 
             <Modal isOpen={ouvert} onClose={() => setOuvert(false)} title="Reclasser le document" size="medium">
                 <form className="reclasser-form" onSubmit={handleSubmit}>
-                    <p className="reclasser-intro">
-                        Le fichier, sa signature et son horodatage ne changent pas : seul le classement est corrigé.
-                        L'ancien classement reste visible dans le journal du document.
-                    </p>
 
                     <div className="form-field">
                         <label className="form-field-label" htmlFor="reclasser-type">Type de document</label>
@@ -184,7 +180,7 @@ function ReclasserSection({ detail, onUpdated }: Props) {
                         <>
                             <label className="reclasser-check">
                                 <input type="checkbox" checked={changerActivite} onChange={e => setChangerActivite(e.target.checked)} />
-                                Changer l'activité de CE document
+                                Changer l'activité du document
                                 {detail.activite && <span className="reclasser-note"> (actuelle : {detail.activite}{detail.activiteSurDocument ? '' : ', celle de son type'})</span>}
                             </label>
                             {changerActivite && (
