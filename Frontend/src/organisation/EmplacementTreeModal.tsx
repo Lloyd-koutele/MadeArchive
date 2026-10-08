@@ -135,6 +135,19 @@ function versRequeteNode(n: DraftNode): PhysicalLocationTreeNodeDto {
     };
 }
 
+/** Un nœud chemin EXISTANT, proposé comme point d'accroche d'un nouveau point de stockage. */
+export interface ParentPossible {
+    id: string;
+    /** Chemin lisible, ex. "Bâtiment A › Salle A1". */
+    label: string;
+}
+
+/** Contrainte proposée par défaut pour le point de stockage créé sous un chemin existant. */
+export interface ContrainteParDefaut {
+    typeDocumentId?: number | null;
+    dossierId?: number | null;
+}
+
 interface EmplacementTreeModalProps {
     isOpen: boolean;
     onClose: () => void;
@@ -144,6 +157,13 @@ interface EmplacementTreeModalProps {
     parentId?: string | null;
     /** mode="create" — nom du parent, pour l'en-tête ("sous X"). */
     parentLabel?: string | null;
+    /** mode="create" — chemins existants proposés comme parent (liste déroulante en tête du modal) : permet de créer
+     *  un point de stockage DANS une arborescence déjà en place au lieu de repartir d'une nouvelle racine. Absent =
+     *  comportement historique (parentId fixe). */
+    parentChoices?: ParentPossible[];
+    /** mode="create" avec parentChoices — type ou dossier à pré-remplir sur le point de stockage créé sous un chemin
+     *  existant (dossier prioritaire : un point lié au dossier accepte tous ses types de documents). */
+    contrainteParDefaut?: ContrainteParDefaut;
     /** mode="update" — nœud cliqué + sa descendance actuelle (déjà en mémoire, pas de re-fetch de l'arbre). */
     existingNode?: PhysicalLocationNodeDto;
     /** mode="update" — true si le nœud modifié est une racine de l'UO (sans parent) : elle reste toujours un nœud chemin. */
@@ -186,13 +206,17 @@ interface EmplacementTreeModalProps {
  *   modifient via les raccourcis dédiés (onEditCapacite/onEditContrainte),
  *   jamais en brouillon ici (voir EmplacementNodeCard).
  */
-function EmplacementTreeModal({ isOpen, onClose, uoId, mode, parentId = null, parentLabel = null, existingNode, existingEstRacine = false, onEditCapacite, onEditContrainte, onSaved }: EmplacementTreeModalProps) {
+function EmplacementTreeModal({ isOpen, onClose, uoId, mode, parentId = null, parentLabel = null, parentChoices, contrainteParDefaut, existingNode, existingEstRacine = false, onEditCapacite, onEditContrainte, onSaved }: EmplacementTreeModalProps) {
     const notify = useNotify();
     const [root, setRoot] = useState<DraftNode | null>(null);
     const [saving, setSaving] = useState(false);
     // Nœud "en focus" (dernier cliqué) — un simple surlignage visuel, voir
     // recap : rien ne se replie/disparaît, tout l'arbre reste affiché.
     const [focusedKey, setFocusedKey] = useState<string | null>(null);
+    // Chemin existant choisi comme parent ('' = pas de choix : on garde parentId, donc la racine de l'UO par défaut).
+    const [parentChoisi, setParentChoisi] = useState('');
+    const parentEffectif: string | null = (parentChoices && parentChoisi) ? parentChoisi : parentId;
+    useEffect(() => { if (isOpen) setParentChoisi(''); }, [isOpen]);
 
     // Types de documents / dossiers de l'UO — pour le sélecteur du mode
     // "Type unique"/"Dossier" (voir EmplacementNodeCard), et pour savoir s'il
@@ -220,6 +244,22 @@ function EmplacementTreeModal({ isOpen, onClose, uoId, mode, parentId = null, pa
             // Verrouillé aussi dans EmplacementNodeCard (handleToggleType),
             // pas seulement ici au départ.
             const r = { ...noeudVide(), storagePoint: false };
+            // Sous un chemin EXISTANT choisi à l'archivage : le nouveau nœud est directement le point de stockage,
+            // déjà lié au dossier (ou au type) du lot en cours — il ne reste qu'à lui donner un nom.
+            if (parentEffectif != null && parentChoices && contrainteParDefaut)
+            {
+                r.storagePoint = true;
+                if (contrainteParDefaut.dossierId != null)
+                {
+                    r.modeContrainte = 'DOSSIER';
+                    r.dossierId = contrainteParDefaut.dossierId;
+                }
+                else if (contrainteParDefaut.typeDocumentId != null)
+                {
+                    r.modeContrainte = 'TYPE_UNIQUE';
+                    r.typeDocumentId = contrainteParDefaut.typeDocumentId;
+                }
+            }
             setRoot(r);
             setFocusedKey(r.key);
             return;
@@ -245,7 +285,8 @@ function EmplacementTreeModal({ isOpen, onClose, uoId, mode, parentId = null, pa
             setRoot(r);
             setFocusedKey(r.key);
         }
-    }, [isOpen, mode, existingNode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen, mode, existingNode, parentEffectif]);
 
     const handlePatch = (key: string, patch: Partial<DraftNode>) => setRoot(r => r && mettreAJourNoeud(r, key, patch));
     const handleAddChild = (parentKey: string) => setRoot(r => r && ajouterEnfant(r, parentKey));
@@ -266,7 +307,7 @@ function EmplacementTreeModal({ isOpen, onClose, uoId, mode, parentId = null, pa
             if (mode === 'create') {
                 const cree = await creerArborescence({
                     uniteOrganisationnelleId: uoId,
-                    parentId,
+                    parentId: parentEffectif,
                     node: versRequeteNode(root),
                 });
                 notify.success(`"${cree.name}" créé — ${compterNoeuds(root)} emplacement(s)`);
@@ -283,8 +324,9 @@ function EmplacementTreeModal({ isOpen, onClose, uoId, mode, parentId = null, pa
         }
     };
 
+    const labelParent = parentChoices?.find(c => c.id === parentChoisi)?.label ?? parentLabel;
     const titre = mode === 'create'
-        ? `Créer un emplacement${parentLabel ? ` — sous "${parentLabel}"` : ' — à la racine'}`
+        ? `Créer un emplacement${labelParent ? ` — sous "${labelParent}"` : ' — à la racine'}`
         : `Modifier "${existingNode?.name ?? ''}"`;
 
     return (
@@ -294,12 +336,30 @@ function EmplacementTreeModal({ isOpen, onClose, uoId, mode, parentId = null, pa
                     <div className="td-loading"><i className="fa-solid fa-spinner fa-spin" /> Chargement…</div>
                 ) : (
                     <>
+                        {mode === 'create' && parentChoices && (
+                            <div className="form-field">
+                                <label htmlFor="emplacement-parent" className="form-field-label">
+                                    Où créer ce nouvel emplacement ?
+                                </label>
+                                <select
+                                    id="emplacement-parent"
+                                    className="form-field-input up-select"
+                                    value={parentChoisi}
+                                    onChange={e => setParentChoisi(e.target.value)}
+                                >
+                                    <option value="">— À la racine de l'UO (nouvelle arborescence) —</option>
+                                    {parentChoices.map(c => (
+                                        <option key={c.id} value={c.id}>Sous : {c.label}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
                         <div className="tbo-wrap">
                             <div className="tbo-root">
                                 <EmplacementNodeCard
                                     node={root}
                                     isRoot
-                                    racineDeLUO={mode === 'create' ? parentId === null : existingEstRacine}
+                                    racineDeLUO={mode === 'create' ? parentEffectif === null : existingEstRacine}
                                     uoId={uoId}
                                     typesUO={typesUO}
                                     aDesDossiers={aDesDossiers}

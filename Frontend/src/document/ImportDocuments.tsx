@@ -28,6 +28,7 @@ import type { PhysicalLocationDto, PhysicalLocationNodeDto } from '../services/o
 // un seul modal) — pas de duplication : une mise à jour du constructeur
 // d'arborescence profite aux deux écrans à la fois.
 import EmplacementTreeModal from '../organisation/EmplacementTreeModal';
+import type { ParentPossible } from '../organisation/EmplacementTreeModal';
 import DossierTreePicker from '../organisation/DossierTreePicker';
 import { getPlanClassement, aplatirPlanClassement } from '../services/organisation/PlanClassementService';
 import type { PlanClassementOption } from '../services/organisation/PlanClassementService';
@@ -136,6 +137,12 @@ function ImportDocuments({ onsuccess, preselectedTypeId, preselectedDossierId, p
     const [emplacementModal, setEmplacementModal] = useState<
         { open: false } | { open: true; mode: 'create' } | { open: true; mode: 'update'; node: PhysicalLocationNodeDto }
     >({ open: false });
+    // Chemins existants (nœuds non-stockage actifs) proposés comme parent d'un nouveau point de stockage.
+    const [parentsPossibles, setParentsPossibles] = useState<ParentPossible[]>([]);
+    // true dès que l'utilisateur a lui-même touché au champ Emplacement : on ne présélectionne plus à sa place.
+    const choixEmplacementManuel = useRef(false);
+    // Incrémenté après un lot archivé : les taux d'occupation de la liste doivent être relus.
+    const [rafraichirEmplacements, setRafraichirEmplacements] = useState(0);
 
     // ── Fichiers locaux sélectionnés ─────────────────────────────────────────
     const [files, setFiles]           = useState<File[]>([]);
@@ -201,15 +208,29 @@ function ImportDocuments({ onsuccess, preselectedTypeId, preselectedDossierId, p
     // sélectionné n'est plus dans la liste retournée (devenu incompatible
     // après un changement de type/dossier), la sélection est effacée plutôt
     // que silencieusement envoyée pour un document qu'elle n'accepterait pas.
+    //
+    // Présélection : quand un dossier est choisi et qu'UN SEUL point de stockage lui est lié (mode "dossier") avec
+    // encore de la place, il est sélectionné d'office — un nœud lié à un dossier doit recevoir TOUS les lots de ce
+    // dossier, quel que soit leur type, sans qu'il faille le rechoisir à chaque fois. Dès que l'utilisateur modifie
+    // le champ (y compris pour "Aucun"), son choix prime.
+    useEffect(() => { choixEmplacementManuel.current = false; }, [dossierId]);
+
     useEffect(() => {
         if (uoId == null) return;
         getEmplacementsDisponibles(uoId, typeDocumentId || null, dossierId)
             .then(liste => {
                 setEmplacements(liste);
-                setPhysicalLocationId(prev => (prev && !liste.some(l => l.id === prev)) ? '' : prev);
+                setPhysicalLocationId(prev => {
+                    if (prev && !liste.some(l => l.id === prev)) return '';
+                    if (prev) return prev;
+                    if (choixEmplacementManuel.current || dossierId == null) return '';
+                    const candidats = liste.filter(l => l.modeContrainte === 'DOSSIER' && l.dossierId === dossierId
+                        && !(l.capaciteMax != null && l.nombreDocuments >= l.capaciteMax));
+                    return candidats.length === 1 ? candidats[0].id : '';
+                });
             })
             .catch(() => setEmplacements([]));
-    }, [uoId, typeDocumentId, dossierId]);
+    }, [uoId, typeDocumentId, dossierId, rafraichirEmplacements]);
 
     // ── Déclenchement automatique de l'analyse (local) ───────────────────────
     // Dès que fichier(s)/dossier ET type de document sont fournis, l'analyse
@@ -314,6 +335,25 @@ function ImportDocuments({ onsuccess, preselectedTypeId, preselectedDossierId, p
     const trouverRacineContenant = (arbre: PhysicalLocationNodeDto[], id: string): PhysicalLocationNodeDto | null => {
         const contient = (n: PhysicalLocationNodeDto): boolean => n.id === id || n.children.some(contient);
         return arbre.find(contient) ?? null;
+    };
+
+    /** Chemins (nœuds non-stockage ACTIFS) de l'arbre, avec leur chemin lisible — un nœud désactivé ne peut rien recevoir. */
+    const aplatirChemins = (noeuds: PhysicalLocationNodeDto[], prefixe = ''): ParentPossible[] =>
+        noeuds.flatMap(n => {
+            if (n.storagePoint || n.status !== 'ACTIVE') return [];
+            const label = prefixe ? `${prefixe} › ${n.name}` : n.name;
+            return [{ id: n.id, label }, ...aplatirChemins(n.children, label)];
+        });
+
+    /** "Créer" : propose d'abord les chemins déjà en place, pour y rattacher le nouveau point de stockage. */
+    const ouvrirCreationEmplacement = async () => {
+        if (uoId == null) return;
+        try {
+            setParentsPossibles(aplatirChemins(await getArbreEmplacements(uoId)));
+        } catch {
+            setParentsPossibles([]);   // pas d'arbre lisible : on garde la création à la racine, comme avant
+        }
+        setEmplacementModal({ open: true, mode: 'create' });
     };
 
     const ouvrirModificationEmplacement = async () => {
@@ -566,7 +606,11 @@ function ImportDocuments({ onsuccess, preselectedTypeId, preselectedDossierId, p
         setSelectedWebUrls(new Set());
         setAccess('PUBLIC');
         setSelectedMembres([]);
-        setPhysicalLocationId('');
+        // L'emplacement est CONSERVÉ (comme le dossier ci-dessous) : enchaîner plusieurs lots dans le même dossier
+        // — de types différents, souvent — doit les ranger dans la même boîte sans la ressélectionner à chaque fois.
+        // Les taux d'occupation sont relus (le lot précédent a changé les compteurs) ; si le nœud est devenu
+        // incompatible ou plein, la liste rechargée le retire de la sélection.
+        setRafraichirEmplacements(n => n + 1);
         // Comme typeDocumentId (non réinitialisé ci-dessus) : "Nouvel import"
         // repart du dossier pré-rempli à l'ouverture, pas d'un champ vidé —
         // utile pour enchaîner plusieurs lots dans le même dossier.
@@ -705,7 +749,7 @@ function ImportDocuments({ onsuccess, preselectedTypeId, preselectedDossierId, p
                         id="import-emplacement"
                         className="form-field-input up-select"
                         value={physicalLocationId}
-                        onChange={e => setPhysicalLocationId(e.target.value)}
+                        onChange={e => { choixEmplacementManuel.current = true; setPhysicalLocationId(e.target.value); }}
                     >
                         <option value="">— Aucun —</option>
                         {emplacements.map(loc => {
@@ -721,7 +765,7 @@ function ImportDocuments({ onsuccess, preselectedTypeId, preselectedDossierId, p
                     <button
                         type="button"
                         className="up-btn-secondary"
-                        onClick={() => setEmplacementModal({ open: true, mode: 'create' })}
+                        onClick={ouvrirCreationEmplacement}
                         disabled={uoId == null}
                         title="Créer un nouvel emplacement"
                     >
@@ -1243,6 +1287,8 @@ function ImportDocuments({ onsuccess, preselectedTypeId, preselectedDossierId, p
                     uoId={uoId}
                     mode={emplacementModal.mode}
                     parentId={emplacementModal.mode === 'create' ? null : undefined}
+                    parentChoices={emplacementModal.mode === 'create' ? parentsPossibles : undefined}
+                    contrainteParDefaut={{ typeDocumentId: typeDocumentId ? Number(typeDocumentId) : null, dossierId }}
                     existingNode={emplacementModal.mode === 'update' ? emplacementModal.node : undefined}
                     onSaved={handleEmplacementSaved}
                 />
