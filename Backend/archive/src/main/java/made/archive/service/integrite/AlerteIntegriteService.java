@@ -99,6 +99,37 @@ public class AlerteIntegriteService
         auditLogService.log(null, AuditAction.CLE_CHIFFREMENT_ANOMALIE, description, false);
     }
 
+    private final AtomicReference<Instant> derniereAlerteCleChaine = new AtomicReference<>(Instant.EPOCH);
+
+    /**
+     * La clé qui authentifie la chaîne du journal d'audit est absente ou n'est plus la bonne : erreur de
+     * configuration (aucune falsification établie). Le chaînage est suspendu — les entrées restent en attente et
+     * seront chaînées dès le retour de la clé. ADMIN globaux, une alerte toutes les 6 h au plus.
+     */
+    public void cleChaineAuditAnormale(String description)
+    {
+        Instant maintenant = Instant.now();
+        Instant derniere = derniereAlerteCleChaine.get();
+        if (Duration.between(derniere, maintenant).compareTo(INTERVALLE_ALERTE_CLE) < 0
+            || !derniereAlerteCleChaine.compareAndSet(derniere, maintenant))
+        {
+            return;
+        }
+        try
+        {
+            notificationService.notifier(userRepository.findByRoleName(Role_Name.ADMIN),
+                NotificationType.INTEGRITE_PREUVE_ALTEREE,
+                "ALERTE CONFIGURATION — " + description
+                + " Le journal d'audit n'est plus chaîné tant que la clé n'est pas rétablie : les nouvelles "
+                + "entrées sont conservées et seront chaînées à son retour.");
+        }
+        catch (Exception e)
+        {
+            log.warn("[Chaine-Audit] Notification (best-effort) échouée : {}", e.getMessage());
+        }
+        auditLogService.log(null, AuditAction.CLE_CHIFFREMENT_ANOMALIE, description, false);
+    }
+
     /** Anomalie globale (ancrage du catalogue, scellement du journal) — pas rattachée à un document. */
     public void anomalieGlobale(String description)
     {

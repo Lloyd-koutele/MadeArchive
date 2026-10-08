@@ -27,10 +27,15 @@ import java.security.Security;
 import java.security.Signature;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
+import javax.crypto.KeyGenerator;
+import javax.crypto.Mac;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
 import java.util.Base64;
 import java.util.Date;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 
@@ -259,6 +264,106 @@ public class HsmKeyStoreService
         {
             return Optional.of(false);
         }
+    }
+
+    // ════════════════════════════════════════════════════════
+    // Clés secrètes (HMAC) — la clé ne sort jamais de cette classe
+    // ════════════════════════════════════════════════════════
+
+    private static final String HMAC_ALGORITHM = "HmacSHA256";
+
+    /** Calcule le HMAC-SHA256 (en hexadécimal) d'un message, avec une clé que l'appelant ne voit jamais. */
+    @FunctionalInterface
+    public interface CalculHmac
+    {
+        String hex(String message);
+    }
+
+    /**
+     * Dépose dans le HSM fichier une clé secrète HMAC-SHA256 de 256 bits sous cet alias, si elle n'y est pas déjà.
+     * Une clé existante n'est JAMAIS remplacée (la remplacer rendrait invérifiable tout ce qu'elle a authentifié).
+     *
+     * @return true si la clé vient d'être créée
+     */
+    public boolean garantirCleSecrete(String alias)
+    {
+        if (alias == null || alias.isBlank())
+        {
+            throw new BusinessException("L'alias de la clé HSM est obligatoire");
+        }
+        lock.writeLock().lock();
+        try
+        {
+            KeyStore keyStore = loadKeyStore();
+            if (keyStore.containsAlias(alias))
+            {
+                return false;
+            }
+            KeyGenerator generateur = KeyGenerator.getInstance(HMAC_ALGORITHM);
+            generateur.init(256);
+            SecretKey cle = generateur.generateKey();
+            keyStore.setEntry(alias, new KeyStore.SecretKeyEntry(cle), new KeyStore.PasswordProtection(password()));
+            persist(keyStore);
+            log.info("[HSM] Clé secrète HMAC déposée dans le HSM fichier sous l'alias '{}'", alias);
+            return true;
+        }
+        catch (BusinessException e)
+        {
+            throw e;
+        }
+        catch (Exception e)
+        {
+            log.error("[HSM] Erreur lors du dépôt de la clé secrète '{}' : {}", alias, e.getMessage());
+            throw new BusinessException("Impossible de déposer la clé secrète dans le HSM fichier", e);
+        }
+        finally
+        {
+            lock.writeLock().unlock();
+        }
+    }
+
+    /**
+     * Ouvre la clé secrète {@code alias} UNE fois (un seul chargement du KeyStore) et laisse l'action calculer autant
+     * de HMAC qu'elle veut : le chaînage de milliers d'entrées ne relit pas le fichier à chaque entrée. La clé n'est
+     * jamais remise à l'appelant — seulement le moyen de calculer avec elle, valable le temps de l'action.
+     *
+     * @throws BusinessException si l'alias est absent ou n'est pas une clé secrète
+     */
+    public <T> T avecHmac(String alias, Function<CalculHmac, T> action)
+    {
+        Mac mac;
+        lock.readLock().lock();
+        try
+        {
+            KeyStore keyStore = loadKeyStore();
+            if (!keyStore.containsAlias(alias))
+            {
+                throw new BusinessException("Aucune clé secrète HSM trouvée pour l'alias '" + alias + "'");
+            }
+            Key cle = keyStore.getKey(alias, password());
+            if (cle == null || cle instanceof PrivateKey)
+            {
+                throw new BusinessException("L'entrée '" + alias + "' du HSM fichier n'est pas une clé secrète");
+            }
+            mac = Mac.getInstance(HMAC_ALGORITHM);
+            mac.init(new SecretKeySpec(cle.getEncoded(), HMAC_ALGORITHM));
+        }
+        catch (BusinessException e)
+        {
+            throw e;
+        }
+        catch (Exception e)
+        {
+            log.error("[HSM] Erreur d'ouverture de la clé secrète '{}' : {}", alias, e.getMessage());
+            throw new BusinessException("Impossible d'ouvrir la clé secrète du HSM fichier", e);
+        }
+        finally
+        {
+            lock.readLock().unlock();
+        }
+
+        CalculHmac calcul = message -> byteArrayToHexString(mac.doFinal(message.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        return action.apply(calcul);
     }
 
     /** Indique si une clé existe déjà pour cet alias dans le HSM fichier. */

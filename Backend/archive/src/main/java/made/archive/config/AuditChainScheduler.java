@@ -2,7 +2,9 @@ package made.archive.config;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import made.archive.exception.CleChaineAuditException;
 import made.archive.service.audit.AuditChainService;
+import made.archive.service.integrite.AlerteIntegriteService;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -25,6 +27,7 @@ import org.springframework.stereotype.Component;
 public class AuditChainScheduler
 {
     private final AuditChainService auditChainService;
+    private final AlerteIntegriteService alertes;
 
     @Scheduled(fixedDelayString = "${audit.chaine.intervalle-chainage-ms:10000}",
                initialDelayString = "${audit.chaine.intervalle-chainage-ms:10000}")
@@ -33,6 +36,12 @@ public class AuditChainScheduler
         try
         {
             auditChainService.calculerChainage();
+        }
+        catch (CleChaineAuditException e)
+        {
+            // Passage toutes les 10 s : une seule ligne, sans trace d'appel, et une alerte limitée (voir AlerteIntegriteService).
+            log.error("[Chaine-Audit] Chaînage suspendu — {}", e.getMessage());
+            alertes.cleChaineAuditAnormale(e.getMessage());
         }
         catch (Exception e)
         {

@@ -72,6 +72,10 @@ public class IntegriteScheduler
             {
                 chaine.getRuptures().forEach(r -> anomalies.append("Journal d'audit, entrée ").append(r.getId())
                     .append(" : ").append(r.getDescription()).append('\n'));
+                if (chaine.getAnomaliesGlobales() != null)
+                {
+                    chaine.getAnomaliesGlobales().forEach(a -> anomalies.append("Journal d'audit : ").append(a).append('\n'));
+                }
             }
 
             String courant = anomalies.toString();
