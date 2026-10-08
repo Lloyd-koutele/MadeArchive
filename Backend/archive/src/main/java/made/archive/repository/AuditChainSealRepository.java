@@ -7,6 +7,8 @@ public interface AuditChainSealRepository extends JpaRepository<AuditChainSeal, 
 {
     AuditChainSeal findTopByOrderByIdDesc();
 
+    java.util.List<AuditChainSeal> findAllByOrderByIdAsc();
+
     /** Dernier scellement RÉUSSI (jeton RFC 3161 obtenu) — voir AuditChainService.scellerSiNecessaire. */
     AuditChainSeal findTopByHorodatageTokenIsNotNullOrderByIdDesc();
 }

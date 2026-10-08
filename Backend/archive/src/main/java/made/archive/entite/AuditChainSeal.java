@@ -50,4 +50,19 @@ public class AuditChainSeal
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt = Instant.now();
+
+    /** Position, dans la chaîne, de la dernière entrée scellée — absente des scellements antérieurs à la signature. */
+    @Column(name = "dernier_position_chaine")
+    private Long dernierPositionChaine;
+
+    /** Empreinte du scellement précédent : en retirer un au milieu rompt ce lien. */
+    @Column(name = "empreinte_precedente", length = 64)
+    private String empreintePrecedente;
+
+    /** Signature de la clé système (HSM) sur l'empreinte de ce scellement — absente des scellements antérieurs. */
+    @Column(name = "signature", columnDefinition = "TEXT")
+    private String signature;
+
+    @Column(name = "signature_alias", length = 100)
+    private String signatureAlias;
 }

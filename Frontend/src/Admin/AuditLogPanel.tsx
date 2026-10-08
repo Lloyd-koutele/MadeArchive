@@ -408,7 +408,9 @@ function AuditLogPanel() {
                     <span className={`status-tag ${chaineResultat.chaineIntacte ? 'active' : 'inactive'}`}>
                         {chaineResultat.chaineIntacte
                             ? `Intacte (${chaineResultat.nombreEntreesChainees} entrée(s))`
-                            : `${chaineResultat.ruptures.length} rupture(s) détectée(s)`}
+                            : `${chaineResultat.ruptures.length} rupture(s) détectée(s)`
+                                + ((chaineResultat.anomaliesGlobales?.length ?? 0) > 0
+                                    ? ` · ${chaineResultat.anomaliesGlobales!.length} anomalie(s) globale(s)` : '')}
                     </span>
                 )}
                 {chaineResultat?.rupturesHorsPerimetre && (
@@ -423,6 +425,15 @@ function AuditLogPanel() {
                 )}
             </div>
 
+            {chaineResultat?.anomaliesGlobales?.map((a, i) => (
+                <div key={i} className="up-alert up-alert-warning">
+                    <span>
+                        <i className="fa-solid fa-triangle-exclamation" style={{ marginRight: '0.5rem' }} />
+                        {a}
+                    </span>
+                </div>
+            ))}
+
             {chaineResultat && !chaineResultat.chaineIntacte && chaineResultat.ruptures.length > 0 && (
                 <div className="td-table-container">
                     <table className="td-table audit-log-table">
@@ -435,8 +446,8 @@ function AuditLogPanel() {
                             </tr>
                         </thead>
                         <tbody>
-                            {chaineResultat.ruptures.map(r => (
-                                <tr key={r.id}>
+                            {chaineResultat.ruptures.map((r, i) => (
+                                <tr key={`${r.id}-${i}`}>
                                     <td>{r.horodatage ? formatHorodatage(r.horodatage) : '—'}</td>
                                     <td>{r.action ? (ACTION_LABELS[r.action] ?? r.action) : '—'}</td>
                                     <td className="audit-col-uo">{r.uoId != null ? (uoNomParId.get(r.uoId) ?? `#${r.uoId}`) : '—'}</td>

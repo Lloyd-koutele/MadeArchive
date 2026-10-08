@@ -134,6 +134,8 @@ export interface ChaineAuditVerificationDto {
     nombreEntreesChainees: number;
     ruptures: ChaineAuditRuptureDto[];
     rupturesHorsPerimetre: boolean;
+    /** Anomalies sans entrée associée (clé de chaînage, registre des scellements) — ADMIN globaux seulement. */
+    anomaliesGlobales?: string[];
     dernierScellementDate: string | null;
     dernierScellementEntryId: number | null;
 }

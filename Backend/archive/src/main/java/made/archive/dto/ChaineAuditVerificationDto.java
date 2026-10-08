@@ -26,6 +26,10 @@ public class ChaineAuditVerificationDto
      *  que "ma branche est intacte" ne veut pas dire "tout le journal est intact". */
     private boolean rupturesHorsPerimetre;
 
+    /** Anomalies qui ne se rattachent à aucune entrée : clé de chaînage absente ou différente, registre des
+     *  scellements introuvable, altéré ou incomplet. Détaillées aux seuls ADMIN globaux. */
+    private List<String> anomaliesGlobales;
+
     private Instant dernierScellementDate;
     private Long    dernierScellementEntryId;
 }
