@@ -14,6 +14,7 @@ des droits par unité organisationnelle et cycle de vie complet des documents
 - [Technologies utilisées](#technologies-utilisées)
 - [Besoins matériel](#besoins-matériel-pour-un-fonctionnement-optimal)
 - [Structure du dépôt](#structure-du-dépôt)
+- [Tests](#tests)
 - [Déploiement](#déploiement)
 - [Documentation complémentaire](#documentation-complémentaire)
 
@@ -25,9 +26,23 @@ MadeArchive numérise et conserve des documents (factures, attestations,
 pièces d'identité, contrats...) avec les garanties attendues d'un système
 d'archivage électronique probant :
 
-- **Intégrité prouvable** : chaque document est signé (PKI, clé propre à
-  l'éditeur) et horodaté (RFC 3161) à l'archivage, puis vérifié
-  périodiquement (contrôle de fixité automatisé).
+- **Intégrité prouvable** : chaque document est converti en PDF/A, empreinte
+  SHA-256, signé (PKI, clé propre à l'éditeur, conservée dans un keystore
+  PKCS#12) et horodaté (RFC 3161). Son arrivée dans MinIO est vérifiée avant
+  toute écriture en base. Il est ensuite contrôlé chaque nuit (contrôle de
+  fixité automatisé).
+- **Vérification instantanée** : bouton « Vérifier l'intégrité » (lecture seule)
+  qui contrôle empreinte, signature, horodatage, preuves et journal d'audit
+  d'un document, avec un rapport PDF téléchargeable ; chaque demande est
+  tracée dans le journal. Un tiers peut aussi vérifier une attestation sans
+  compte, via un QR code et une page publique à jeton temporaire.
+- **Journal d'audit infalsifiable** : entrées chaînées par HMAC (clé tenue dans
+  le keystore), scellements signés, registre hors base et ancrage quotidien
+  horodaté ; toute modification ou suppression d'une entrée est détectée.
+- **Trois modes de versement** : dépôt unitaire, dépôt en masse, import par
+  lien web (durci : contrôle du type réel du fichier, protection SSRF) ou par
+  dossier Google Drive partagé (optionnel). L'aperçu n'écrit rien ; l'éditeur
+  valide avant l'archivage.
 - **Extraction automatique de métadonnées** : OCR (Tesseract) sur chaque
   document, puis génération de règles d'extraction par IA locale (Ollama)
   pour pré-remplir les champs des documents suivants du même type.
@@ -37,6 +52,8 @@ d'archivage électronique probant :
 - **Cycle de vie maîtrisé** : rétention configurable par type de document,
   corbeille avec délai de grâce, purge en "tombstone" (traçabilité même
   après suppression), jamais de perte silencieuse d'un enregistrement.
+  Un procès-verbal d'élimination horodaté est produit pour les documents
+  détruits.
 
 ## Structure globale
 
@@ -96,7 +113,9 @@ déploiement.
 - PostgreSQL (données), Redis (cache)
 - Tesseract OCR + Apache PDFBox (extraction de texte/position)
 - Ollama + `qwen2.5-coder:14b` (génération de règles d'extraction par IA locale)
-- Signature PKI (keystore PKCS12) + horodatage RFC 3161
+- Signature PKI (keystore PKCS12, Bouncy Castle) + horodatage RFC 3161
+- Chiffrement des fichiers AES-256-GCM, détection du type réel (Apache Tika)
+- Flyway (migrations de schéma versionnées)
 
 **Frontend**
 - React 19, TypeScript, Vite
@@ -142,7 +161,7 @@ MadeArchive/
 │   │   ├── security/                   # Auth JWT, filtres, chiffrement
 │   │   ├── config/                     # Configuration Spring + tâches planifiées (schedulers)
 │   │   ├── factory/ · exception/ · util/
-│   ├── src/test/java/                  # Tests unitaires
+│   ├── src/test/java/                  # Tests unitaires, d'intégration (Testcontainers) et de performance
 │   ├── traefik/                        # Dockerfile + template de config Traefik
 │   ├── deploy/helm/                    # Charts Kubernetes (alternative à Docker Compose)
 │   ├── Blockchain/                     # Smart contract Solidity (ancrage optionnel)
@@ -166,6 +185,27 @@ MadeArchive/
 ├── docs/                                # Documentation projet (mémoire, schémas)
 └── .github/workflows/                   # CI (tests) + publication des images (ghcr.io)
 ```
+
+## Tests
+
+Trois tâches Gradle, lancées depuis `Backend/archive/` (Docker requis pour les
+tests d'intégration, qui démarrent PostgreSQL et MinIO via Testcontainers) :
+
+```bash
+./gradlew test               # tests unitaires
+./gradlew integrationTest    # tests d'intégration : chaîne d'audit, preuves d'intégrité,
+                             # procès-verbal d'élimination, export, plan de classement...
+./gradlew performanceTest    # OCR, latence de l'API, volumétrie de la base
+```
+
+Les rapports HTML sont générés dans `Backend/archive/build/reports/tests/<tâche>/index.html`
+(résultats bruts XML dans `build/test-results/`). Pour les tests de performance,
+les mesures figurent dans la sortie standard de chaque classe ; les seuils se
+règlent par propriétés (ex. `./gradlew performanceTest -Dperf.ocr.maxMs=1000`).
+
+Les tests de falsification vérifient notamment qu'une modification du journal
+d'audit, du fichier archivé, de la signature, de l'horodatage ou du manifeste
+de preuves est bien détectée.
 
 ## Déploiement
 
@@ -285,6 +325,14 @@ HSM_KEYSTORE_PASSWORD=CHANGE_MOI          # openssl rand -base64 32
 
 # DOIT faire exactement 32 octets une fois décodée en Base64
 STORAGE_ENCRYPTION_KEY=CHANGE_MOI         # openssl rand -base64 32
+```
+
+Variables **optionnelles** (désactivées ou valeur par défaut si absentes) :
+
+```bash
+GOOGLE_DRIVE_API_KEY=           # import d'un dossier Google Drive partagé (désactivé si vide)
+STORAGE_VERIFICATION_DEPOT=CONTENU   # CONTENU : relit l'objet MinIO et recalcule son SHA-256
+                                     # TAILLE   : vérifie seulement présence et taille
 ```
 
 Toutes les autres variables (`DB_URL`, `OLLAMA_BASE_URL`, `MINIO_URL`,
