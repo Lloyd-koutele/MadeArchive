@@ -102,8 +102,8 @@ public class OllamaService
     // generateRegexIfFirstDocument), un timeout raté ne bloque jamais l'upload, mais
     // échouait systématiquement avant même d'avoir une chance d'aboutir. Porté à 150s
     // pour le 7B (remplaçait alors un 3B), puis à 300s pour le 14B (mesuré jusqu'à 278s
-    // de réponse sur un appel groupé réel en CPU — 150s aurait coupé l'appel en cours).
-    private static final int    TIMEOUT_SECONDS    = 300;
+    // de réponse sur un appel groupé réel en CPU), puis configurable (ollama.timeout-seconds, 600 s par défaut) :
+    // 300 s a été dépassé sur une machine chargée (construction d'images en parallèle).
     private static final long   REDOS_TIMEOUT_MS   = 500;
     private static final String FALLBACK_REGEX     = ".+";
 
@@ -653,7 +653,7 @@ public class OllamaService
                 .bodyValue(requestBody)
                 .retrieve()
                 .bodyToMono(Map.class)
-                .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
+                .timeout(Duration.ofSeconds(ollamaProperties.getTimeoutSeconds()))
                 .block();
 
             if (response == null || !response.containsKey("response"))
@@ -698,7 +698,7 @@ public class OllamaService
                 .bodyValue(requestBody)
                 .retrieve()
                 .bodyToMono(Map.class)
-                .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
+                .timeout(Duration.ofSeconds(ollamaProperties.getTimeoutSeconds()))
                 .block();
 
             List<?> choices = response != null ? (List<?>) response.get("choices") : null;

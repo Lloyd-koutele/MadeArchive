@@ -266,7 +266,7 @@ public class RegexGenerationService
      *
      * Chaque type est traité indépendamment ; l'échec de l'un n'empêche jamais
      * les suivants. Potentiellement long si plusieurs types sont en attente
-     * (jusqu'à OllamaService.TIMEOUT_SECONDS par type) — sans risque de
+     * (jusqu'à ollama.timeout-seconds par type) — sans risque de
      * chevauchement avec le prochain cycle vu l'intervalle de 8h.
      */
     public void retenterEchecs()
