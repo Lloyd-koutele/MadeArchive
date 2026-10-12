@@ -68,7 +68,7 @@ flowchart TB
     A --> ME[("meilisearch<br/>index plein texte")]
     A --> RE[("redis<br/>cache / sessions")]
     A --> OL["ollama<br/>génération de regex par IA locale"]
-    A --> GO["gotenberg<br/>conversion PDF/A"]
+    A --> GO["gotenberg<br/>conversion en PDF"]
     A --> CH["chromium headless<br/>rendu / captures"]
 ```
 
@@ -82,7 +82,7 @@ flowchart TB
 | **meilisearch** | Index de recherche plein texte sur le contenu OCRisé des documents. |
 | **redis** | Cache et sessions. |
 | **ollama** | Modèle de langage local (`qwen2.5-coder:14b`) — génère les règles d'extraction (regex) de métadonnées à partir du texte OCR, sans envoyer aucune donnée à un service externe. |
-| **gotenberg** | Conversion de documents bureautiques vers PDF/A avant archivage. |
+| **gotenberg** | Conversion des documents bureautiques en PDF. La mise en conformité PDF/A est faite ensuite par l'application (Ghostscript, contrôle veraPDF). |
 | **chromium** (headless) | Rendu de pages/captures pour certains imports et exports. |
 
 ## Rôle de chaque conteneur
@@ -124,7 +124,7 @@ déploiement.
 - Docker Compose (déploiement de référence)
 - Traefik (reverse proxy, TLS automatique)
 - MinIO (stockage objet), Meilisearch (recherche plein texte)
-- Gotenberg (conversion PDF/A), Chromium headless
+- Gotenberg (conversion en PDF), Chromium headless
 
 **Autres**
 - Un smart contract Solidity (`Backend/archive/Blockchain/DocumentRegistry.sol`)
