@@ -164,6 +164,9 @@ public class SecurityConfig
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/login").permitAll()
                         .requestMatchers("/api/logout").permitAll()
+                        // Le renouvellement doit marcher avec un jeton d'accès DÉJÀ expiré : c'est le jeton de
+                        // rafraîchissement (secret, aléatoire, vérifié en base) qui sert d'identifiant.
+                        .requestMatchers("/api/refresh").permitAll()
                         // Préfixe (pas juste "/api/public" exact) : couvre les sous-chemins
                         // réels des contrôleurs publics (ex. /api/public/verify/{id},
                         // /api/public/attestation/{token}/view) — un match exact laissait

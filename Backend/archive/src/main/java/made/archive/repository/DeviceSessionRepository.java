@@ -20,6 +20,18 @@ public interface DeviceSessionRepository extends JpaRepository<DeviceSession, Lo
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<DeviceSession> findByRefreshTokenAndRevokedFalse(String refreshToken);
 
+    /** Retrouve aussi un jeton déjà échangé ou révoqué (détection de réutilisation). Verrou : sérialise deux renouvellements simultanés. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    Optional<DeviceSession> findByRefreshToken(String refreshToken);
+
+    @Modifying
+    @Query("UPDATE DeviceSession d SET d.revoked = true WHERE d.familleId = :famille")
+    void revoquerFamille(@Param("famille") String famille);
+
+    @Modifying
+    @Query("DELETE FROM DeviceSession d WHERE d.user = :user AND d.rotatedAt IS NOT NULL AND d.rotatedAt < :avant")
+    void supprimerEchangesAnciens(@Param("user") User user, @Param("avant") Instant avant);
+
     List<DeviceSession> findAllByUserAndRevokedFalse(User user);
 
     @Modifying

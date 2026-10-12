@@ -46,6 +46,12 @@ public class AuthService
     @Value("${jwt.refresh.expiration}")
     private long refreshExpiration;
 
+    @Value("${jwt.session.max-expiration}")
+    private long sessionMaxExpiration;
+
+    /** Un jeton déjà échangé reste accepté ce court instant (deux onglets, requêtes simultanées). */
+    private static final long DELAI_GRACE_ROTATION_MS = 30_000;
+
     private Long uoDe(User user)
     {
         return uniteOrganisationnelleService.getUOActuelleUser(user.getId())
@@ -167,42 +173,127 @@ public class AuthService
         }
 
         String refreshToken = UUID.randomUUID().toString();
+        Instant expirationAbsolue = now.plusMillis(sessionMaxExpiration);
         DeviceSession device = new DeviceSession();
         device.setUser(user);
         device.setRefreshToken(refreshToken);
-        device.setExpiresAt(now.plusMillis(refreshExpiration));
+        device.setFamilleId(UUID.randomUUID().toString());
+        device.setExpirationAbsolue(expirationAbsolue);
+        device.setCreeLe(now);
+        device.setExpiresAt(plusTot(now.plusMillis(refreshExpiration), expirationAbsolue));
         deviceSessionRepository.save(device);
 
         return AuthResponse.success(accessToken, refreshToken, user.getId());
     }
 
-    @Transactional
+    private static Instant plusTot(Instant a, Instant b)
+    {
+        return a.isBefore(b) ? a : b;
+    }
+
+    /**
+     * Rotation : chaque renouvellement échange le jeton de rafraîchissement contre un NOUVEAU (l'ancien
+     * ne sert plus). Un jeton déjà échangé, présenté après un court délai de grâce, est le signe d'une copie
+     * volée ou d'un rejeu : toute la connexion (la famille) est alors révoquée. La connexion a aussi une
+     * durée maximale absolue que les renouvellements ne repoussent jamais.
+     *
+     * noRollbackFor : les révocations ci-dessous doivent survivre à l'exception levée juste après.
+     */
+    @Transactional(noRollbackFor = BusinessException.class)
     public AuthResponse refresh(String refreshToken) 
     {
         DeviceSession device = deviceSessionRepository
-            .findByRefreshTokenAndRevokedFalse(refreshToken)
+            .findByRefreshToken(refreshToken)
             .orElseThrow(() -> new BusinessException("Session invalide"));
 
         Instant now = Instant.now();
+        User user = device.getUser();
+        String famille = device.getFamilleId() != null ? device.getFamilleId() : refreshToken;
 
-        if (device.getExpiresAt().isBefore(now)) {
+        // 1. Jeton déjà échangé contre un successeur
+        if (device.getRotatedAt() != null)
+        {
+            if (device.getSuccesseur() != null
+                && now.isBefore(device.getRotatedAt().plusMillis(DELAI_GRACE_ROTATION_MS))
+                && deviceSessionRepository.findByRefreshTokenAndRevokedFalse(device.getSuccesseur()).isPresent())
+            {
+                // Délai de grâce : l'autre onglet a déjà fait l'échange, on lui renvoie le même résultat.
+                return AuthResponse.success(accessTokenPourRenouvellement(user, now), device.getSuccesseur(), user.getId());
+            }
+
+            deviceSessionRepository.revoquerFamille(famille);
+            auditLogService.log(user, AuditAction.SESSION_INVALIDEE, AuditCible.UTILISATEUR,
+                user.getId().toString(), uoDe(user),
+                "Jeton de rafraîchissement déjà échangé présenté de nouveau : connexion révoquée pour " + user.getEmail(),
+                false);
+            throw new BusinessException("Session invalidée, veuillez vous reconnecter");
+        }
+
+        if (device.isRevoked())
+        {
+            throw new BusinessException("Session invalide");
+        }
+
+        // 2. Échéance glissante (inactivité) et durée maximale absolue
+        if (device.getExpiresAt().isBefore(now)) 
+        {
             device.setRevoked(true);
             deviceSessionRepository.save(device);
             throw new BusinessException("Session expirée, veuillez vous reconnecter");
         }
 
-        
-        User user = device.getUser();
-
-        // Vérifier si un autre appareil a déjà renouvelé l'access token
-        Optional<UserActiveToken> existing = activeTokenRepository.findByUser(user);
-        if (existing.isPresent() && existing.get().getExpiresAt().isAfter(now)) 
+        Instant expirationAbsolue = device.getExpirationAbsolue() != null ? device.getExpirationAbsolue() : device.getExpiresAt();
+        if (!now.isBefore(expirationAbsolue))
         {
-            // Access token toujours valide → le retourner tel quel
-            return AuthResponse.success(existing.get().getAccessToken(), refreshToken, user.getId());
+            deviceSessionRepository.revoquerFamille(famille);
+            throw new BusinessException("Durée maximale de session atteinte, veuillez vous reconnecter");
         }
 
-        // Générer un nouvel access token pour tous les appareils
+        // 3. Un compte désactivé, ou dont la session a été invalidée (mot de passe, rôle, UO) après la
+        //    création de ce jeton, ne peut plus se renouveler : il doit se reconnecter.
+        Instant invalideLe = user.getSessionInvalidatedAt();
+        Instant creeLe = device.getCreeLe() != null ? device.getCreeLe() : now;
+        if (!Boolean.TRUE.equals(user.isActif()) || (invalideLe != null && invalideLe.isAfter(creeLe)))
+        {
+            deviceSessionRepository.revoquerFamille(famille);
+            throw new BusinessException("Session invalidée, veuillez vous reconnecter");
+        }
+
+        // 4. Rotation : nouveau jeton, l'ancien est marqué échangé (il reste en base pour détecter un rejeu)
+        String nouveauJeton = UUID.randomUUID().toString();
+        DeviceSession successeur = new DeviceSession();
+        successeur.setUser(user);
+        successeur.setRefreshToken(nouveauJeton);
+        successeur.setFamilleId(famille);
+        successeur.setExpirationAbsolue(expirationAbsolue);
+        successeur.setCreeLe(now);
+        successeur.setExpiresAt(plusTot(now.plusMillis(refreshExpiration), expirationAbsolue));
+
+        device.setFamilleId(famille);
+        device.setRevoked(true);
+        device.setRotatedAt(now);
+        device.setSuccesseur(nouveauJeton);
+
+        deviceSessionRepository.save(device);
+        deviceSessionRepository.save(successeur);
+        deviceSessionRepository.supprimerEchangesAnciens(user, now.minusMillis(refreshExpiration + DELAI_GRACE_ROTATION_MS));
+
+        return AuthResponse.success(accessTokenPourRenouvellement(user, now), nouveauJeton, user.getId());
+    }
+
+    /**
+     * Jeton d'accès à renvoyer lors d'un renouvellement : celui qu'un autre appareil vient d'obtenir s'il est
+     * encore loin de son échéance (au-delà des 2/5 de sa durée), sinon un nouveau.
+     */
+    private String accessTokenPourRenouvellement(User user, Instant now)
+    {
+        Optional<UserActiveToken> existing = activeTokenRepository.findByUser(user);
+        Instant limiteReutilisation = now.plusMillis(jwtService.getExpirationTime() * 2 / 5);
+        if (existing.isPresent() && existing.get().getExpiresAt().isAfter(limiteReutilisation))
+        {
+            return existing.get().getAccessToken();
+        }
+
         String newAccess = jwtService.generateToken(user);
         UserActiveToken uat = existing.orElse(new UserActiveToken());
         uat.setUser(user);
@@ -210,12 +301,11 @@ public class AuthService
         uat.setExpiresAt(now.plusMillis(jwtService.getExpirationTime()));
         activeTokenRepository.save(uat);
 
-        // Uniquement quand un nouveau token est réellement émis — pas à chaque appel
-        // (le cas "token encore valide" ci-dessus est trop fréquent pour être du bruit utile).
+        // Uniquement quand un nouveau token est réellement émis — pas à chaque appel.
         auditLogService.log(user, AuditAction.TOKEN_RAFRAICHI, AuditCible.UTILISATEUR,
             user.getId().toString(), uoDe(user), "Access token renouvelé pour " + user.getEmail(), true);
 
-        return AuthResponse.success(newAccess, refreshToken, user.getId());
+        return newAccess;
     }
 
     @Transactional
@@ -225,9 +315,13 @@ public class AuthService
         deviceSessionRepository.findByRefreshTokenAndRevokedFalse(refreshToken)
             .ifPresent(device -> {
             
-            // 2. Cet appareil passe à "revoked = true"
+            // 2. Cet appareil passe à "revoked = true" (et toute sa famille de jetons successifs)
             device.setRevoked(true);
             deviceSessionRepository.save(device);
+            if (device.getFamilleId() != null)
+            {
+                deviceSessionRepository.revoquerFamille(device.getFamilleId());
+            }
 
             auditLogService.log(device.getUser(), AuditAction.LOGOUT, AuditCible.UTILISATEUR,
                 device.getUser().getId().toString(), uoDe(device.getUser()),
