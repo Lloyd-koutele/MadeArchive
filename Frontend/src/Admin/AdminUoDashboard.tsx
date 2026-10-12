@@ -394,6 +394,12 @@ function AdminUoDashboard() {
         notify.success("Opération effectuée avec succès");
     };
 
+    // CreateUser affiche déjà son propre message de succès : pas de second toast ici.
+    const handleUserCreated = () => {
+        if (currentUOId) fetchUsers(currentUOId);
+        handleCloseModal();
+    };
+
     const filteredUsers = users.filter(u =>
         (u.nom?.toLowerCase() || '').includes(filters.nom.toLowerCase()) &&
         (u.prenom?.toLowerCase() || '').includes(filters.prenom.toLowerCase()) &&
@@ -588,7 +594,7 @@ function AdminUoDashboard() {
                 />
 
                 <Modal isOpen={isCreateUserModalOpen} onClose={handleCloseModal} title="Créer un utilisateur" size="medium">
-                    <CreateUser onsuccess={handleUserUpdated} restrictToUO={restrictToUO} />
+                    <CreateUser onsuccess={handleUserCreated} restrictToUO={restrictToUO} />
                 </Modal>
 
                 <Modal isOpen={isUpdateModalOpen} onClose={handleCloseModal} title="Mettre à jour un utilisateur" size="medium">
