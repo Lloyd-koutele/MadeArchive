@@ -194,6 +194,15 @@ tasks.register('integrationTest', Test) {
 tasks.register('performanceTest', Test) {
 	description = 'Tests de performance/charge (sans serveur live)'
 	group = 'verification'
+	// Résultats lisibles dans la console + exécution systématique (jamais « UP-TO-DATE » : on veut une mesure fraîche).
+	testLogging.showStandardStreams = true
+	outputs.upToDateWhen { false }
+	// Même chemin natif que bootRun (voir plus bas) pour Tess4J sur Apple Silicon ; sans effet sur Linux.
+	jvmArgs '-Djna.library.path=/opt/homebrew/lib'
+	// Mesure de latence HTTP contre l'instance LOCALE (127.0.0.1) : en-tête Host autorisé, certificat auto-signé accepté.
+	jvmArgs '-Djdk.httpclient.allowRestrictedHeaders=host', '-Djdk.internal.httpclient.disableHostnameVerification=true'
+	// Propriétés -Dperf.* transmises au JVM de test (ex. -Dperf.ocr.maxMs=1000).
+	systemProperties System.properties.findAll { k, v -> k.toString().startsWith('perf.') }
 	testClassesDirs = sourceSets.test.output.classesDirs
 	classpath = sourceSets.test.runtimeClasspath
 	useJUnitPlatform {
