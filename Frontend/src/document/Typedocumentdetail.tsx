@@ -220,9 +220,7 @@ function TypeDocumentDetail({ td }: TypeDocumentDetailProps) {
                 ) : (
                     <>
                         <p className="td-detail-empty">
-                            Pas encore générées — elles le seront automatiquement au premier document
-                            archivé de ce type (en arrière-plan, sans bloquer l'archivage), ou tu peux
-                            les définir toi-même dès maintenant.
+                            Pas encore définies(générées).
                         </p>
                         {champsMeta.length > 0 && (
                             <button

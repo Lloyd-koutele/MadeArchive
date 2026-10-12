@@ -37,6 +37,8 @@ import GestionGroupe from './GestionGroupe';
 import { useNotify } from '../notifications/NotificationProvider';
 import { useConfirm } from '../notifications/ConfirmProvider';
 import { useDemandeMotif } from '../notifications/MotifSuppressionProvider';
+import NouvelleVersionModal, { peutDeposerVersion, sourceDe } from '../components/NouvelleVersionModal';
+import type { SourceNouvelleVersion } from '../components/NouvelleVersionModal';
 import { useRefetchOnFocus } from '../hooks/useRefetchOnFocus';
 import '../Style/document/Filtre.css';
 import '../Style/Admin/DocumentsArchivesPanel.css';
@@ -56,6 +58,8 @@ interface DocumentsAccessiblesProps {
      * ces actions se font depuis l'espace Éditeur.
      */
     modeAdministration?: boolean;
+    /** true = monté dans l'interface ÉDITEUR : seule interface où l'on dépose une nouvelle version. */
+    modeEditeur?: boolean;
 }
 
 /** Retire de ce qui est affiché toute possibilité de gérer un document (vue d'administration). */
@@ -122,10 +126,11 @@ const FILTRES_VIDES: Filtres = {
 // Composant principal
 // ─────────────────────────────────────────────────────────────────────────────
 
-function DocumentsAccessibles({ uoId = null, modeAdministration = false }: DocumentsAccessiblesProps) {
+function DocumentsAccessibles({ uoId = null, modeAdministration = false, modeEditeur = false }: DocumentsAccessiblesProps) {
     const notify = useNotify();
     const confirm = useConfirm();
     const demanderMotif = useDemandeMotif();
+    const [versionSource, setVersionSource] = useState<SourceNouvelleVersion | null>(null);
     // ── Données ───────────────────────────────────────────────────────────
     const [documents, setDocuments]     = useState<DocumentListItemDto[]>([]);
     const [totalElements, setTotal]     = useState(0);
@@ -1128,6 +1133,15 @@ function DocumentsAccessibles({ uoId = null, modeAdministration = false }: Docum
                                                 : <i className="fa-solid fa-file-pdf" />
                                             }
                                         </button>
+                                        {modeEditeur && peutDeposerVersion(doc) && (
+                                            <button
+                                                className="action-button"
+                                                onClick={() => setVersionSource(sourceDe(doc))}
+                                                title="Déposer une nouvelle version"
+                                            >
+                                                <i className="fa-solid fa-code-branch" />
+                                            </button>
+                                        )}
                                         {doc.peutGererCorbeille && (
                                             <button
                                                 className="action-button delete"
@@ -1236,6 +1250,16 @@ function DocumentsAccessibles({ uoId = null, modeAdministration = false }: Docum
                                                     }
                                                 </button>
 
+                                                {modeEditeur && peutDeposerVersion(doc) && (
+                                                    <button
+                                                        className="action-button doc-actions-standalone"
+                                                        onClick={() => setVersionSource(sourceDe(doc))}
+                                                        title="Déposer une nouvelle version"
+                                                    >
+                                                        <i className="fa-solid fa-code-branch" />
+                                                    </button>
+                                                )}
+
                                                 {/* Envoyer à la corbeille */}
                                                 {doc.peutGererCorbeille && (
                                                     <button
@@ -1280,6 +1304,22 @@ function DocumentsAccessibles({ uoId = null, modeAdministration = false }: Docum
                                                             >
                                                                 <i className="fa-solid fa-file-pdf" /> Télécharger
                                                             </button>
+                                                            {modeEditeur && peutDeposerVersion(doc) && (
+                                                                <button
+                                                                    onClick={() => { closeCompactMenu(); setVersionSource(sourceDe(doc)); }}
+                                                                    className="action-menu-item"
+                                                                >
+                                                                    <i className="fa-solid fa-code-branch" /> Nouvelle version
+                                                                </button>
+                                                            )}
+                                                            {doc.peutGererCorbeille && (
+                                                                <button
+                                                                    onClick={() => { closeCompactMenu(); handleEnvoyerCorbeilleRapide(doc); }}
+                                                                    className="action-menu-item"
+                                                                >
+                                                                    <i className="fa-solid fa-trash" /> Envoyer à la corbeille
+                                                                </button>
+                                                            )}
                                                         </div>,
                                                         document.body
                                                     )}
@@ -1312,6 +1352,12 @@ function DocumentsAccessibles({ uoId = null, modeAdministration = false }: Docum
                     )}
                 </>
             )}
+
+            <NouvelleVersionModal
+                source={versionSource}
+                onClose={() => setVersionSource(null)}
+                onTermine={() => loadDocuments(filtres, page)}
+            />
 
             {/* ── Modal détail ── */}
             <Modal
@@ -1425,7 +1471,7 @@ function DocumentDetailPanel({
                 <VersionBadge label={detail.versionLabel} />
             </div>
             <div className="details-row"><strong>Type :</strong> {detail.typeDocumentNom}</div>
-            <div className="details-row"><strong>Activité :</strong> {detail.activite ?? 'Non classé'}{detail.activite && !detail.activiteSurDocument ? ' (celle de son type)' : ''}</div>
+            <div className="details-row"><strong>Activité :</strong> {detail.activite ?? 'Non classé'}{detail.activite && !detail.activiteSurDocument ? '' : ''}</div>
             <div className="details-row">
                 <strong>Statut :</strong>
                 <span className={`status-tag ${detail.status === 'ACTIVE' ? 'active' : 'inactive'}`}>
@@ -1532,7 +1578,7 @@ function DocumentDetailPanel({
 
             <EmplacementPhysiqueSection detail={detail} />
 
-            <DossierAttachSection detail={detail} />
+            <DossierAttachSection detail={detail} onUpdated={onEmplacementChange} />
 
             <MetaDataEditSection
                 detail={detail}

@@ -1786,10 +1786,10 @@ function DocumentDetailPanel({
 
             <div className="details-row">
                 <strong>Activité :</strong> {detail.activite ?? 'Non classé'}
-                {detail.activite && !detail.activiteSurDocument ? ' (celle de son type)' : ''}
+                {detail.activite && !detail.activiteSurDocument ? '' : ''}
             </div>
 
-            <DossierAttachSection detail={detail} />
+            <DossierAttachSection detail={detail} onUpdated={onEmplacementChange} />
 
             {detail.pdfaSha256 && (
                 <div className="details-row">

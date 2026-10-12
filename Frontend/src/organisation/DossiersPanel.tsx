@@ -23,12 +23,16 @@ import {
     streamPdfAAsBlob,
     getThumbnailBlob,
     downloadPdfA,
+    envoyerDocumentCorbeille,
 } from '../services/document/DocumentService';
 import type { UserDto, DocumentListItemDto, DocumentDetailDto, BulkUploadReportDto } from '../services/document/DocumentService';
 import { positionSousElement } from '../components/ancrageMenu';
 import type { PositionMenu } from '../components/ancrageMenu';
 import Modal from '../Page/Modal';
 import VersionBadge from '../document/VersionBadge';
+import NouvelleVersionModal, { peutDeposerVersion, sourceDe } from '../components/NouvelleVersionModal';
+import type { SourceNouvelleVersion } from '../components/NouvelleVersionModal';
+import { useDemandeMotif } from '../notifications/MotifSuppressionProvider';
 import GestionGroupeDossier from './GestionGroupeDossier';
 import ImportDocuments from '../document/ImportDocuments';
 import PdfViewer from '../components/PdfViewer';
@@ -95,6 +99,8 @@ const FOLDER_GLASS_COLOR = '#8B5E3C';
 function DossiersPanel({ uoId, canCreate = true, initialDossierId = null, initialTypeDocumentId = null, onInitialDossierConsumed }: DossiersPanelProps) {
     const notify = useNotify();
     const confirm = useConfirm();
+    const demanderMotif = useDemandeMotif();
+    const [versionSource, setVersionSource] = useState<SourceNouvelleVersion | null>(null);
 
     // ── Navigation : dossiers → types (dossiers) → documents d'un type ──────
     type PanelView = 'dossiers' | 'types' | 'documents';
@@ -516,7 +522,11 @@ function DossiersPanel({ uoId, canCreate = true, initialDossierId = null, initia
     const handleClickDossierCard = (e: React.MouseEvent, dossierId: number) => {
         if (e.metaKey || e.ctrlKey) {
             e.preventDefault();
-            toggleSelectionDossier(dossierId);
+            if (canCreate) {
+                ouvrirMenuSurCarte(e.currentTarget as HTMLElement, dossierId, true);
+            } else {
+                toggleSelectionDossier(dossierId);
+            }
             return;
         }
         // Un clic normal ouvre TOUJOURS le dossier en un seul clic — même
@@ -532,15 +542,54 @@ function DossiersPanel({ uoId, canCreate = true, initialDossierId = null, initia
     // juste le dossier cliqué s'il n'était pas déjà dans la sélection. ──────
     const [contextMenu, setContextMenu] = useState<PositionMenu | null>(null);
 
-    // Ctrl+clic (sur Mac, c'est un clic droit) : le menu s'ouvre sur la carte cliquée, comme son menu "...", et non au
-    // curseur. Réservé à l'éditeur (canCreate) — en lecture seule (admin) aucun menu de gestion.
-    const handleContextMenuDossier = (e: React.MouseEvent, dossierId: number) => {
-        e.preventDefault();
-        if (!canCreate) return;
+    /**
+     * Ouvre le menu ancré à la carte (son bouton "..." fantôme, voir components/ancrageMenu.ts).
+     * multi = Ctrl/Cmd+clic : la carte est AJOUTÉE à la sélection (ou retirée si elle y était) et le menu se pose sur
+     * la DERNIÈRE carte cliquée ; sans, clic droit simple : la carte est sélectionnée seule si elle ne l'était pas.
+     */
+    const ouvrirMenuSurCarte = (carte: HTMLElement, dossierId: number, multi: boolean) => {
+        if (multi) {
+            const suivante = new Set(selectedDossierIds);
+            if (suivante.has(dossierId)) suivante.delete(dossierId); else suivante.add(dossierId);
+            setSelectedDossierIds(suivante);
+            setContextMenu(suivante.size > 0 ? positionSousElement(carte, 130) : null);
+            return;
+        }
         if (!selectedDossierIds.has(dossierId)) {
             setSelectedDossierIds(new Set([dossierId]));
         }
-        setContextMenu(positionSousElement(e.currentTarget as HTMLElement, 130));
+        setContextMenu(positionSousElement(carte, 130));
+    };
+
+    // Sur Mac, Ctrl+clic est un clic droit (événement contextmenu, jamais click) : il doit se comporter comme le
+    // Ctrl+clic des autres systèmes — sélection multiple, menu à côté de la dernière carte. Réservé à l'éditeur
+    // (canCreate) — en lecture seule (admin) aucun menu de gestion.
+    const handleContextMenuDossier = (e: React.MouseEvent, dossierId: number) => {
+        e.preventDefault();
+        if (!canCreate) return;
+        ouvrirMenuSurCarte(e.currentTarget as HTMLElement, dossierId, e.ctrlKey || e.metaKey);
+    };
+
+    /**
+     * Menu ouvert : l'overlay plein écran capte les clics, donc un Ctrl+clic sur une AUTRE carte n'atteindrait jamais
+     * celle-ci. On retrouve la carte sous le pointeur pour continuer la sélection (ou déplacer le menu), au lieu de
+     * simplement fermer le menu.
+     */
+    const traiterClicOverlay = (e: React.MouseEvent<HTMLElement>, clicDroit: boolean) => {
+        const overlay = e.currentTarget;
+        overlay.style.pointerEvents = 'none';
+        const carte = document.elementFromPoint(e.clientX, e.clientY)
+            ?.closest<HTMLElement>('.folder-card[data-dossier-id]') ?? null;
+        overlay.style.pointerEvents = '';
+
+        const multi = e.ctrlKey || e.metaKey;
+        if (carte && (multi || clicDroit)) {
+            e.preventDefault();
+            ouvrirMenuSurCarte(carte, Number(carte.dataset.dossierId), multi);
+            return;
+        }
+        if (clicDroit) e.preventDefault();
+        setContextMenu(null);
     };
 
     /** "Modifier" depuis le menu d'une carte — ouvre le dossier puis son formulaire de modification. */
@@ -878,6 +927,23 @@ function DossiersPanel({ uoId, canCreate = true, initialDossierId = null, initia
             .finally(() => setDocsLoading(false));
     };
 
+    const handleEnvoyerCorbeilleRapide = async (doc: DocumentListItemDto) => {
+        const raison = await demanderMotif({
+            title: 'Supprimer ce document',
+            message: `Pourquoi supprimer "${doc.titre}" ? Il sera supprimé définitivement à l'échéance du délai `
+                + 'de grâce — vous pourrez le restaurer d\'ici là.',
+        });
+        if (!raison) return;
+
+        try {
+            await envoyerDocumentCorbeille(doc.documentId, raison.motif, raison.commentaire);
+            notify.success(`"${doc.titre}" envoyé à la corbeille`);
+            if (typeActif) chargerDocumentsDuType(typeActif, docsPage);
+        } catch (err: any) {
+            notify.error(err.message ?? 'Erreur lors de l\'envoi à la corbeille');
+        }
+    };
+
     const ouvrirType = (type: TypeAttenduDto, dossierId?: number) => {
         setTypeActif(type);
         setPanelView('documents');
@@ -1087,7 +1153,8 @@ function DossiersPanel({ uoId, canCreate = true, initialDossierId = null, initia
                     </div>
                 )}
 
-                {typesUO.length > 0 && (
+                {/* Types attendus : choisis uniquement en modification, jamais à la création. */}
+                {modalMode === 'edit' && typesUO.length > 0 && (
                     <div className="dossiers-types-picker">
                         <p>Types de documents attendus :</p>
                         <input
@@ -1175,8 +1242,8 @@ function DossiersPanel({ uoId, canCreate = true, initialDossierId = null, initia
     const contextMenuJsx = contextMenu && (
         <div
             className="dossier-context-menu-overlay"
-            onClick={() => setContextMenu(null)}
-            onContextMenu={e => { e.preventDefault(); setContextMenu(null); }}
+            onClick={e => traiterClicOverlay(e, false)}
+            onContextMenu={e => traiterClicOverlay(e, true)}
         >
             <div
                 className="dossier-context-menu doc-context-menu dossier-context-menu-anchored"
@@ -1349,6 +1416,24 @@ function DossiersPanel({ uoId, canCreate = true, initialDossierId = null, initia
                                                     : <i className="fa-solid fa-file-pdf" />
                                                 }
                                             </button>
+                                            {canCreate && peutDeposerVersion(doc) && (
+                                                <button
+                                                    className="action-button"
+                                                    onClick={() => setVersionSource(sourceDe(doc))}
+                                                    title="Déposer une nouvelle version"
+                                                >
+                                                    <i className="fa-solid fa-code-branch" />
+                                                </button>
+                                            )}
+                                            {canCreate && doc.peutGererCorbeille && (
+                                                <button
+                                                    className="action-button delete"
+                                                    onClick={() => handleEnvoyerCorbeilleRapide(doc)}
+                                                    title="Envoyer à la corbeille"
+                                                >
+                                                    <i className="fa-solid fa-trash" />
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
@@ -1431,6 +1516,24 @@ function DossiersPanel({ uoId, canCreate = true, initialDossierId = null, initia
                                                             : <i className="fa-solid fa-file-pdf" />
                                                         }
                                                     </button>
+                                                    {canCreate && peutDeposerVersion(doc) && (
+                                                        <button
+                                                            className="action-button"
+                                                            onClick={() => setVersionSource(sourceDe(doc))}
+                                                            title="Déposer une nouvelle version"
+                                                        >
+                                                            <i className="fa-solid fa-code-branch" />
+                                                        </button>
+                                                    )}
+                                                    {canCreate && doc.peutGererCorbeille && (
+                                                        <button
+                                                            className="action-button delete"
+                                                            onClick={() => handleEnvoyerCorbeilleRapide(doc)}
+                                                            title="Envoyer à la corbeille"
+                                                        >
+                                                            <i className="fa-solid fa-trash" />
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </td>
                                         </tr>
@@ -1472,6 +1575,12 @@ function DossiersPanel({ uoId, canCreate = true, initialDossierId = null, initia
                         preselectedTypeId={uploadTypeId}
                     />
                 </Modal>
+
+                <NouvelleVersionModal
+                    source={versionSource}
+                    onClose={() => setVersionSource(null)}
+                    onTermine={() => { if (typeActif) chargerDocumentsDuType(typeActif, docsPage); }}
+                />
 
                 {/* ── Modal détail (lecture seule) ── */}
                 <Modal
@@ -1897,6 +2006,7 @@ function DossierCard({
     return (
         <div
             className={`folder-card ${isDragging ? 'dossier-dragging' : ''} ${isDragOver ? 'dossier-drag-over' : ''} ${isSelected ? 'dossier-selected' : ''}`}
+            data-dossier-id={dossier.id}
             onClick={onClick}
             onContextMenu={onContextMenuCarte}
             role="button"

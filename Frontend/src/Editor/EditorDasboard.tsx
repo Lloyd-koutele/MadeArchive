@@ -109,7 +109,7 @@ function EditorDashboard() {
     const handleTdCreated = () => {
         setIsCreateTdModalOpen(false);
         setTdRefresh(r => r + 1);
-        notify.success("Type de document créé avec succès");
+        // CreateTypeDocument affiche déjà son propre message de succès : pas de second toast ici.
     };
 
     const sidebarTitle = `${userInfo?.role || "ÉDITEUR"}${uoNom ? ` — ${uoNom}` : ''}`;
@@ -193,7 +193,7 @@ function EditorDashboard() {
                                     className={`uo-tab ${documentsTab === 'planClassement' ? 'active' : ''}`}
                                     onClick={() => setDocumentsTab('planClassement')}
                                 >
-                                    Plan de classement
+                                    Activités
                                 </button>
                                 <button
                                     className={`uo-tab ${documentsTab === 'emplacements' ? 'active' : ''}`}
@@ -210,7 +210,7 @@ function EditorDashboard() {
                             </div>
 
                             {documentsTab === 'accessibles' && (
-                                <DocumentsAccessibles />
+                                <DocumentsAccessibles modeEditeur />
                             )}
                             {documentsTab === 'mesDocuments' && (
                                 <MesDocumentsEditor
