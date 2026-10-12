@@ -34,7 +34,7 @@ public class OcrResult
     @JoinColumn(name = "document_id", nullable = false, unique = true)
     private Document document;
 
-    // Clé MinIO/S3 vers le fichier .txt — pas le texte brut
+    // Historique : clé MinIO d'un ancien fichier .txt. Plus renseignée (le texte OCR n'est plus stocké hors de l'index de recherche).
     @Column(length = 200)
     private String textStorageKey;
 

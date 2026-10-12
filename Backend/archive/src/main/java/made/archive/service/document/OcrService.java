@@ -91,9 +91,9 @@ public class OcrService
         }
         else
         {
-            String textKey = storeOcrText(document, extractedText);
+            // Le texte n'est conservé nulle part en clair : seul l'index de recherche le contient.
             result.setStatus(OcrStatus.SUCCESS);
-            result.setTextStorageKey(textKey);
+            result.setTextStorageKey(null);
         }
 
         ocrResultRepository.save(result);
@@ -133,9 +133,8 @@ public class OcrService
             }
             else
             {
-                String textKey = storeOcrText(document, extractedText);
                 result.setStatus(OcrStatus.SUCCESS);
-                result.setTextStorageKey(textKey);
+                result.setTextStorageKey(null);
             }
         }
         catch (Exception e)
@@ -516,22 +515,5 @@ public class OcrService
         tesseract.setVariable("load_system_dawg", "1");
         tesseract.setVariable("load_freq_dawg", "1");
         return tesseract;
-    }
-
-    private String storeOcrText(Document document, String text)
-    {
-        try
-        {
-            String key = "ocr/" + document.getId().toString() + ".txt";
-            byte[] textBytes = text.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-            storageService.uploadBytes(textBytes, key, "text/plain");
-            log.info("[OCR] Texte stocké : {}", key);
-            return key;
-        }
-        catch (Exception e)
-        {
-            log.error("[OCR] Impossible de stocker le texte OCR : {}", e.getMessage());
-            return null;
-        }
     }
 }
