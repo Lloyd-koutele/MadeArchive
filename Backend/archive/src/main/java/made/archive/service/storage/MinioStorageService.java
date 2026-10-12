@@ -8,12 +8,14 @@ import lombok.extern.slf4j.Slf4j;
 import made.archive.config.MinioProperties;
 import made.archive.factory.MinioClientFactory;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
+import java.security.MessageDigest;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Objects;
@@ -30,6 +32,13 @@ public class MinioStorageService implements StorageService
 {
     private final MinioClientFactory minioClientFactory;
     private final MinioProperties props;
+
+    /**
+     * Niveau de la vérification faite après chaque dépôt : CONTENU (défaut) relit l'objet et recalcule son SHA-256 ;
+     * TAILLE se contente de vérifier présence et taille (une requête HEAD), pour les très gros volumes.
+     */
+    @Value("${storage.verification-depot:CONTENU}")
+    private String modeVerificationDepot = "CONTENU";
 
     @Override
     public String upload(MultipartFile file, String typeDocument)
@@ -104,6 +113,63 @@ public class MinioStorageService implements StorageService
         catch (Exception e)
         {
             throw new RuntimeException("Erreur vérification existence MinIO : " + key, e);
+        }
+    }
+
+    @Override
+    public void verifierDepot(String key, byte[] attendu)
+    {
+        StatObjectResponse stat;
+        try
+        {
+            stat = minioClientFactory.getClient().statObject(
+                StatObjectArgs.builder().bucket(props.getBucket()).object(key).build());
+        }
+        catch (io.minio.errors.ErrorResponseException e)
+        {
+            if ("NoSuchKey".equals(e.errorResponse().code()))
+            {
+                throw new DepotStockageException("Fichier absent du stockage juste après son dépôt : " + key, e);
+            }
+            throw new DepotStockageException("Vérification du dépôt impossible (" + e.errorResponse().code() + ") : " + key, e);
+        }
+        catch (Exception e)
+        {
+            throw new DepotStockageException("Vérification du dépôt impossible : " + key, e);
+        }
+
+        if (stat.size() != attendu.length)
+        {
+            throw new DepotStockageException("Fichier incomplet dans le stockage : " + stat.size()
+                + " octet(s) au lieu de " + attendu.length + " pour " + key);
+        }
+        if (!"CONTENU".equalsIgnoreCase(modeVerificationDepot))
+        {
+            return;
+        }
+
+        try (InputStream relu = minioClientFactory.getClient().getObject(
+            GetObjectArgs.builder().bucket(props.getBucket()).object(key).build()))
+        {
+            MessageDigest lu = MessageDigest.getInstance("SHA-256");
+            byte[] tampon = new byte[8192];
+            int n;
+            while ((n = relu.read(tampon)) > 0)
+            {
+                lu.update(tampon, 0, n);
+            }
+            if (!MessageDigest.isEqual(lu.digest(), MessageDigest.getInstance("SHA-256").digest(attendu)))
+            {
+                throw new DepotStockageException("Le contenu relu dans le stockage ne correspond pas à ce qui a été envoyé : " + key);
+            }
+        }
+        catch (DepotStockageException e)
+        {
+            throw e;
+        }
+        catch (Exception e)
+        {
+            throw new DepotStockageException("Relecture du dépôt impossible : " + key, e);
         }
     }
 

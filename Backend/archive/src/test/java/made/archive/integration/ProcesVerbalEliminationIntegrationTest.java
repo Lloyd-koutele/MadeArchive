@@ -329,6 +329,28 @@ class ProcesVerbalEliminationIntegrationTest
     }
 
     @Test
+    void unFichierNonVerifieDansLeStockage_n_ecritRienEnBase_retireLObjet_etEstRepris() throws Exception
+    {
+        UniteOrganisationnelle uo = uo("UO-Verif");
+        User ed = utilisateur("verif@test.local");
+        Document d = pierreTombale(uo, type(uo, ed, "Type V"), ed, "titre", MotifSuppression.FIN_DE_VIE, null);
+
+        // Le fichier déposé n'est pas arrivé intact : AUCUNE ligne de procès-verbal ne doit être écrite.
+        org.mockito.Mockito.doThrow(new made.archive.service.storage.DepotStockageException("contenu différent"))
+            .when(storageService).verifierDepot(anyString(), any());
+
+        service.genererProcesVerbauxEnAttente();
+
+        assertThat(documentRepository.findById(d.getId()).orElseThrow().getProcesVerbalId()).isNull();
+        org.mockito.Mockito.verify(storageService).delete(anyString()); // l'objet non vérifié est retiré
+
+        // Le stockage répond de nouveau correctement : le groupe est repris à la passe suivante.
+        org.mockito.Mockito.doNothing().when(storageService).verifierDepot(anyString(), any());
+        service.genererProcesVerbauxEnAttente();
+        assertThat(documentRepository.findById(d.getId()).orElseThrow().getProcesVerbalId()).isNotNull();
+    }
+
+    @Test
     void lesAnciennesPierresTombalesSansDateDEliminationNeRecoiventPasDePv()
     {
         UniteOrganisationnelle uo = uo("UO-Ancienne");

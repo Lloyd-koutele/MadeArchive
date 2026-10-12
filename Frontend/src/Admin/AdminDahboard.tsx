@@ -8,18 +8,12 @@ import UpdateUser from "./UpdateUser";
 import Modal from "../Page/Modal";
 import Profile from "../Page/Profil";
 import AssignUOModal from './AssignUOModal';
-import TypeDocumentList from "../document/TypedocumentList";
-import CreateTypeDocument from "../document/Createtypedocument";
-import QuickCreateTypeDocumentsModal from '../document/QuickCreateTypeDocumentsModal';
-import DossiersPanel from '../organisation/DossiersPanel';
 import UoActionsMenu from '../components/UoActionsMenu';
-import PhysicalLocationsPanel from '../organisation/PhysicalLocationsPanel';
 import ExportPanel from '../organisation/ExportPanel';
 import AuditLogPanel from './AuditLogPanel';
 import FixityCheckPanel from './FixityCheckPanel';
 import DocumentsArchivesPanel from './DocumentsArchivesPanel';
 import Corbeille from '../document/Corbeille';
-import type { TypeDocumentDto } from '../services/document/TypedocumentService';
 import { getAllUsers, getUsersByUO, updateUserStatus as updateStatus, supprimerUtilisateur, annulerSuppressionUtilisateur } from "../services/admin/AdminService";
 import {
     getAllUOs,
@@ -73,7 +67,7 @@ interface UONode {
 }
 
 type MainView = 'profile' | 'contenu';
-type Tab = 'utilisateurs' | 'documents' | 'archives' | 'corbeille' | 'projets' | 'emplacements' | 'journal';
+type Tab = 'utilisateurs' | 'archives' | 'corbeille' | 'journal';
 
 const GLOBAL_VIEW_ID = -1;
 const GLOBAL_VIEW_NODE: UONode = {
@@ -112,7 +106,6 @@ function AdminDashboard() {
     const [isCreateUserModalOpen, setIsCreateUserModalOpen] = useState(false);
     const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
     const [isViewModalOpen, setIsViewModalOpen] = useState(false);
-    const [isCreateTdModalOpen, setIsCreateTdModalOpen] = useState(false);
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     const [isFixityCheckModalOpen, setIsFixityCheckModalOpen] = useState(false);
     const [isCreateUOModalOpen, setIsCreateUOModalOpen] = useState(false);
@@ -123,15 +116,11 @@ function AdminDashboard() {
     const [selectedUser, setSelectedUser] = useState<User | null>(null);
     const [viewingUser, setViewingUser] = useState<User | null>(null);
     const [actionInProgress, setActionInProgress] = useState(false);
-    const [tdRefresh, setTdRefresh] = useState(0);
 
     // Affectation / transfert d'un utilisateur vers une UO — même modale, deux modes
     const [assigningUserId, setAssigningUserId] = useState<string | null>(null);
     const [assignMode, setAssignMode] = useState<'assign' | 'transfer'>('assign');
 
-    // Création rapide de types de documents par glisser-déposer sur une UO
-    const [quickCreateTarget, setQuickCreateTarget] = useState<{ id: number; nom: string } | null>(null);
-    const [quickCreateSource, setQuickCreateSource] = useState<TypeDocumentDto[]>([]);
 
     const [filters, setFilters] = useState<UserFilters>({
         nom: '', prenom: '', email: '', telephone: '', roles: []
@@ -234,24 +223,6 @@ function AdminDashboard() {
         } catch (err: any) {
             notify.error(err.message || "Erreur lors du déplacement de l'UO");
         }
-    };
-
-    // Glisser-déposer d'un ou plusieurs types de documents sur une UO : ouvre la
-    // modale de création rapide, pré-remplie depuis les types glissés — rien n'est
-    // créé tant que l'utilisateur ne confirme pas.
-    const handleDropTypeDocuments = (targetUoId: number, payload: TypeDocumentDto[]) => {
-        if (targetUoId === GLOBAL_VIEW_ID) return; // pas une UO réelle
-        const targetNode = allUOs.find(u => u.id === targetUoId);
-        if (!targetNode || payload.length === 0) return;
-        setQuickCreateTarget({ id: targetNode.id, nom: targetNode.nom });
-        setQuickCreateSource(payload);
-    };
-
-    const handleQuickCreated = () => {
-        setQuickCreateTarget(null);
-        setQuickCreateSource([]);
-        setTdRefresh(r => r + 1);
-        notify.success("Type(s) de document créé(s) avec succès");
     };
 
     const handleAssignToUO = (userId: string) => {
@@ -397,7 +368,6 @@ function AdminDashboard() {
         setIsCreateUserModalOpen(false);
         setIsUpdateModalOpen(false);
         setIsViewModalOpen(false);
-        setIsCreateTdModalOpen(false);
         setIsCreateUOModalOpen(false);
         setIsRenameUOModalOpen(false);
         setSelectedUser(null);
@@ -408,12 +378,6 @@ function AdminDashboard() {
         fetchUsers(currentUOId);
         handleCloseModal();
         notify.success("Opération effectuée avec succès");
-    };
-
-    const handleTdCreated = () => {
-        handleCloseModal();
-        setTdRefresh(r => r + 1);
-        notify.success("Type de document créé avec succès");
     };
 
     const filteredUsers = users.filter(u =>
@@ -479,7 +443,6 @@ function AdminDashboard() {
                                 canManage
                                 onAddChild={openCreateUOModal}
                                 onMove={handleMoveUO}
-                                onDropTypeDocuments={handleDropTypeDocuments}
                             />
                         </div>
                     </nav>
@@ -515,28 +478,10 @@ function AdminDashboard() {
                                     Utilisateurs
                                 </button>
                                 <button
-                                    className={`uo-tab ${tab === 'documents' ? 'active' : ''}`}
-                                    onClick={() => setTab('documents')}
-                                >
-                                    Types de Documents
-                                </button>
-                                <button
                                     className={`uo-tab ${tab === 'archives' ? 'active' : ''}`}
                                     onClick={() => setTab('archives')}
                                 >
                                     Documents archivés
-                                </button>
-                                <button
-                                    className={`uo-tab ${tab === 'projets' ? 'active' : ''}`}
-                                    onClick={() => setTab('projets')}
-                                >
-                                    Projets
-                                </button>
-                                <button
-                                    className={`uo-tab ${tab === 'emplacements' ? 'active' : ''}`}
-                                    onClick={() => setTab('emplacements')}
-                                >
-                                    Emplacements physiques
                                 </button>
                                 <button
                                     className={`uo-tab ${tab === 'corbeille' ? 'active' : ''}`}
@@ -589,35 +534,8 @@ function AdminDashboard() {
                                 </>
                             )}
 
-                            {tab === 'documents' && (
-                                <>
-                                    {currentUO.id !== GLOBAL_VIEW_ID && (
-                                        <div className="main-header">
-                                            <button
-                                                className="sidebar-btn"
-                                                onClick={() => setIsCreateTdModalOpen(true)}
-                                            >
-                                                <i className="fa-solid fa-file-circle-plus"></i>    Créer un type
-                                            </button>
-                                        </div>
-                                    )}
-                                    <TypeDocumentList
-                                        refreshTrigger={tdRefresh}
-                                        uoId={currentUO.id === GLOBAL_VIEW_ID ? null : currentUO.id}
-                                    />
-                                </>
-                            )}
-
                             {tab === 'archives' && (
                                 <DocumentsArchivesPanel uoId={currentUO.id === GLOBAL_VIEW_ID ? null : currentUO.id} />
-                            )}
-
-                            {tab === 'projets' && (
-                                <DossiersPanel uoId={currentUO.id === GLOBAL_VIEW_ID ? null : currentUO.id} canCreate={false} />
-                            )}
-
-                            {tab === 'emplacements' && (
-                                <PhysicalLocationsPanel uoId={currentUO.id === GLOBAL_VIEW_ID ? null : currentUO.id} />
                             )}
 
                             {tab === 'corbeille' && (
@@ -689,10 +607,6 @@ function AdminDashboard() {
                     )}
                 </Modal>
 
-                <Modal isOpen={isCreateTdModalOpen} onClose={handleCloseModal} title="Créer un type de document">
-                    {restrictToUO && <CreateTypeDocument onsuccess={handleTdCreated} restrictToUO={restrictToUO} />}
-                </Modal>
-
                 <Modal
                     isOpen={isCreateUOModalOpen}
                     onClose={handleCloseModal}
@@ -745,14 +659,6 @@ function AdminDashboard() {
                     mode={assignMode}
                     onClose={() => setAssigningUserId(null)}
                     onAssigned={handleAssigned}
-                />
-
-                <QuickCreateTypeDocumentsModal
-                    isOpen={quickCreateTarget !== null}
-                    targetUO={quickCreateTarget}
-                    sourceTypeDocuments={quickCreateSource}
-                    onClose={() => setQuickCreateTarget(null)}
-                    onCreated={handleQuickCreated}
                 />
 
             </div>

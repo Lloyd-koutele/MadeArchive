@@ -2,6 +2,7 @@ package made.archive.integration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
@@ -121,6 +122,7 @@ class AuditChainIntegrationTest
     @Autowired private AuditChainConfigRepository configuration;
     @Autowired private HsmKeyStoreService       hsm;
     @Autowired private PkiService               pki;
+    @Autowired private made.archive.service.audit.RegistreScellementsService registre;
 
     @MockitoBean private HorodatageService horodatage;
     @MockitoBean private made.archive.service.integrite.HorodatageVerificationService jetons;
@@ -292,6 +294,75 @@ class AuditChainIntegrationTest
         ChaineAuditVerificationDto resultat = service.verifierChaine(null);
         assertThat(resultat.isChaineIntacte()).isFalse();
         assertThat(resultat.getRuptures()).isNotEmpty();
+    }
+
+    /**
+     * Pire cas pour la chaîne : l'attaquant a la main sur le serveur — il écrit librement dans PostgreSQL, possède la clé
+     * HMAC et la clé du système (HSM compromis) et peut réécrire le registre des scellements. Il modifie une entrée,
+     * recalcule TOUTE la suite avec de vrais HMAC, réécrit l'empreinte scellée, re-signe le scellement et refait le
+     * registre : base, chaînage, signature et registre sont cohérents entre eux, la vérification ne voit plus rien.
+     * Seul le jeton RFC 3161 du scellement — émis par un tiers, qui atteste l'empreinte d'origine — ne peut pas être
+     * réécrit : il révèle la falsification.
+     */
+    @Test
+    void reecritureCompleteAvecLesCles_estRevelee_parLHorodatageDuScellement()
+    {
+        entree(); JournalAudit cible = entree(); entree();
+        service.calculerChainage();
+        service.scellerSiNecessaire();
+        AuditChainSeal sceau = sceaux.findTopByOrderByIdDesc();
+        String empreinteHorodatee = sceau.getDernierChainHash();
+
+        // Le TSA ne reconnaît (et n'atteste) que l'empreinte d'origine : il n'a jamais vu la nouvelle.
+        when(jetons.verifier(any(), anyString())).thenAnswer(i ->
+            empreinteHorodatee.equals(i.getArgument(1))
+                ? made.archive.service.integrite.HorodatageVerificationService.Etat.ATTESTE_ANCRE
+                : made.archive.service.integrite.HorodatageVerificationService.Etat.EMPREINTE_DIFFERENTE);
+        assertThat(service.verifierChaine(null).isChaineIntacte()).as("avant l'attaque").isTrue();
+
+        // ── L'attaque : modification + recalcul complet de la chaîne avec la vraie clé HMAC ──
+        jdbc.update("UPDATE journal_audit SET description = 'falsifié' WHERE id = ?", cible.getId());
+        long debutHmac = configuration.findById(1L).orElseThrow().getHmacDepuisPosition();
+        String cle = configuration.findById(1L).orElseThrow().getCleAlias();
+        String nouveauBout = hsm.avecHmac(cle, calcul ->
+        {
+            String precedent = sha256("GENESE-CHAINE-AUDIT-MADEARCHIVE");
+            for (JournalAudit e : journal.findByPositionChaineIsNotNullOrderByPositionChaineAsc())
+            {
+                String hash = ReflectionTestUtils.invokeMethod(service, "maillon", e.getPositionChaine(), debutHmac, calcul,
+                    precedent, canonique(journal.findById(e.getId()).orElseThrow()));
+                jdbc.update("UPDATE journal_audit SET chain_hash = ? WHERE id = ?", hash, e.getId());
+                precedent = hash;
+            }
+            return precedent;
+        });
+        // … puis réécriture de l'empreinte scellée et re-signature du scellement avec la clé du système
+        jdbc.update("UPDATE audit_chain_seals SET dernier_chain_hash = ? WHERE id = ?", nouveauBout, sceau.getId());
+        AuditChainSeal reecrit = sceaux.findById(sceau.getId()).orElseThrow();
+        String signature = hsm.sign(PreuveIntegriteService.ALIAS_SYSTEME,
+            ReflectionTestUtils.invokeMethod(service, "empreinteScellement", reecrit));
+        jdbc.update("UPDATE audit_chain_seals SET signature = ? WHERE id = ?", signature, sceau.getId());
+
+        // … et du registre hors base (accès au serveur) : il le refait avec le scellement réécrit.
+        try { Files.deleteIfExists(DOSSIER_HSM.resolve("audit-scellements.registre")); }
+        catch (IOException e) { throw new IllegalStateException(e); }
+        registre.ajouter(sceaux.findById(sceau.getId()).orElseThrow());
+        assertThat(nouveauBout).isNotEqualTo(empreinteHorodatee);
+
+        // Sans le contrôle des jetons RFC 3161, la falsification est parfaitement cohérente : indétectable.
+        when(jetons.verifier(any(), anyString())).thenReturn(null);
+        assertThat(service.verifierChaine(null).isChaineIntacte()).as("sans le contrôle de l'horodatage").isTrue();
+
+        // Avec lui, le jeton du tiers atteste toujours l'empreinte d'origine : la falsification est révélée.
+        when(jetons.verifier(any(), anyString())).thenAnswer(i ->
+            empreinteHorodatee.equals(i.getArgument(1))
+                ? made.archive.service.integrite.HorodatageVerificationService.Etat.ATTESTE_ANCRE
+                : made.archive.service.integrite.HorodatageVerificationService.Etat.EMPREINTE_DIFFERENTE);
+        ChaineAuditVerificationDto resultat = service.verifierChaine(null);
+
+        assertThat(resultat.isChaineIntacte()).isFalse();
+        assertThat(resultat.getRuptures())
+            .anyMatch(r -> r.getDescription().contains("jeton d'horodatage") && r.getDescription().contains("atteste une autre empreinte"));
     }
 
     @Test

@@ -22,4 +22,10 @@ public class WebImportPreviewResponseDto
     private String sourceUrl;
     private String type;
     private List<WebImportFileDto> fichiers;
+
+    /** Dossier Google Drive : éléments écartés (format non pris en charge, trop volumineux, type Google sans contenu). */
+    private int fichiersIgnores;
+
+    /** Dossier Google Drive : la liste a été coupée par une limite (nombre de fichiers ou d'appels à l'API). */
+    private boolean tronque;
 }

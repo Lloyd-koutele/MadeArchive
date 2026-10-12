@@ -1,0 +1,44 @@
+/* ─── Vérification instantanée d'intégrité (voir components/VerificationIntegrite.tsx) ─── */
+.verif-root { position: relative; margin-left: auto; }
+.verif-btn {
+    background: var(--white-choc); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    cursor: pointer; padding: 0.4rem 0.8rem; color: var(--dark-choc); font-weight: 600; font-size: 0.85rem;
+    display: inline-flex; align-items: center; gap: 0.4rem;
+}
+.verif-btn:hover:not(:disabled) { background: var(--cream); }
+.verif-btn:disabled { opacity: 0.6; cursor: default; }
+
+.verif-panel {
+    position: absolute; right: 0; top: calc(100% + 0.5rem); z-index: 30; width: min(560px, calc(100vw - 3rem)); max-height: 78vh;
+    overflow-y: auto; background: var(--white-choc); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow-lg); padding: 1rem 1.1rem; color: var(--dark-mid);
+}
+.verif-panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.7rem; color: var(--dark-choc); }
+.verif-close { background: none; border: none; cursor: pointer; font-size: 1rem; color: var(--text-light); }
+.verif-wait, .verif-erreur { margin: 0.5rem 0; font-size: 0.9rem; }
+.verif-erreur { color: var(--error); }
+
+.verif-verdict { display: flex; gap: 0.8rem; padding: 0.8rem; border-radius: var(--radius-sm); margin-bottom: 0.8rem; align-items: flex-start; }
+.verif-verdict > i { font-size: 1.5rem; margin-top: 0.1rem; }
+.verif-verdict p { margin: 0.2rem 0 0; font-size: 0.85rem; }
+.verif-verdict.ok     { background: rgba(74,124,89,0.12);  color: var(--success); }
+.verif-verdict.alerte { background: rgba(204,122,0,0.12);  color: #9a5b00; }
+.verif-verdict.echec  { background: rgba(155,58,58,0.12);  color: var(--error); }
+.verif-verdict p { color: var(--dark-mid); }
+
+.verif-etapes { list-style: none; margin: 0 0 0.8rem; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.verif-etape { display: flex; gap: 0.6rem; align-items: flex-start; }
+.verif-etape > i { margin-top: 0.15rem; }
+.verif-etape.ok > i     { color: var(--success); }
+.verif-etape.alerte > i { color: #cc7a00; }
+.verif-etape.echec > i  { color: var(--error); }
+.verif-etape-titre  { display: block; font-weight: 600; font-size: 0.88rem; }
+.verif-etape-detail { display: block; font-size: 0.8rem; color: var(--text-light); }
+
+.verif-empreintes { display: flex; flex-direction: column; gap: 0.35rem; border-top: 1px solid var(--border); padding-top: 0.6rem; }
+.verif-empreintes span { display: block; font-size: 0.75rem; color: var(--text-light); }
+.verif-empreintes code { display: block; font-size: 0.72rem; word-break: break-all; }
+
+.verif-pied { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; margin-top: 0.8rem; flex-wrap: wrap; }
+.verif-pied small { color: var(--text-light); }
+.verif-pied .verif-btn { margin-left: 0; }

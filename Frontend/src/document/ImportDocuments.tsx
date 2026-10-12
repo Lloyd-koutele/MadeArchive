@@ -989,6 +989,17 @@ function ImportDocuments({ onsuccess, preselectedTypeId, preselectedDossierId, p
                             ? <><strong>{webPreview.fichiers.length}</strong> fichiers trouvés à cette adresse — décochez ceux à ne pas importer :</>
                             : <>1 fichier trouvé à ce lien, prêt à être importé :</>}
                     </p>
+                    {webPreview.type === 'DOSSIER' && ((webPreview.fichiersIgnores ?? 0) > 0 || webPreview.tronque) && (
+                        <div className="up-alert up-alert-warning">
+                            <span>
+                                <i className="fa-solid fa-triangle-exclamation" style={{ marginRight: '0.5rem' }} />
+                                {(webPreview.fichiersIgnores ?? 0) > 0
+                                    && `${webPreview.fichiersIgnores} élément(s) du dossier écarté(s) (format non pris en charge, plus de 50 Mo, ou sous-dossier trop profond). `}
+                                {webPreview.tronque
+                                    && "La liste a été limitée : importez le reste en relançant l'import sur un sous-dossier."}
+                            </span>
+                        </div>
+                    )}
 
                     <div className="bulk-file-list">
                         <div className="bulk-file-items">

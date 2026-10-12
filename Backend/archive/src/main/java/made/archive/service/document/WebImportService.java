@@ -13,6 +13,7 @@ import made.archive.exception.BusinessException;
 import made.archive.service.audit.AuditLogService;
 import made.archive.service.importweb.AdressesInterdites;
 import made.archive.service.importweb.ClientHttpSecurise;
+import made.archive.service.importweb.GoogleDriveService;
 import made.archive.service.importweb.LienRefuseException;
 import made.archive.service.importweb.LimiteurImports;
 import org.jsoup.Jsoup;
@@ -58,8 +59,9 @@ import java.util.regex.Pattern;
  *  - Google Docs/Slides/Sheets natif  → réécriture vers l'URL d'export officielle
  *    (aucun navigateur nécessaire, simple règle d'URL — voir docs Google).
  *  - Fichier Google Drive unique      → réécriture vers l'URL de téléchargement direct.
- *  Un DOSSIER Drive complet est refusé : il exigerait de télécharger puis de DÉCOMPRESSER une archive, et l'application
- *  ne décompresse jamais rien.
+ *  Un DOSSIER Drive complet passe par l'API officielle (GoogleDriveService, clé d'API requise) : les fichiers sont
+ *  listés puis téléchargés un par un. Sans clé, il est refusé — jamais de téléchargement ni de décompression d'une
+ *  archive « dossier entier », l'application ne décompresse rien.
  *
  * Pour tout autre lien HTML dont le scraping statique (Jsoup) ne trouve aucun
  * document, un dernier repli tente un rendu via navigateur headless avant
@@ -142,6 +144,7 @@ public class WebImportService
     private final WebImportHttpProperties      proprietesHttp;
     private final LimiteurImports              limiteur;
     private final AuditLogService              auditLogService;
+    private final GoogleDriveService           googleDrive;
 
     private Semaphore permis;
 
@@ -179,13 +182,11 @@ public class WebImportService
     {
         URI uri = resoudreEtValider(requete.getUrl());
 
-        // Dossier Google Drive : refusé. Il n'existe aucune URL par fichier : il faudrait cliquer « Tout télécharger »
-        // dans un navigateur puis décompresser l'archive produite — l'application ne décompresse jamais rien.
+        // Dossier Google Drive : par l'API officielle (listage puis téléchargement fichier par fichier). Il n'existe
+        // aucune URL par fichier sans elle, sauf l'archive « Tout télécharger » — que l'application ne décompresse jamais.
         if (estDossierDrive(uri.toString()))
         {
-            throw new BusinessException(
-                "Les dossiers Google Drive complets ne sont pas pris en charge : partagez les fichiers un par un "
-                + "(lien de chaque fichier) ou téléchargez-les puis déposez-les directement.");
+            return previewerDossierDrive(uri);
         }
 
         // Google Docs/Slides/Sheets natif ou fichier Drive unique : simple
@@ -249,6 +250,34 @@ public class WebImportService
             .sourceUrl(uri.toString())
             .type("FICHIER_DIRECT")
             .fichiers(List.of(WebImportFileDto.builder().nomFichier(nomFichier).url(uri.toString()).build()))
+            .build();
+    }
+
+    private WebImportPreviewResponseDto previewerDossierDrive(URI uri)
+    {
+        if (!googleDrive.estActive())
+        {
+            throw new BusinessException(
+                "L'import d'un dossier Google Drive n'est pas activé sur ce serveur (clé d'API Google non configurée). "
+                + "Alternatives : télécharger le dossier depuis Drive, le décompresser sur votre poste puis déposer les "
+                + "fichiers, ou partager les fichiers un par un (lien de chaque fichier).");
+        }
+        String dossierId = googleDrive.extraireIdDossier(uri.toString())
+            .orElseThrow(() -> new BusinessException("Lien de dossier Google Drive invalide"));
+
+        GoogleDriveService.Listage listage = googleDrive.lister(dossierId, EXTENSIONS_SUPPORTEES, TAILLE_MAX_FICHIER);
+        if (listage.fichiers().isEmpty())
+        {
+            throw new BusinessException(
+                "Aucun document pris en charge dans ce dossier Google Drive (extensions : "
+                + String.join(", ", EXTENSIONS_SUPPORTEES) + " ; fichiers de plus de 50 Mo ignorés).");
+        }
+        return WebImportPreviewResponseDto.builder()
+            .sourceUrl(uri.toString())
+            .type("DOSSIER")
+            .fichiers(listage.fichiers())
+            .fichiersIgnores(listage.ignores())
+            .tronque(listage.tronque())
             .build();
     }
 
@@ -321,10 +350,19 @@ public class WebImportService
             try
             {
                 URI uri = resoudreEtValider(url);
+
+                // Fichier d'un dossier Drive (adresse de l'API) : la clé d'API est ajoutée ICI, côté serveur, et le nom
+                // est celui relevé à l'aperçu — la réponse de l'API n'en porte pas.
+                String nomImpose = null;
+                if (googleDrive.estUrlApiDrive(uri))
+                {
+                    nomImpose = googleDrive.nomImpose(uri).orElse(null);
+                    uri = googleDrive.avecCle(uri);
+                }
                 ClientHttpSecurise.Reponse reponse = executer(uri, TAILLE_MAX_FICHIER);
 
                 byte[] contenu = reponse.corps();
-                resultats.add(new FichierDistant(nommerFichierDirect(uri, reponse), contenu));
+                resultats.add(new FichierDistant(nomImpose != null ? nomImpose : nommerFichierDirect(uri, reponse), contenu));
                 log.info("[WebImport] Téléchargé : {} ({} octets)", ClientHttpSecurise.hoteDe(url), contenu.length);
             }
             catch (LienRefuseException e)

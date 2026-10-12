@@ -32,6 +32,18 @@ public interface StorageService
     boolean exists(String key);
 
     /**
+     * Vérifie que l'objet qui vient d'être déposé sous {@code key} est bien arrivé tel qu'il a été envoyé : présent,
+     * de la même taille et, selon la configuration, de même contenu (SHA-256 recalculé sur ce qu'on relit). À appeler
+     * juste après le dépôt et AVANT d'écrire la moindre ligne en base ou d'indexer quoi que ce soit : un fichier
+     * qui échoue ici ne doit jamais être référencé.
+     *
+     * @param attendu les octets exacts qui ont été envoyés
+     * @throws DepotStockageException si l'objet est absent, de taille différente ou de contenu différent, ou si la
+     *                                vérification elle-même n'a pas pu s'effectuer (dans le doute, on n'archive pas)
+     */
+    void verifierDepot(String key, byte[] attendu);
+
+    /**
      * Supprime un fichier
      */
     void delete(String key);

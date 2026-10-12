@@ -19,6 +19,7 @@ import DossierAttachSection from '../components/DossierAttachSection';
 import DeplacerDossierModal from '../components/DeplacerDossierModal';
 import EmplacementPhysiqueModal from '../components/EmplacementPhysiqueModal';
 import PdfViewer from '../components/PdfViewer';
+import VerificationIntegrite from '../components/VerificationIntegrite';
 import DocumentJournal from '../components/DocumentJournal';
 import ReclasserSection from '../components/ReclasserSection';
 import { hasRole } from '../auth/authService';
@@ -674,6 +675,7 @@ function DocumentsAccessibles({ uoId = null, modeAdministration = false }: Docum
                     </button>
                     <i className="fa-solid fa-chevron-right breadcrumb-sep" />
                     <span className="breadcrumb-current">{lectureDoc.titre}</span>
+                    <VerificationIntegrite documentId={lectureDoc.documentId} titre={lectureDoc.titre} />
                 </div>
                 <div className="pdf-viewer-wrapper">
                     {pdfLoading ? (

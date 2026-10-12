@@ -367,6 +367,14 @@ public class PreuveIntegriteService
 
     public record VerificationPreuves(boolean authentique, boolean verifiable, List<String> constats) {}
 
+    /** Gravité d'un point de preuve : OK (probant), ALERTE (non probant ou absent), ECHEC (altération). */
+    public enum Gravite { OK, ALERTE, ECHEC }
+
+    /** Un point de preuve examiné, avec sa gravité (voir {@link #examinerPreuves}). */
+    public record Point(String code, Gravite gravite, String texte) {}
+
+    public record ExamenPreuves(boolean authentique, boolean verifiable, List<Point> points) {}
+
     /**
      * Cohérence des preuves d'un document, SANS relire le fichier (appelée par un endpoint public : pas de
      * déchiffrement ni de téléchargement à la demande). Ne dit rien de l'intégrité actuelle du fichier — c'est le
@@ -374,7 +382,15 @@ public class PreuveIntegriteService
      */
     public VerificationPreuves verifierPreuves(Document d)
     {
-        List<String> constats = new ArrayList<>();
+        ExamenPreuves examen = examinerPreuves(d);
+        return new VerificationPreuves(examen.authentique(), examen.verifiable(),
+            examen.points().stream().map(Point::texte).toList());
+    }
+
+    /** Même examen que {@link #verifierPreuves}, avec la gravité de chaque point (rapport de vérification détaillé). */
+    public ExamenPreuves examinerPreuves(Document d)
+    {
+        List<Point> points = new ArrayList<>();
         boolean altere = false;
 
         Optional<Boolean> sig = signatureHashValide(d, d.getPdfaSha256());
@@ -383,36 +399,40 @@ public class PreuveIntegriteService
 
         if (sig.isPresent())
         {
-            constats.add(sig.get() ? "Signature du hash PDF/A valide (clé du HSM)" : "Signature du hash PDF/A INVALIDE");
+            points.add(sig.get()
+                ? new Point("SIGNATURE_HASH", Gravite.OK, "Signature du hash PDF/A valide (clé du HSM)")
+                : new Point("SIGNATURE_HASH", Gravite.ECHEC, "Signature du hash PDF/A INVALIDE"));
             altere |= !sig.get();
         }
         switch (enreg)
         {
-            case CONFORME -> constats.add("Enregistrement du document conforme à sa signature");
-            case ALTERE -> { constats.add("Enregistrement du document NON conforme à sa signature"); altere = true; }
-            case NON_SCELLE -> constats.add("Enregistrement non encore scellé (ancien document)");
-            case CLE_INDISPONIBLE -> constats.add("Clé de vérification de l'enregistrement indisponible");
+            case CONFORME -> points.add(new Point("ENREGISTREMENT", Gravite.OK, "Enregistrement du document conforme à sa signature"));
+            case ALTERE -> { points.add(new Point("ENREGISTREMENT", Gravite.ECHEC, "Enregistrement du document NON conforme à sa signature")); altere = true; }
+            case NON_SCELLE -> points.add(new Point("ENREGISTREMENT", Gravite.ALERTE, "Enregistrement non encore scellé (ancien document)"));
+            case CLE_INDISPONIBLE -> points.add(new Point("ENREGISTREMENT", Gravite.ALERTE, "Clé de vérification de l'enregistrement indisponible"));
         }
 
         Etat jeton = jetons.verifier(d.getHorodatageToken(), d.getPdfaSha256());
         switch (jeton)
         {
-            case ATTESTE_ANCRE -> constats.add("Horodatage RFC 3161 valide, certificat de l'autorité reconnu");
-            case ATTESTE_NON_ANCRE -> constats.add("Horodatage RFC 3161 cohérent, autorité pas encore reconnue (non probant)");
-            case EMPREINTE_DIFFERENTE -> { constats.add("Horodatage RFC 3161 attestant une AUTRE empreinte"); altere = true; }
-            case INVALIDE -> constats.add("Horodatage RFC 3161 illisible ou non fiable (non pris en compte)");
-            case ABSENT -> constats.add("Pas encore d'horodatage RFC 3161");
+            case ATTESTE_ANCRE -> points.add(new Point("HORODATAGE", Gravite.OK, "Horodatage RFC 3161 valide, certificat de l'autorité reconnu"));
+            case ATTESTE_NON_ANCRE -> points.add(new Point("HORODATAGE", Gravite.ALERTE, "Horodatage RFC 3161 cohérent, autorité pas encore reconnue (non probant)"));
+            case EMPREINTE_DIFFERENTE -> { points.add(new Point("HORODATAGE", Gravite.ECHEC, "Horodatage RFC 3161 attestant une AUTRE empreinte")); altere = true; }
+            case INVALIDE -> points.add(new Point("HORODATAGE", Gravite.ALERTE, "Horodatage RFC 3161 illisible ou non fiable (non pris en compte)"));
+            case ABSENT -> points.add(new Point("HORODATAGE", Gravite.ALERTE, "Pas encore d'horodatage RFC 3161"));
         }
 
         Optional<Manifeste> manifeste = manifestes.lire(d.getId());
         if (manifeste.isPresent())
         {
             boolean concorde = d.getPdfaSha256().equals(manifeste.get().pdfaSha256());
-            constats.add(concorde ? "Manifeste verrouillé concordant" : "Manifeste verrouillé en désaccord avec la base");
+            points.add(concorde
+                ? new Point("MANIFESTE", Gravite.OK, "Manifeste verrouillé concordant")
+                : new Point("MANIFESTE", Gravite.ECHEC, "Manifeste verrouillé en désaccord avec la base"));
             altere |= !concorde;
         }
 
         boolean verifiable = authentique || altere;
-        return new VerificationPreuves(authentique && !altere, verifiable, constats);
+        return new ExamenPreuves(authentique && !altere, verifiable, points);
     }
 }

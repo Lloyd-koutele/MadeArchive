@@ -81,6 +81,8 @@ public class UserDocumentController
     private final made.archive.service.document.DocumentJournalService documentJournalService;
     private final DocumentAccessService documentAccessService;
     private final AttestationService attestationService;
+    private final made.archive.service.integrite.VerificationDocumentService verificationDocumentService;
+    private final made.archive.service.integrite.RapportVerificationPdfService rapportVerificationPdfService;
     private final TypeDocumentService typeDocumentService;
     private final TypeDocumentMapper typeDocumentMapper;
 
@@ -454,6 +456,68 @@ public class UserDocumentController
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(buildError("INTERNAL_ERROR",
                     "Erreur lors de la génération de l'attestation : " + e.getMessage()));
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Vérification instantanée d'intégrité + rapport
+    // ═══════════════════════════════════════════════════════════════════
+
+    /**
+     * POST /api/user/docs/{id}/verification
+     *
+     * Vérifie à la demande l'intégrité d'UN document (fichier relu et rehashé, preuves indépendantes de la base,
+     * horodatage RFC 3161, chaînage du journal) et renvoie le rapport détaillé. Lecture seule : ne modifie ni le
+     * statut du document ni les résultats du contrôle de fixité. Mêmes règles d'accès que la consultation.
+     */
+    @Secured("ROLE_USER")
+    @PostMapping("/docs/{id}/verification")
+    public ResponseEntity<?> verifierDocument(
+        @PathVariable UUID id,
+        @AuthenticationPrincipal UserDetails userDetails)
+    {
+        try
+        {
+            return ResponseEntity.ok(verificationDocumentService.verifier(id, userDetails));
+        }
+        catch (BusinessException e)
+        {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(buildError("BUSINESS_ERROR", e.getMessage()));
+        }
+        catch (Exception e)
+        {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(buildError("INTERNAL_ERROR", "Erreur lors de la vérification : " + e.getMessage()));
+        }
+    }
+
+    /**
+     * POST /api/user/docs/{id}/verification/pdf — même vérification, rapport au format PDF (téléchargement).
+     */
+    @Secured("ROLE_USER")
+    @PostMapping("/docs/{id}/verification/pdf")
+    public ResponseEntity<byte[]> rapportVerificationPdf(
+        @PathVariable UUID id,
+        @AuthenticationPrincipal UserDetails userDetails)
+    {
+        try
+        {
+            byte[] pdf = rapportVerificationPdfService.genererPdf(verificationDocumentService.verifier(id, userDetails));
+            return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                    ContentDisposition.attachment().filename("rapport-verification.pdf").build().toString())
+                .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(pdf.length))
+                .body(pdf);
+        }
+        catch (BusinessException e)
+        {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        catch (Exception e)
+        {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 

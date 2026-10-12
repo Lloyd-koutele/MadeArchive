@@ -204,7 +204,26 @@ public class ProcesVerbalEliminationService
 
         String cle = "pdfa/Proces-verbal-elimination/" + groupe.jour() + "/" + UUID.randomUUID()
             + "/proces-verbal-elimination.pdf";
-        String cleStockee = storageService.uploadBytes(documentEncryptionService.encrypt(pdfA), cle, "application/octet-stream");
+        byte[] pdfAChiffre = documentEncryptionService.encrypt(pdfA);
+        String cleStockee = storageService.uploadBytes(pdfAChiffre, cle, "application/octet-stream");
+        // Même règle que pour tout archivage : le fichier doit être arrivé intact AVANT que la moindre ligne soit
+        // écrite en base. La clé vient d'être créée (UUID) : aucun document ne peut la référencer, on peut la retirer.
+        try
+        {
+            storageService.verifierDepot(cleStockee, pdfAChiffre);
+        }
+        catch (RuntimeException e)
+        {
+            try
+            {
+                storageService.delete(cleStockee);
+            }
+            catch (RuntimeException suppression)
+            {
+                log.warn("[PV] Nettoyage de l'objet non vérifié {} impossible : {}", cleStockee, suppression.getMessage());
+            }
+            throw new IllegalStateException("Procès-verbal non vérifié dans le stockage, enregistrement annulé : " + e.getMessage(), e);
+        }
 
         String titre = NOM_TYPE + " du " + groupe.jour().format(JOUR) + " (" + eliminees.size() + " document"
             + (eliminees.size() > 1 ? "s" : "") + ")";

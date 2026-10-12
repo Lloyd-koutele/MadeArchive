@@ -280,6 +280,24 @@ public class DocumentUploadeService
                 encryptedPdfA, candidateKey, "application/octet-stream");
             log.info("[Upload-Phase2] PDF/A chiffré et stocké : {}", pdfAStorageKey);
 
+            // Vérification de l'ARRIVÉE du fichier, avant toute écriture en base et avant toute indexation :
+            // présent, de la bonne taille et, par défaut, de même SHA-256 une fois relu. PostgreSQL et MinIO ne
+            // partagent pas de transaction : c'est cet ordre (déposer, VÉRIFIER, puis enregistrer) qui garantit
+            // qu'aucune ligne ne pointe jamais vers un fichier absent ou altéré. En cas d'échec, l'objet est
+            // retiré et rien n'a été écrit en base.
+            try
+            {
+                storageService.verifierDepot(pdfAStorageKey, encryptedPdfA);
+            }
+            catch (RuntimeException e)
+            {
+                log.error("[Upload-Phase2] Dépôt non vérifié dans le stockage, archivage annulé : {}", e.getMessage());
+                cleanupOrphanedUpload(pdfAStorageKey);
+                throw new BusinessException(
+                    "Le fichier n'a pas pu être vérifié dans le stockage après son dépôt : archivage annulé, "
+                        + "rien n'a été enregistré. Réessayez.", e);
+            }
+
             // ── 6. Rétention ──────────────────────────────────────────────────
             // (le fichier original n'est PAS conservé dans MinIO — seul son
             // SHA-256, sessionData.originalSha256, est gardé pour la détection

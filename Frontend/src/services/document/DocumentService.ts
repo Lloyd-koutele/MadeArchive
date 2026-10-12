@@ -908,13 +908,15 @@ export interface WebImportFileDto {
 
 export interface WebImportPreviewResponseDto {
     sourceUrl: string;
-    // DOSSIER = dossier Google Drive public, récupéré via navigateur headless
-    // (voir HeadlessBrowserImportService côté backend) — les "url" de ses
-    // fichiers ne sont pas de vraies URLs (identifiant de cache interne), mais
-    // s'utilisent exactement pareil côté client : affichées telles quelles,
-    // puis renvoyées sans modification à /web/ocr-preview.
+    // DOSSIER = dossier Google Drive, listé par l'API officielle (GoogleDriveService côté backend) puis téléchargé
+    // fichier par fichier — jamais d'archive. Les "url" de ses fichiers s'utilisent comme les autres : affichées
+    // telles quelles, puis renvoyées sans modification à /web/ocr-preview (la clé d'API reste côté serveur).
     type:      'FICHIER_DIRECT' | 'PAGE_WEB' | 'DOSSIER';
     fichiers:  WebImportFileDto[];
+    /** DOSSIER — éléments écartés : format non pris en charge, trop volumineux, type Google sans contenu. */
+    fichiersIgnores?: number;
+    /** DOSSIER — la liste a été coupée par une limite (nombre de fichiers ou d'appels à l'API). */
+    tronque?: boolean;
 }
 
 /**
@@ -1034,6 +1036,57 @@ export const getCandidatsGroupe = async (uoId: number): Promise<UserDto[]> => {
 // ═══════════════════════════════════════════════════════════════════════════
 // UTILITAIRES INTERNES
 // ═══════════════════════════════════════════════════════════════════════════
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Vérification instantanée d'intégrité + rapport — voir Backend VerificationDocumentService
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type VerdictVerification = 'CONFORME' | 'PREUVES_ALTEREES' | 'FICHIER_ALTERE' | 'NON_VERIFIABLE';
+
+export interface EtapeVerification {
+    code: string;
+    libelle: string;
+    statut: 'OK' | 'ALERTE' | 'ECHEC' | 'INFO';
+    detail: string;
+}
+
+/** Miroir de made.archive.dto.RapportVerificationDto. */
+export interface RapportVerification {
+    documentId: string;
+    titre: string;
+    version: number | null;
+    verifieLe: string;
+    verifiePar: string;
+    verdict: VerdictVerification;
+    conclusion: string;
+    degrade: boolean;
+    empreinteRecalculee: string | null;
+    empreinteEnregistree: string | null;
+    horodatageAttesteLe: string | null;
+    etapes: EtapeVerification[];
+}
+
+/**
+ * POST /api/user/docs/{id}/verification
+ * Vérifie à la demande l'intégrité d'UN document (fichier relu et rehashé, signatures, horodatage RFC 3161,
+ * chaînage du journal). Lecture seule : ne modifie rien. Ouvert à quiconque peut consulter le document.
+ */
+export const verifierDocument = async (id: string): Promise<RapportVerification> => {
+    try {
+        const response = await api.post<RapportVerification>(`/user/docs/${id}/verification`);
+        return response.data;
+    } catch (error: any) {
+        throw error.response?.data?.message
+            ? new Error(error.response.data.message)
+            : error;
+    }
+};
+
+/** POST /api/user/docs/{id}/verification/pdf — relance la vérification et télécharge le rapport PDF. */
+export const telechargerRapportVerification = async (id: string, titre: string): Promise<void> => {
+    const response = await api.post(`/user/docs/${id}/verification/pdf`, null, { responseType: 'blob' });
+    triggerDownload(response.data, `rapport-verification_${titre}.pdf`);
+};
 
 /**
  * Helper interne : déclenche le téléchargement d'un blob.

@@ -126,7 +126,7 @@ public class ClientHttpSecurise
                 }
                 if (code < 200 || code >= 300)
                 {
-                    throw new BusinessException("Le serveur distant a répondu avec le code " + code);
+                    throw new ErreurHttpException(code);
                 }
                 ResponseBody corps = reponse.body();
                 if (corps == null)

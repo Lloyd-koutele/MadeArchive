@@ -1,7 +1,9 @@
 package made.archive.service.integrite;
 
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.HexFormat;
+import java.util.Optional;
 
 import org.bouncycastle.asn1.nist.NISTObjectIdentifiers;
 import org.bouncycastle.cert.X509CertificateHolder;
@@ -72,6 +74,23 @@ public class HorodatageVerificationService
         catch (Exception e)
         {
             return Etat.INVALIDE;
+        }
+    }
+
+    /** Date attestée par l'autorité d'horodatage (genTime du jeton), sans juger de la validité du jeton. */
+    public Optional<Instant> dateDuJeton(byte[] token)
+    {
+        if (token == null || token.length == 0)
+        {
+            return Optional.empty();
+        }
+        try
+        {
+            return Optional.of(new TimeStampToken(new CMSSignedData(token)).getTimeStampInfo().getGenTime().toInstant());
+        }
+        catch (Exception e)
+        {
+            return Optional.empty();
         }
     }
 }

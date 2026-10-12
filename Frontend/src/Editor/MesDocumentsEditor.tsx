@@ -15,6 +15,7 @@ import DossierAttachSection from '../components/DossierAttachSection';
 import DeplacerDossierModal from '../components/DeplacerDossierModal';
 import EmplacementPhysiqueModal from '../components/EmplacementPhysiqueModal';
 import PdfViewer from '../components/PdfViewer';
+import VerificationIntegrite from '../components/VerificationIntegrite';
 import ReclasserSection from '../components/ReclasserSection';
 import DocumentJournal from '../components/DocumentJournal';
 import type { TypeDocumentDto } from '../services/document/DocumentService';
@@ -934,6 +935,7 @@ function MesDocumentsEditor({
                     </button>
                     <i className="fa-solid fa-chevron-right breadcrumb-sep" />
                     <span className="breadcrumb-current">{lectureDoc.titre}</span>
+                    <VerificationIntegrite documentId={lectureDoc.documentId} titre={lectureDoc.titre} />
                 </div>
                 <div className="pdf-viewer-wrapper">
                     {pdfLoading ? (
