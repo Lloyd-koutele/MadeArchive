@@ -1578,7 +1578,7 @@ function DocumentDetailPanel({
 
             <EmplacementPhysiqueSection detail={detail} />
 
-            <DossierAttachSection detail={detail} onUpdated={onEmplacementChange} />
+            <DossierAttachSection detail={detail} />
 
             <MetaDataEditSection
                 detail={detail}

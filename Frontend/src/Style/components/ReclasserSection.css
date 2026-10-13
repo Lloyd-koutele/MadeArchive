@@ -7,3 +7,4 @@
 .reclasser-form { display: flex; flex-direction: column; gap: 0.8rem; }
 .reclasser-intro, .reclasser-note { margin: 0; font-size: 0.85rem; color: var(--text-light); }
 .reclasser-check { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; color: var(--dark-mid); }
+.reclasser-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }

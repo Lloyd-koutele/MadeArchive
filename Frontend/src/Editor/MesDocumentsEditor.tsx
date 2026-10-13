@@ -1789,7 +1789,7 @@ function DocumentDetailPanel({
                 {detail.activite && !detail.activiteSurDocument ? '' : ''}
             </div>
 
-            <DossierAttachSection detail={detail} onUpdated={onEmplacementChange} />
+            <DossierAttachSection detail={detail} />
 
             {detail.pdfaSha256 && (
                 <div className="details-row">
