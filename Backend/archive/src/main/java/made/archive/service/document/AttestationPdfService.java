@@ -75,6 +75,7 @@ public class AttestationPdfService
                 y = sectionTitre(cs, "Informations du document", y);
                 y = champ(cs, "Titre", data.titreDocument(), y);
                 y = champ(cs, "Type de document", data.typeDocumentNom(), y);
+                y = champ(cs, "Institution", data.institution() != null ? data.institution() : "—", y);
                 y = champ(cs, "Date d'archivage", data.dateArchivage().format(DATE_FORMAT), y);
                 // Empreinte du PDF/A archivé — preuve d'intégrité vérifiable :
                 // quiconque recalcule le SHA-256 du fichier téléchargé doit

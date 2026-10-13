@@ -115,6 +115,7 @@ public class AttestationService
         AttestationPdfData data = new AttestationPdfData(
             doc.getTitre(),
             doc.getTypeDocument().getNom(),
+            doc.getUniteOrganisationnelle() != null ? doc.getUniteOrganisationnelle().getNom() : null,
             doc.getCreateAt(),
             doc.getPdfaSha256(),
             doc.getData().stream()
