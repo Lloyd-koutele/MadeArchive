@@ -34,6 +34,7 @@ interface Props {
  */
 function ReclasserSection({ detail, onUpdated }: Props) {
     const notify = useNotify();
+    const [ouvert, setOuvert] = useState(false);
     const [action, setAction] = useState<Action | null>(null);
     const [saving, setSaving] = useState(false);
 
@@ -68,20 +69,27 @@ function ReclasserSection({ detail, onUpdated }: Props) {
 
     return (
         <div className="reclasser-section">
-            <div className="reclasser-actions">
-                <button type="button" className="reclasser-btn" onClick={() => setAction('type')}>
-                    <i className="fa-solid fa-file-pen" /> Changer le type de document
-                </button>
-                <button type="button" className="reclasser-btn" onClick={() => setAction('activite')}>
-                    <i className="fa-solid fa-sitemap" /> Changer d'activité
-                </button>
-                <button type="button" className="reclasser-btn" onClick={() => setAction('dossier')}>
-                    <i className="fa-solid fa-folder-tree" /> Changer de dossier
-                </button>
-                <button type="button" className="reclasser-btn" onClick={() => setAction('emplacement')}>
-                    <i className="fa-solid fa-box-archive" /> Changer d'emplacement
-                </button>
-            </div>
+            <button type="button" className="reclasser-btn" onClick={() => setOuvert(true)}>
+                <i className="fa-solid fa-right-left" /> Reclasser ce document
+            </button>
+
+            {/* Les quatre actions vivent dans ce modal ; chacune ouvre ensuite le sien, par-dessus. */}
+            <Modal isOpen={ouvert} onClose={() => { if (action == null) setOuvert(false); }} title="Reclasser le document" size="medium">
+                <div className="reclasser-actions">
+                    <button type="button" className="reclasser-btn" onClick={() => setAction('type')}>
+                        <i className="fa-solid fa-file-pen" /> Changer le type de document
+                    </button>
+                    <button type="button" className="reclasser-btn" onClick={() => setAction('activite')}>
+                        <i className="fa-solid fa-sitemap" /> Changer d'activité
+                    </button>
+                    <button type="button" className="reclasser-btn" onClick={() => setAction('dossier')}>
+                        <i className="fa-solid fa-folder-tree" /> Changer de dossier
+                    </button>
+                    <button type="button" className="reclasser-btn" onClick={() => setAction('emplacement')}>
+                        <i className="fa-solid fa-box-archive" /> Changer d'emplacement
+                    </button>
+                </div>
+            </Modal>
 
             {action === 'type' && (
                 <ChangerTypeModal detail={detail} uoId={uoId} saving={saving} onClose={fermer} onSubmit={reclasser} />

@@ -8,3 +8,5 @@
 .reclasser-intro, .reclasser-note { margin: 0; font-size: 0.85rem; color: var(--text-light); }
 .reclasser-check { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; color: var(--dark-mid); }
 .reclasser-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.reclasser-actions { flex-direction: column; align-items: stretch; margin-top: 0.8rem; }
+.reclasser-actions .reclasser-btn { text-align: left; }
