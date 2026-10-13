@@ -13,7 +13,7 @@ export interface FixityCheckRequest {
  * POST /api/admin_uo/fixity-check
  * Déclenche manuellement le contrôle d'intégrité (fixity check) sur le
  * périmètre demandé — voir FixityCheckTriggerService (backend) pour les
- * règles d'autorité et le cooldown de 6h par périmètre individuel.
+ * règles d'autorité, le délai de 6 h du contrôle total et le plafond de 1000 documents des contrôles ciblés.
  *
  * Répond dès que la vérification a DÉMARRÉ (elle tourne en arrière-plan) —
  * le résultat réel arrive plus tard sous forme de notification.

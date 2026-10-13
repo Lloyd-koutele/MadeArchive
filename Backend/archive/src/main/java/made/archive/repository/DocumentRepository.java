@@ -46,6 +46,13 @@ public interface DocumentRepository extends JpaRepository<Document, UUID>, JpaSp
     @Query("SELECT d.id FROM Document d WHERE d.uniteOrganisationnelle.id IN :uoIds")
     List<UUID> findIdsByUniteOrganisationnelleIdIn(@Param("uoIds") Collection<Long> uoIds);
 
+    /** Taille d'un périmètre de contrôle manuel, SANS charger les identifiants (plafond par demande). */
+    @Query("SELECT COUNT(d) FROM Document d WHERE d.typeDocument.id IN :typeIds")
+    long compterParTypes(@Param("typeIds") Collection<Long> typeIds);
+
+    @Query("SELECT COUNT(d) FROM Document d WHERE d.uniteOrganisationnelle.id IN :uoIds")
+    long compterParUnites(@Param("uoIds") Collection<Long> uoIds);
+
     /**
      * Même usage, périmètre "TOUT" — délibérément SANS filtre de statut ici
      * (contrairement à findAllIdsNonSupprimes ci-dessous, pensé pour

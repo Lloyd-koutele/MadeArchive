@@ -77,8 +77,9 @@ function regrouperParParent(uos: UOOption[]): Map<number | null, UOOption[]> {
  * le refuse de toute façon à un ADMIN_UO — ce n'est qu'un filtre
  * d'affichage, pas la garde réelle) : mutuellement exclusif avec la
  * sélection UO/types ci-dessus, pas une simple case du même arbre.
- * Chaque périmètre individuel a son propre cooldown de 6h côté serveur ; le
- * message d'erreur renvoyé (déjà formulé côté backend) est affiché tel quel.
+ * Contrôle TOTAL : un délai de 6 h entre deux contrôles totaux. Contrôles ciblés (UO/types) : possibles à tout moment,
+ * au plus 1000 documents par demande, sans effet sur le délai du contrôle total. Le message d'erreur renvoyé (déjà
+ * formulé côté backend) est affiché tel quel.
  */
 function FixityCheckPanel({ uos: uosExternes }: FixityCheckPanelProps) {
     const notify = useNotify();

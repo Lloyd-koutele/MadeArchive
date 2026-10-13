@@ -1,22 +1,21 @@
 package made.archive.service.document;
 
-import java.time.Duration;
-import java.time.Instant;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import made.archive.config.RedisCacheConfig;
 import made.archive.entite.Document;
 import made.archive.entite.DocumentStatus;
 import made.archive.entite.NotificationType;
 import made.archive.entite.User;
 import made.archive.repository.DocumentRepository;
-import made.archive.repository.FixityCheckResultRepository;
 import made.archive.service.notification.NotificationService;
 
 /**
@@ -34,20 +33,14 @@ import made.archive.service.notification.NotificationService;
 @RequiredArgsConstructor
 public class FixityCheckAsyncExecutor
 {
-    /** Même fenêtre que le cooldown de périmètre (FixityCheckTriggerService)
-     *  — un document déjà vérifié dans cette fenêtre n'est pas revérifié,
-     *  même redemandé via un périmètre DIFFÉRENT de celui qui l'a couvert la
-     *  première fois (ex. son type, puis son UO qui le contient). */
-    private static final Duration FENETRE_DEDOUBLONNAGE = Duration.ofHours(6);
-
     private final FixityCheckService fixityCheckService;
     private final DocumentRepository documentRepository;
-    private final FixityCheckResultRepository fixityCheckResultRepository;
     private final NotificationService notificationService;
+    private final CacheManager cacheManager;
 
     @Async
     public void executer(FixityCheckTriggerService.Portee portee, List<Long> typeDocumentIds, List<Long> uoIds,
-                          String libellePortee, User demandeur)
+                          String libellePortee, User demandeur, List<String> cles)
     {
         try
         {
@@ -63,14 +56,9 @@ public class FixityCheckAsyncExecutor
                 case UO -> documentRepository.findIdsByUniteOrganisationnelleIdIn(uoIds);
             };
 
-            Instant depuis = Instant.now().minus(FENETRE_DEDOUBLONNAGE);
-            Set<UUID> dejaVerifies = candidats.isEmpty()
-                ? Set.of()
-                : fixityCheckResultRepository.findDocumentIdsCheckedSince(candidats, depuis);
-
-            List<UUID> aVerifier = candidats.stream()
-                .filter(id -> !dejaVerifies.contains(id))
-                .toList();
+            // Plus de dédoublonnage : l'administrateur demande un contrôle précisément pour revérifier, tout de suite,
+            // des documents qui ont pu déjà être contrôlés récemment (le périmètre d'une demande est plafonné).
+            List<UUID> aVerifier = candidats;
 
             List<Document> resultats = fixityCheckService.verifyDocumentsByIds(aVerifier);
 
@@ -79,14 +67,12 @@ public class FixityCheckAsyncExecutor
                 .count();
 
             String message = "Contrôle d'intégrité terminé — périmètre : " + libellePortee + ". "
-                + candidats.size() + " document(s) dans le périmètre, " + dejaVerifies.size()
-                + " déjà vérifié(s) il y a moins de 6h (ignoré(s)), " + resultats.size()
-                + " réellement vérifié(s) cette fois, " + corrompus + " actuellement marqué(s) CORROMPU.";
+                + resultats.size() + " document(s) vérifié(s) sur " + candidats.size() + " dans le périmètre, "
+                + corrompus + " actuellement marqué(s) CORROMPU.";
 
             notificationService.notifier(List.of(demandeur), NotificationType.FIXITY_CHECK_TERMINE, message);
-            log.info("[FixityTrigger] Terminé — {} — {} candidat(s), {} ignoré(s) (déjà vérifiés), "
-                + "{} vérifié(s), {} corrompu(s)",
-                libellePortee, candidats.size(), dejaVerifies.size(), resultats.size(), corrompus);
+            log.info("[FixityTrigger] Terminé — {} — {} candidat(s), {} vérifié(s), {} corrompu(s)",
+                libellePortee, candidats.size(), resultats.size(), corrompus);
         }
         catch (Exception e)
         {
@@ -95,6 +81,15 @@ public class FixityCheckAsyncExecutor
             notificationService.notifier(List.of(demandeur), NotificationType.FIXITY_CHECK_TERMINE,
                 "Le contrôle d'intégrité demandé (périmètre : " + libellePortee
                 + ") a échoué : " + e.getMessage());
+        }
+        finally
+        {
+            // Libère le périmètre : une nouvelle demande est de nouveau possible.
+            Cache cache = cacheManager.getCache(RedisCacheConfig.CACHE_FIXITY_COOLDOWN);
+            if (cache != null && cles != null)
+            {
+                cles.forEach(cache::evict);
+            }
         }
     }
 }

@@ -2,9 +2,9 @@ package made.archive.service.document;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.stream.Collectors;
 
 import org.springframework.cache.Cache;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.CacheManager;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
@@ -19,6 +19,7 @@ import made.archive.entite.Role_Name;
 import made.archive.entite.TypeDocument;
 import made.archive.entite.User;
 import made.archive.exception.BusinessException;
+import made.archive.repository.DocumentRepository;
 import made.archive.repository.TypeDocumentRepository;
 import made.archive.repository.UserRepository;
 import made.archive.service.audit.AuditLogService;
@@ -33,16 +34,18 @@ import made.archive.service.organisation.UniteOrganisationnelleService;
  *   UO    → une ou plusieurs UO                 (ADMIN_UO, dans son autorité)
  *   TOUT  → l'intégralité du catalogue          (ADMIN uniquement)
  *
- * Anti-rafale : chaque périmètre INDIVIDUEL (un type précis, une UO précise,
- * ou "tout") a son propre cooldown de 6h dans Redis (voir
- * RedisCacheConfig.CACHE_FIXITY_COOLDOWN) — peu importe qui déclenche, la
- * fenêtre est partagée. Si une demande porte sur plusieurs types/UO, TOUS
- * doivent être libres pour que la demande soit acceptée ; ceux déjà en
- * cooldown sont listés dans le message d'erreur. Remis en place après un
- * essai sans cooldown : nécessaire pour la sécurité/performance du système
- * en pleine charge (le passage lui-même est séquentiel, voir
- * FixityCheckService.verifyAndSave — un admin_uo qui redéclenche en boucle
- * peut sinon saturer le service).
+ * Deux régimes distincts :
+ *
+ *   CONTRÔLE TOTAL (TOUT) : délai de 6 h entre deux contrôles totaux, comme avant (pose le délai dans Redis, voir
+ *   RedisCacheConfig.CACHE_FIXITY_COOLDOWN). Il vérifie tout, sans plafond.
+ *
+ *   CONTRÔLES INTERMÉDIAIRES (TYPES, UO) : possibles À TOUT MOMENT — un administrateur qui soupçonne un document
+ *   doit pouvoir le faire revérifier sur-le-champ, sans attendre la fin des 6 h — à condition de ne pas dépasser
+ *   fixity.manuel.max-documents (1000 par défaut) documents par demande. Ils ne touchent JAMAIS au délai du
+ *   contrôle total : lancer un contrôle intermédiaire ne le repousse ni ne le déclenche. Seule restriction : pas de
+ *   seconde demande sur un périmètre dont le contrôle est ENCORE EN COURS (le passage est séquentiel).
+ *
+ * Chaque demande est consignée dans le journal d'audit, avec le nombre de documents.
  *
  * L'exécution elle-même est @Async (potentiellement longue — voir
  * FixityCheckService, aucun traitement par lot) : la requête HTTP répond
@@ -60,14 +63,20 @@ public class FixityCheckTriggerService
     private final UserRepository userRepository;
     private final AuditLogService auditLogService;
     private final CacheManager cacheManager;
+    private final DocumentRepository documentRepository;
+
+    private static final long DELAI_CONTROLE_TOTAL_SECONDES = 6 * 3600L;
+
+    /** Nombre maximal de documents d'un contrôle ciblé (TYPES, UO). */
+    @Value("${fixity.manuel.max-documents:1000}")
+    private long maxDocuments;
 
     public enum Portee { TYPES, UO, TOUT }
 
     /**
-     * Valide la demande (autorité + cooldown), pose le cooldown IMMÉDIATEMENT
-     * (avant même de démarrer le travail réel) puis lance la vérification en
-     * arrière-plan. Ne renvoie rien d'autre qu'une confirmation de
-     * démarrage — voir notifierResultat pour le résultat réel.
+     * Valide la demande (autorité, taille du périmètre, pas de contrôle déjà en cours sur ce périmètre) puis lance
+     * la vérification en arrière-plan. Ne renvoie rien d'autre qu'une confirmation de démarrage — voir
+     * FixityCheckAsyncExecutor pour le résultat réel (notification du demandeur).
      */
     @Transactional(readOnly = true)
     public void declencher(Portee portee, List<Long> typeDocumentIds, List<Long> uoIds, UserDetails userDetails)
@@ -77,26 +86,73 @@ public class FixityCheckTriggerService
 
         List<String> cles = resoudreClesCooldown(portee, typeDocumentIds, uoIds, demandeur);
 
-        verifierAutoriteEtCooldown(portee, cles, demandeur);
+        verifierAutorite(portee, cles, demandeur);
 
-        // Réservé tout de suite, avant le travail réel — une deuxième demande
-        // arrivant une seconde plus tard doit déjà voir le cooldown posé.
+        long nombre = compterDocuments(portee, typeDocumentIds, uoIds);
         Cache cache = cacheManager.getCache(RedisCacheConfig.CACHE_FIXITY_COOLDOWN);
-        Instant maintenant = Instant.now();
-        if (cache != null)
+
+        if (portee == Portee.TOUT)
         {
-            cles.forEach(cle -> cache.put(cle, maintenant));
+            // Contrôle total : délai de 6 h entre deux contrôles totaux (pas de plafond de documents).
+            if (cache != null)
+            {
+                Instant depuis = cache.get("tout", Instant.class);
+                if (cache.get("tout") != null)
+                {
+                    String reessayer = depuis != null ? depuis.plusSeconds(DELAI_CONTROLE_TOTAL_SECONDES).toString() : "bientôt";
+                    throw new BusinessException("Un contrôle total a déjà été déclenché récemment (délai de 6 h entre deux "
+                        + "contrôles totaux) — réessayer après " + reessayer + ". Les contrôles ciblés (une unité, quelques "
+                        + "types) restent possibles à tout moment.");
+                }
+                cache.put("tout", Instant.now());
+            }
+        }
+        else
+        {
+            // Contrôle intermédiaire : à tout moment, mais borné.
+            if (nombre > maxDocuments)
+            {
+                throw new BusinessException("Ce périmètre contient " + nombre + " documents : un contrôle ciblé est limité à "
+                    + maxDocuments + ". Réduisez le périmètre (une unité ou quelques types), ou demandez un contrôle total "
+                    + "(possible toutes les 6 h). Le contrôle automatique de 3 h vérifie tous les documents.");
+            }
+            // Réservé tout de suite : une deuxième demande identique, une seconde plus tard, doit voir ce contrôle en
+            // cours. La marque est retirée à la fin (FixityCheckAsyncExecutor) ; son TTL n'est qu'un filet de sécurité
+            // si l'application s'arrête en plein contrôle. Elle ne modifie pas le délai du contrôle total ("tout").
+            if (cache != null)
+            {
+                List<String> enCours = cles.stream().filter(cle -> cache.get(cle) != null).toList();
+                if (!enCours.isEmpty())
+                {
+                    throw new BusinessException("Un contrôle d'intégrité est déjà en cours sur ce périmètre : "
+                        + String.join(", ", enCours) + ". Vous serez notifié à sa fin.");
+                }
+                Instant maintenant = Instant.now();
+                cles.forEach(cle -> cache.put(cle, maintenant));
+            }
         }
 
         String libellePortee = libellePortee(portee, typeDocumentIds, uoIds);
         auditLogService.log(demandeur, AuditAction.FIXITY_CHECK_DEMANDE, AuditCible.DOCUMENT,
             null, null,
-            "Contrôle d'intégrité manuel demandé — périmètre : " + libellePortee, true);
+            "Contrôle d'intégrité manuel demandé — périmètre : " + libellePortee + " (" + nombre + " document(s))", true);
 
         // Bean SÉPARÉ (voir sa Javadoc) — un appel direct à une méthode @Async
         // de CE bean-ci serait silencieusement synchrone (auto-invocation,
         // hors de portée du proxy Spring AOP).
-        fixityCheckAsyncExecutor.executer(portee, typeDocumentIds, uoIds, libellePortee, demandeur);
+        // Les marques « en cours » ne concernent que les contrôles ciblés : le délai du contrôle total reste posé.
+        List<String> aLiberer = portee == Portee.TOUT ? List.of() : cles;
+        fixityCheckAsyncExecutor.executer(portee, typeDocumentIds, uoIds, libellePortee, demandeur, aLiberer);
+    }
+
+    private long compterDocuments(Portee portee, List<Long> typeDocumentIds, List<Long> uoIds)
+    {
+        return switch (portee)
+        {
+            case TOUT -> documentRepository.count();
+            case TYPES -> documentRepository.compterParTypes(typeDocumentIds);
+            case UO -> documentRepository.compterParUnites(uoIds);
+        };
     }
 
     private List<String> resoudreClesCooldown(Portee portee, List<Long> typeDocumentIds, List<Long> uoIds, User demandeur)
@@ -129,11 +185,8 @@ public class FixityCheckTriggerService
      * scopé à son périmètre, ADMIN toujours autorisé — voir
      * UniteOrganisationnelleService.aAutoriteSur).
      *
-     * Cooldown : vérifié APRÈS l'autorité (pas la peine de révéler qu'un
-     * périmètre est en cooldown à quelqu'un qui n'y a de toute façon pas
-     * accès).
      */
-    private void verifierAutoriteEtCooldown(Portee portee, List<String> cles, User demandeur)
+    private void verifierAutorite(Portee portee, List<String> cles, User demandeur)
     {
         if (portee == Portee.TOUT && !estAdmin(demandeur))
         {
@@ -168,26 +221,6 @@ public class FixityCheckTriggerService
                     throw new BusinessException("Vous n'avez pas autorité sur l'UO " + uoId);
                 }
             }
-        }
-
-        Cache cache = cacheManager.getCache(RedisCacheConfig.CACHE_FIXITY_COOLDOWN);
-        if (cache == null) return;
-
-        List<String> enCooldown = cles.stream().filter(cle -> cache.get(cle) != null).toList();
-        if (!enCooldown.isEmpty())
-        {
-            String detail = enCooldown.stream()
-                .map(cle -> {
-                    Instant depuis = cache.get(cle, Instant.class);
-                    String reessayer = depuis != null
-                        ? depuis.plusSeconds(6 * 3600).toString()
-                        : "bientôt";
-                    return cle + " (réessayer après " + reessayer + ")";
-                })
-                .collect(Collectors.joining(", "));
-            throw new BusinessException(
-                "Une vérification a déjà été déclenchée récemment sur ce périmètre (délai de 6h entre deux "
-                + "déclenchements manuels, pour éviter de surcharger le service) : " + detail);
         }
     }
 
