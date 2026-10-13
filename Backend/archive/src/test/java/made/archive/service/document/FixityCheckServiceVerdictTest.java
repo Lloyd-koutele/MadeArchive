@@ -76,6 +76,23 @@ class FixityCheckServiceVerdictTest
         when(storageService.download(anyString())).thenAnswer(i -> new ByteArrayInputStream(new byte[] { 1 }));
         when(documentEncryptionService.decrypt(any())).thenReturn("contenu".getBytes());
         when(fixityCheckResultRepository.findByDocumentId(any())).thenReturn(Optional.empty());
+        when(preuveIntegriteService.authentifierEmpreinte(any())).thenReturn(
+            new PreuveIntegriteService.Reference(PreuveIntegriteService.EtatReference.AUTHENTIQUE, List.of()));
+    }
+
+    @Test
+    void etape1_une_empreinte_enregistree_alteree_ne_bloque_pas_l_etape_2_et_le_verdict_vient_de_l_arbitre()
+    {
+        when(preuveIntegriteService.authentifierEmpreinte(any())).thenReturn(new PreuveIntegriteService.Reference(
+            PreuveIntegriteService.EtatReference.ALTEREE, List.of("la signature du hash ne correspond pas")));
+        verdict(Verdict.PREUVE_ALTEREE, "Fichier conforme mais preuves en base altérées");
+
+        service.verifyDocumentsByIds(List.of(document.getId()));
+
+        // le fichier est quand même relu et jugé : l'étape 1 signale, elle ne remplace pas le verdict
+        verify(storageService).download(anyString());
+        verify(preuveIntegriteService).evaluer(any(), anyString());
+        assertThat(document.getStatus()).isEqualTo(DocumentStatus.ACTIVE);
     }
 
     private void verdict(Verdict v, String raison)

@@ -157,6 +157,18 @@ public class FixityCheckService
             return;
         }
 
+        // ÉTAPE 1 — l'empreinte enregistrée est-elle encore authentique ? Avant tout calcul sur le fichier : on ne
+        // compare un fichier qu'à une empreinte de référence dont on sait si elle a été touchée (étape 2, ci-dessous).
+        PreuveIntegriteService.Reference reference = preuveIntegriteService.authentifierEmpreinte(document);
+        switch (reference.etat())
+        {
+            case ALTEREE -> log.warn("[Fixity] Étape 1 — empreinte enregistrée ALTÉRÉE pour {} : {}",
+                document.getId(), String.join("; ", reference.faits()));
+            case NON_VERIFIABLE -> log.info("[Fixity] Étape 1 — empreinte de {} non vérifiable (aucune preuve consultable)",
+                document.getId());
+            case AUTHENTIQUE -> log.debug("[Fixity] Étape 1 — empreinte de {} authentique", document.getId());
+        }
+
         byte[] encryptedBytes;
         try (InputStream fileStream = storageService.download(document.getStorageKey()))
         {

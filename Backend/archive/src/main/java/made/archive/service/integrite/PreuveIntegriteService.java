@@ -215,6 +215,58 @@ public class PreuveIntegriteService
         return sig.isEmpty() && enreg != EtatEnregistrement.ALTERE;
     }
 
+    /** Résultat de l'étape 1 : l'empreinte PDF/A enregistrée en base est-elle encore celle qui a été attestée ? */
+    public enum EtatReference { AUTHENTIQUE, ALTEREE, NON_VERIFIABLE }
+
+    public record Reference(EtatReference etat, List<String> faits) {}
+
+    /**
+     * ÉTAPE 1 de tout contrôle d'intégrité, AVANT de lire le fichier : l'empreinte SHA-256 enregistrée en base n'a
+     * pas été modifiée. Elle est confrontée uniquement à des preuves qu'un accès à la base ne permet pas de refaire :
+     * la signature de l'éditeur sur le hash, le sceau de l'enregistrement, le manifeste verrouillé de MinIO et le
+     * jeton d'horodatage d'un tiers (clés lues dans le KeyStore, jamais en base).
+     *
+     * ALTEREE si l'une d'elles contredit l'empreinte ; AUTHENTIQUE si aucune ne la contredit et qu'au moins une
+     * l'atteste ; NON_VERIFIABLE si aucune preuve n'est consultable (ancien document non signé, clé absente).
+     * L'étape 2 (comparer le fichier à cette empreinte) ne s'appuie sur l'empreinte de la base que si elle est
+     * authentique — voir {@link #evaluer}.
+     */
+    public Reference authentifierEmpreinte(Document d)
+    {
+        List<String> faits = new ArrayList<>();
+        boolean attestee = false;
+        String hashBase = d.getPdfaSha256();
+
+        Optional<Boolean> signature = signatureHashValide(d, hashBase);
+        if (signature.isPresent())
+        {
+            if (signature.get()) attestee = true;
+            else faits.add("la signature du hash ne correspond pas à l'empreinte enregistrée");
+        }
+
+        EtatEnregistrement enregistrement = etatEnregistrement(d);
+        if (enregistrement == EtatEnregistrement.CONFORME) attestee = true;
+        else if (enregistrement == EtatEnregistrement.ALTERE)
+        {
+            faits.add("le sceau de l'enregistrement ne correspond plus à l'empreinte enregistrée");
+        }
+
+        Optional<Manifeste> manifeste = manifestes.lire(d.getId());
+        if (manifeste.isPresent()
+            && signatureHashValide(aliasSignataires(d), manifeste.get().pdfaSha256(), manifeste.get().pkiSignature()).orElse(false))
+        {
+            if (manifeste.get().pdfaSha256().equals(hashBase)) attestee = true;
+            else faits.add("le manifeste verrouillé atteste une autre empreinte");
+        }
+
+        Etat jeton = jetons.verifier(d.getHorodatageToken(), hashBase);
+        if (jeton == Etat.ATTESTE_ANCRE) attestee = true;
+        else if (jeton == Etat.EMPREINTE_DIFFERENTE) faits.add("le jeton d'horodatage atteste une autre empreinte");
+
+        if (!faits.isEmpty()) return new Reference(EtatReference.ALTEREE, faits);
+        return new Reference(attestee ? EtatReference.AUTHENTIQUE : EtatReference.NON_VERIFIABLE, faits);
+    }
+
     /** Clé publique (PEM) de confiance qui vérifie la signature de ce document — lue dans le KeyStore, jamais en base. */
     public Optional<String> clePubliqueDeConfiance(Document d)
     {

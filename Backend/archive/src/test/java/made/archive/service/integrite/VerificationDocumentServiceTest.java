@@ -71,6 +71,8 @@ class VerificationDocumentServiceTest
         encryption = mock(DocumentEncryptionService.class);
         hashService = mock(HashService.class);
         preuves = mock(PreuveIntegriteService.class);
+        when(preuves.authentifierEmpreinte(any())).thenReturn(
+            new PreuveIntegriteService.Reference(PreuveIntegriteService.EtatReference.AUTHENTIQUE, List.of()));
         jetons = mock(HorodatageVerificationService.class);
         chaine = mock(AuditChainService.class);
         audit = mock(AuditLogService.class);
@@ -131,6 +133,32 @@ class VerificationDocumentServiceTest
         verify(audit).log(any(User.class), eq(AuditAction.FIXITY_CHECK_DEMANDE), eq(AuditCible.DOCUMENT), eq(id.toString()),
             eq(7L), anyString(), eq(true));
         pdfLisible(r);
+    }
+
+    @Test
+    void l_etape_1_est_en_tete_du_rapport_et_precede_la_comparaison_du_fichier()
+    {
+        RapportVerificationDto r = service.verifier(id, principal);
+
+        assertThat(r.getEtapes().get(0).getCode()).isEqualTo("REFERENCE");
+        assertThat(r.getEtapes().get(0).getStatut()).isEqualTo("OK");
+        assertThat(r.getEtapes().stream().map(e -> e.getCode()).toList().indexOf("REFERENCE"))
+            .isLessThan(r.getEtapes().stream().map(e -> e.getCode()).toList().indexOf("EMPREINTE"));
+    }
+
+    @Test
+    void une_empreinte_enregistree_alteree_est_signalee_des_l_etape_1()
+    {
+        when(preuves.authentifierEmpreinte(any())).thenReturn(new PreuveIntegriteService.Reference(
+            PreuveIntegriteService.EtatReference.ALTEREE, List.of("la signature du hash ne correspond pas à l'empreinte enregistrée")));
+        when(preuves.evaluer(any(), anyString())).thenReturn(
+            new Constat(Verdict.PREUVE_ALTEREE, "Fichier conforme mais preuves en base altérées", false));
+
+        RapportVerificationDto r = service.verifier(id, principal);
+
+        assertThat(etape(r, "REFERENCE").getStatut()).isEqualTo("ECHEC");
+        assertThat(etape(r, "REFERENCE").getDetail()).contains("signature du hash");
+        assertThat(r.getVerdict()).isEqualTo(RapportVerificationDto.PREUVES_ALTEREES);
     }
 
     @Test

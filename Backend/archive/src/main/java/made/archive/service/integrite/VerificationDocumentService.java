@@ -74,6 +74,9 @@ public class VerificationDocumentService
         String conclusion;
         boolean degrade = false;
 
+        // ÉTAPE 1 — l'empreinte enregistrée n'a pas été modifiée (avant toute lecture du fichier).
+        etapes.add(etapeReference(preuves.authentifierEmpreinte(doc)));
+
         byte[] clair = lireFichier(doc, etapes);
         if (clair == null)
         {
@@ -88,7 +91,7 @@ public class VerificationDocumentService
             String recalculee = hashService.calculateFromBytes(clair);
             rapport.empreinteRecalculee(recalculee);
             boolean memeEmpreinte = recalculee.equals(doc.getPdfaSha256());
-            etapes.add(Etape.builder().code("EMPREINTE").libelle("Empreinte SHA-256 du fichier stocké")
+            etapes.add(Etape.builder().code("EMPREINTE").libelle("Étape 2 — Empreinte SHA-256 du fichier stocké")
                 .statut(memeEmpreinte ? "OK" : "ECHEC")
                 .detail(memeEmpreinte ? "Identique à l'empreinte enregistrée à l'archivage."
                     : "Différente de l'empreinte enregistrée en base (enregistrée : " + doc.getPdfaSha256()
@@ -134,6 +137,20 @@ public class VerificationDocumentService
             RapportVerificationDto.CONFORME.equals(verdict));
 
         return rapport.verdict(verdict).conclusion(conclusion).degrade(degrade).etapes(etapes).build();
+    }
+
+    private Etape etapeReference(PreuveIntegriteService.Reference reference)
+    {
+        String libelle = "Étape 1 — Authenticité de l'empreinte enregistrée";
+        return switch (reference.etat())
+        {
+            case AUTHENTIQUE -> Etape.builder().code("REFERENCE").libelle(libelle).statut("OK")
+                .detail("L'empreinte enregistrée est attestée par une preuve qu'un accès à la base ne permet pas de refaire.").build();
+            case ALTEREE -> Etape.builder().code("REFERENCE").libelle(libelle).statut("ECHEC")
+                .detail("L'empreinte enregistrée a été modifiée : " + String.join(" ; ", reference.faits()) + ".").build();
+            case NON_VERIFIABLE -> Etape.builder().code("REFERENCE").libelle(libelle).statut("ALERTE")
+                .detail("Aucune preuve indépendante n'a pu être consultée (ancien document non signé ou clé de confiance absente).").build();
+        };
     }
 
     /** Lit et déchiffre le PDF/A stocké ; ajoute l'étape correspondante. null si impossible. */
