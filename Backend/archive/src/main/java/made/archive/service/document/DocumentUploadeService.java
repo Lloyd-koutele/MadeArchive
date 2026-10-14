@@ -93,6 +93,7 @@ public class DocumentUploadeService
     private final made.archive.repository.PlanClassementNoeudRepository     planClassementNoeudRepository;
     private final PreuveIntegriteService                                    preuveIntegriteService;
     private final ManifestePreuveService                                    manifestePreuveService;
+    private final made.archive.service.integrite.ControleClePkiService      controleClePki;
 
     private TransactionTemplate transactionTemplate;
 
@@ -102,8 +103,35 @@ public class DocumentUploadeService
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
-    public DocumentUploadResultDto finalizeUpload(FinalizeUploadRequestDto request)
+    /**
+     * L'éditeur qui agit est TOUJOURS celui qui est connecté, relu en base d'après son authentification, jamais
+     * un identifiant fourni par la requête : c'est sa clé de signature qui sera utilisée. Un identifiant
+     * revendiqué par le client est seulement contrôlé — s'il diffère, la requête est refusée.
+     */
+    public User editeurConnecte(org.springframework.security.core.userdetails.UserDetails userDetails, UUID idRevendique)
     {
+        User connecte = userRepository.findByEmail(userDetails.getUsername())
+            .orElseThrow(() -> new BusinessException("Utilisateur introuvable"));
+        if (idRevendique != null && !idRevendique.equals(connecte.getId()))
+        {
+            log.warn("[Securite] Identifiant d'éditeur {} différent de l'utilisateur connecté {} — requête refusée",
+                idRevendique, connecte.getId());
+            throw new made.archive.exception.AccessDeniedException(
+                "L'identifiant de l'éditeur ne correspond pas à l'utilisateur connecté");
+        }
+        return connecte;
+    }
+
+    public DocumentUploadResultDto finalizeUpload(FinalizeUploadRequestDto request,
+        org.springframework.security.core.userdetails.UserDetails userDetails)
+    {
+        if (request.getDocumentUploadDto() == null)
+        {
+            throw new BusinessException("Données du document manquantes");
+        }
+        User connecte = editeurConnecte(userDetails, request.getDocumentUploadDto().getUploadedById());
+        request.getDocumentUploadDto().setUploadedById(connecte.getId());
+
         UUID sessionId;
         try
         {
@@ -119,6 +147,12 @@ public class DocumentUploadeService
         {
             throw new BusinessException(
                 "Session expirée ou inexistante. Veuillez re-déposer le fichier.");
+        }
+        if (sessionData.proprietaireId != null && !sessionData.proprietaireId.equals(connecte.getId()))
+        {
+            log.warn("[Securite] Session {} finalisée par {} alors qu'elle appartient à {} — refusé",
+                sessionId, connecte.getId(), sessionData.proprietaireId);
+            throw new made.archive.exception.AccessDeniedException("Cette session de dépôt appartient à un autre utilisateur");
         }
 
         try
@@ -233,9 +267,14 @@ public class DocumentUploadeService
             String signature;
             try
             {
-                signature = hsmKeyStoreService.sign(
-                    uploadedBy.getPkiKeyAlias(), sessionData.pdfaSha256);
+                // La signature est vérifiée aussitôt avec la clé publique enregistrée pour cet éditeur : si la clé du
+                // jeton n'est plus celle d'origine, l'archivage est refusé (voir ControleClePkiService).
+                signature = controleClePki.signerEtControler(uploadedBy, sessionData.pdfaSha256);
                 log.info("[PKI] Document signé avec la clé de l'éditeur {}", uploadedBy.getId());
+            }
+            catch (BusinessException e)
+            {
+                throw e;
             }
             catch (Exception e)
             {

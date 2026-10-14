@@ -155,6 +155,10 @@ public enum AuditAction
     /** Un fichier déposé a été refusé : type réel différent du type annoncé, archive, format non supporté, fichier corrompu ou piégé. */
     FICHIER_REFUSE,
     CLE_CHIFFREMENT_ANOMALIE,
+    /** Une paire de clés de signature a été créée pour un éditeur (empreinte de la clé publique dans le détail). */
+    CLE_PKI_CREEE,
+    /** La clé de signature d'un éditeur ne correspond plus à la clé publique enregistrée à sa création. */
+    CLE_PKI_ANOMALIE,
     /** Un lien d'import a été refusé : adresse interne ou privée, schéma interdit (tentative d'accès au réseau interne). */
     IMPORT_LIEN_REFUSE,
     /** Ancrage quotidien du catalogue : racine de Merkle signée et horodatée. */

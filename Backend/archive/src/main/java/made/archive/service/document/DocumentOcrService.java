@@ -244,6 +244,7 @@ public class DocumentOcrService
             // ── 9. Construire la session avec les deux hashes ─────────────────
             OcrSessionCache.OcrSessionData sessionData = new OcrSessionCache.OcrSessionData();
             sessionData.typeDocumentId        = typeDocumentId;
+            sessionData.proprietaireId        = uploadedBy != null ? uploadedBy.getId() : null;
             sessionData.pdfABytes             = pdfABytes;
             sessionData.originalBytes         = originalBytes;
             sessionData.originalFilename      = originalFilename;

@@ -342,6 +342,33 @@ public class HsmKeyStoreService
         }
     }
 
+    /**
+     * Clé publique d'un alias relue DANS le jeton, sans passer par la mémoire : sert au contrôle des clés, qui doit
+     * voir un remplacement survenu après la première lecture. Vide si l'alias est absent ou illisible.
+     */
+    public Optional<PublicKey> clePubliqueRelue(String alias)
+    {
+        if (alias == null || alias.isBlank())
+        {
+            return Optional.empty();
+        }
+        lock.readLock().lock();
+        try
+        {
+            Certificate certificat = loadKeyStore().getCertificate(alias);
+            return certificat == null ? Optional.empty() : Optional.of(certificat.getPublicKey());
+        }
+        catch (Exception e)
+        {
+            log.warn("[SoftHSM] Relecture de la clé publique '{}' impossible : {}", alias, e.getMessage());
+            return Optional.empty();
+        }
+        finally
+        {
+            lock.readLock().unlock();
+        }
+    }
+
     /** Clé publique d'un alias au format PEM (X.509), pour affichage — vide si l'alias est inconnu. */
     public Optional<String> clePubliquePem(String alias)
     {

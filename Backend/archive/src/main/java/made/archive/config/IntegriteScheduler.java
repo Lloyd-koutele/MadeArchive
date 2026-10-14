@@ -13,12 +13,14 @@ import made.archive.dto.ChaineAuditVerificationDto;
 import made.archive.service.audit.AuditChainService;
 import made.archive.service.integrite.AlerteIntegriteService;
 import made.archive.service.integrite.CatalogueAncrageService;
+import made.archive.service.integrite.ControleClePkiService;
 import made.archive.service.integrite.ScellementRattrapageService;
 
 /**
  * Maintenance des preuves d'intégrité :
  *   - au démarrage (en tâche de fond) : scellement des documents plus anciens que la signature d'enregistrement,
- *     puis premier ancrage — la protection ne attend pas la nuit suivante ;
+ *     premier ancrage, puis contrôle des clés de signature des éditeurs (voir ControleClePkiService) — la protection
+ *     n'attend pas la nuit suivante ; les clés sont ensuite contrôlées à chaque archivage ;
  *   - chaque nuit à 04:00 (après le contrôle de routine de 03:00) : rattrapage, ancrage du catalogue, reprise des
  *     jetons manquants, VÉRIFICATION de tous les ancrages et de la chaîne du journal d'audit ;
  *   - chaque heure : reprise des jetons d'ancrage encore manquants.
@@ -34,8 +36,33 @@ public class IntegriteScheduler
     private final CatalogueAncrageService ancrage;
     private final AuditChainService auditChainService;
     private final AlerteIntegriteService alertes;
+    private final ControleClePkiService controleCles;
 
     private volatile String dernieresAnomalies = "";
+    private volatile String dernieresAnomaliesCles = "";
+
+    /** Clés des éditeurs : une alerte par anomalie nouvelle, pas une par nuit tant qu'elle persiste. */
+    private void controlerCles()
+    {
+        try
+        {
+            String courant = String.join("\n", controleCles.balayer());
+            if (courant.isEmpty())
+            {
+                dernieresAnomaliesCles = "";
+            }
+            else if (!courant.equals(dernieresAnomaliesCles))
+            {
+                dernieresAnomaliesCles = courant;
+                log.error("[Cles-PKI] ANOMALIES DÉTECTÉES :\n{}", courant);
+                alertes.clePkiAnormale("le contrôle des clés de signature des éditeurs a détecté des écarts :\n" + courant);
+            }
+        }
+        catch (Exception e)
+        {
+            log.error("[Cles-PKI] Contrôle des clés échoué : {}", e.getMessage(), e);
+        }
+    }
 
     @EventListener(ApplicationReadyEvent.class)
     public void auDemarrage()
@@ -46,6 +73,7 @@ public class IntegriteScheduler
             {
                 rattrapage.rattraper();
                 ancrage.ancrer();
+                controlerCles();
             }
             catch (Exception e)
             {

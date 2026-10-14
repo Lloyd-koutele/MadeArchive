@@ -48,14 +48,11 @@ public class BulkUploadSameTypeService
      */
     public BulkOcrPreviewResponseDto startOcrPreview(List<MultipartFile> files,
                                                       Long typeDocumentId,
-                                                      UUID uploadedById)
+                                                      User uploadedBy)
     {
         typeDocumentRepository.findById(typeDocumentId)
             .orElseThrow(() -> new BusinessException(
                 "Type de document introuvable : " + typeDocumentId));
-
-        User uploadedBy = userRepository.findById(uploadedById)
-            .orElseThrow(() -> new BusinessException("Utilisateur introuvable : " + uploadedById));
 
         List<OcrPreviewResponseDto> previews = new ArrayList<>();
 
@@ -74,14 +71,11 @@ public class BulkUploadSameTypeService
      * l'utilisateur sur l'aperçu WebImportService.previewer, puis applique
      * exactement le même traitement OCR par fichier que l'upload navigateur.
      */
-    public BulkOcrPreviewResponseDto startOcrPreviewFromWeb(WebImportOcrRequestDto requete)
+    public BulkOcrPreviewResponseDto startOcrPreviewFromWeb(WebImportOcrRequestDto requete, User uploadedBy)
     {
         typeDocumentRepository.findById(requete.getTypeDocumentId())
             .orElseThrow(() -> new BusinessException(
                 "Type de document introuvable : " + requete.getTypeDocumentId()));
-
-        User uploadedBy = userRepository.findById(requete.getUploadedById())
-            .orElseThrow(() -> new BusinessException("Utilisateur introuvable : " + requete.getUploadedById()));
 
         List<WebImportService.FichierDistant> fichiers = webImportService.telecharger(requete.getFichiersUrls(), uploadedBy);
 
@@ -177,7 +171,8 @@ public class BulkUploadSameTypeService
      * Chaque requête contient un sessionId + les métadonnées validées/corrigées.
      * Identique à l'upload unitaire mais appliqué en batch.
      */
-    public BulkUploadReportDto finalizeAll(BulkFinalizeRequestDto bulkRequest)
+    public BulkUploadReportDto finalizeAll(BulkFinalizeRequestDto bulkRequest,
+        org.springframework.security.core.userdetails.UserDetails userDetails)
     {
         List<FinalizeUploadRequestDto> requests = bulkRequest.getRequests();
 
@@ -197,7 +192,7 @@ public class BulkUploadSameTypeService
             {
                 // Délégation complète à DocumentUploadeService.finalizeUpload()
                 // → validation stricte des types, stockage PDF/A, OCR final, Meilisearch
-                DocumentUploadResultDto result = documentUploadService.finalizeUpload(request);
+                DocumentUploadResultDto result = documentUploadService.finalizeUpload(request, userDetails);
                 success++;
 
                 details.add(BulkUploadItemResultDto.builder()

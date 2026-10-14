@@ -430,7 +430,7 @@ public class DocumentController
 
         try
         {
-            DocumentUploadResultDto result = documentUploadeService.finalizeUpload(request);
+            DocumentUploadResultDto result = documentUploadeService.finalizeUpload(request, userDetails);
             return ResponseEntity.ok(result);
         }
         catch (AccessDeniedException e)
@@ -484,7 +484,8 @@ public class DocumentController
     public ResponseEntity<?> bulkSameTypeOcrPreview(
         @RequestPart("files") List<MultipartFile> files,
         @RequestParam("typeDocumentId") Long typeDocumentId,
-        @RequestParam("uploadedById") UUID uploadedById)
+        @RequestParam(value = "uploadedById", required = false) UUID uploadedById,
+        @AuthenticationPrincipal UserDetails userDetails)
     {
         if (files == null || files.isEmpty())
         {
@@ -494,8 +495,14 @@ public class DocumentController
         try
         {
             BulkOcrPreviewResponseDto response =
-                bulkUploadSameTypeService.startOcrPreview(files, typeDocumentId, uploadedById);
+                bulkUploadSameTypeService.startOcrPreview(files, typeDocumentId,
+                    documentUploadeService.editeurConnecte(userDetails, uploadedById));
             return ResponseEntity.ok(response);
+        }
+        catch (AccessDeniedException e)
+        {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(buildErrorResponse("ACCESS_DENIED", e.getMessage()));
         }
         catch (BusinessException e)
         {
@@ -556,12 +563,19 @@ public class DocumentController
      */
     @Secured("ROLE_EDITOR")
     @PostMapping("/docs/bulk/same-type/web/ocr-preview")
-    public ResponseEntity<?> bulkSameTypeOcrPreviewFromWeb(@RequestBody WebImportOcrRequestDto requete)
+    public ResponseEntity<?> bulkSameTypeOcrPreviewFromWeb(@RequestBody WebImportOcrRequestDto requete,
+        @AuthenticationPrincipal UserDetails userDetails)
     {
         try
         {
-            BulkOcrPreviewResponseDto response = bulkUploadSameTypeService.startOcrPreviewFromWeb(requete);
+            BulkOcrPreviewResponseDto response = bulkUploadSameTypeService.startOcrPreviewFromWeb(requete,
+                documentUploadeService.editeurConnecte(userDetails, requete.getUploadedById()));
             return ResponseEntity.ok(response);
+        }
+        catch (AccessDeniedException e)
+        {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(buildErrorResponse("ACCESS_DENIED", e.getMessage()));
         }
         catch (BusinessException e)
         {
@@ -617,8 +631,13 @@ public class DocumentController
 
         try
         {
-            BulkUploadReportDto report = bulkUploadSameTypeService.finalizeAll(bulkRequest);
+            BulkUploadReportDto report = bulkUploadSameTypeService.finalizeAll(bulkRequest, userDetails);
             return ResponseEntity.ok(report);
+        }
+        catch (AccessDeniedException e)
+        {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(buildErrorResponse("ACCESS_DENIED", e.getMessage()));
         }
         catch (BusinessException e)
         {

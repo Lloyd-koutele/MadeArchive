@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import made.archive.entite.PkiKeyStatus;
 import made.archive.entite.Role;
 import made.archive.entite.Role_Name;
 import made.archive.entite.User;
@@ -16,6 +17,9 @@ import made.archive.entite.User;
 public interface UserRepository extends JpaRepository<User, UUID>
 {
     Optional<User> findByEmail(String email);
+
+    /** Comptes dont la clé de signature a ce statut (contrôle quotidien des clés des éditeurs). */
+    List<User> findByPkiKeyStatus(PkiKeyStatus statut);
 
     Optional<User> findByTelephone(String telephone);
 

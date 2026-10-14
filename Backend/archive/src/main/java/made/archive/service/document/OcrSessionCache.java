@@ -34,6 +34,9 @@ public class OcrSessionCache
     public static class OcrSessionData
     {
         public UUID   sessionId;
+
+        /** Éditeur qui a déposé le fichier : seul lui peut finaliser cette session (voir DocumentUploadeService.finalizeUpload). */
+        public UUID   proprietaireId;
         public Long   typeDocumentId;
 
         // ── Fichiers ────────────────────────────────────────────────────────

@@ -130,6 +130,22 @@ public class AlerteIntegriteService
         auditLogService.log(null, AuditAction.CLE_CHIFFREMENT_ANOMALIE, description, false);
     }
 
+    /** La clé de signature d'un éditeur ne correspond plus à celle enregistrée : alerte aux ADMIN globaux. */
+    public void clePkiAnormale(String description)
+    {
+        try
+        {
+            notificationService.notifier(userRepository.findByRoleName(Role_Name.ADMIN),
+                NotificationType.INTEGRITE_PREUVE_ALTEREE,
+                "ALERTE SÉCURITÉ — " + description);
+        }
+        catch (Exception e)
+        {
+            log.warn("[Cles-PKI] Notification (best-effort) échouée : {}", e.getMessage());
+        }
+        auditLogService.log(null, AuditAction.CLE_PKI_ANOMALIE, description, false);
+    }
+
     /** Anomalie globale (ancrage du catalogue, scellement du journal) — pas rattachée à un document. */
     public void anomalieGlobale(String description)
     {

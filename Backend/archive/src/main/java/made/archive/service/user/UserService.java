@@ -666,6 +666,14 @@ public class UserService
             user.setPkiKeyStatus(PkiKeyStatus.ACTIVE);
             user.setPkiKeyCreatedAt(LocalDateTime.now());
             userRepository.save(user);
+
+            // L'empreinte de la clé publique entre dans le journal d'audit chaîné, scellé et horodaté : référence
+            // que la base seule ne permet pas de réécrire sans que le chaînage le révèle.
+            auditLogService.log(null, AuditAction.CLE_PKI_CREEE, AuditCible.UTILISATEUR, user.getId().toString(), null,
+                "Clé de signature créée pour " + user.getEmail() + " (alias " + alias + ") — empreinte SHA-256 de la clé publique : "
+                    + java.util.HexFormat.of().formatHex(
+                        java.security.MessageDigest.getInstance("SHA-256").digest(clePublique.getEncoded())),
+                true);
         }
         catch (Exception e)
         {
