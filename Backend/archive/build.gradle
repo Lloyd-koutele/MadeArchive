@@ -175,6 +175,9 @@ tasks.named('test') {
 		// complet (MinIO/Redis/Meilisearch/Ollama/HSM/secrets) — voir sa Javadoc.
 		excludeTags 'integration', 'performance', 'full-context'
 	}
+	// Configuration SoftHSM propre aux tests (jeton créé dans build/softhsm par HsmKeyStoreServicePkcs11Test) : lue par la
+	// bibliothèque PKCS#11 au chargement, donc fixée ici, avant le démarrage de la JVM de test.
+	environment 'SOFTHSM2_CONF', "${layout.buildDirectory.get().asFile}/softhsm/softhsm2.conf"
 }
 
 tasks.register('integrationTest', Test) {

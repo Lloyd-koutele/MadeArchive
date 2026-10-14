@@ -245,7 +245,7 @@ public class VerificationDocumentService
     {
         return switch (code)
         {
-            case "SIGNATURE_HASH" -> "Signature du hash PDF/A (clé du HSM)";
+            case "SIGNATURE_HASH" -> "Signature du hash PDF/A (clé du SoftHSM)";
             case "ENREGISTREMENT" -> "Sceau de l'enregistrement en base";
             case "HORODATAGE" -> "Horodatage RFC 3161";
             case "MANIFESTE" -> "Manifeste verrouillé (bucket de preuves)";

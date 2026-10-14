@@ -41,7 +41,7 @@ import java.util.stream.Collectors;
  * d'elle-même concaténée à l'empreinte de l'entrée précédente (par position
  * croissante), rendant toute modification ou suppression détectable.
  *
- * L'empreinte d'un maillon est un HMAC-SHA256 dont la CLÉ reste dans le HSM (alias {@link #ALIAS_CLE_CHAINE}) :
+ * L'empreinte d'un maillon est un HMAC-SHA256 dont la CLÉ reste dans le SoftHSM (alias {@link #ALIAS_CLE_CHAINE}) :
  * l'algorithme est public mais, sans la clé, personne — pas même qui peut écrire dans PostgreSQL — ne peut recalculer
  * la chaîne après avoir modifié une entrée. Chaque maillon dépendant de TOUS les précédents, le premier maillon
  * HMAC verrouille aussi l'historique antérieur, chaîné en SHA-256 simple avant cette évolution (la position de
@@ -119,7 +119,7 @@ public class AuditChainService
         this.tx = new TransactionTemplate(transactionManager);
     }
 
-    /** Alias, dans le HSM fichier, de la clé secrète HMAC qui authentifie les maillons de la chaîne. */
+    /** Alias, dans le SoftHSM fichier, de la clé secrète HMAC qui authentifie les maillons de la chaîne. */
     public static final String ALIAS_CLE_CHAINE = "chaine-audit-hmac";
 
     private static final String PREFIXE_HMAC       = "MADEARCHIVE-CHAINE-AUDIT-V2";
@@ -199,7 +199,7 @@ public class AuditChainService
     }
 
     /**
-     * Première utilisation du chaînage HMAC : dépose la clé dans le HSM (si absente), fige la position de bascule
+     * Première utilisation du chaînage HMAC : dépose la clé dans le SoftHSM (si absente), fige la position de bascule
      * (la prochaine à chaîner) et le premier scellement qui devra être signé. Écrit une seule fois — un déclencheur en
      * base interdit toute modification. Appelée sous le verrou du chaînage.
      */
@@ -224,7 +224,7 @@ public class AuditChainService
         }
         catch (Exception e)
         {
-            throw new CleChaineAuditException("Clé de chaînage du journal d'audit indisponible dans le HSM : "
+            throw new CleChaineAuditException("Clé de chaînage du journal d'audit indisponible dans le SoftHSM : "
                 + e.getMessage());
         }
     }
@@ -235,7 +235,7 @@ public class AuditChainService
         if (!calcul.hex(LIBELLE_CONTROLE).equals(config.getCleEmpreinte()))
         {
             throw new CleChaineAuditException("La clé de chaînage du journal d'audit n'est plus celle utilisée jusqu'ici "
-                + "(alias '" + config.getCleAlias() + "') : chaînage suspendu, rétablir la clé d'origine du HSM.");
+                + "(alias '" + config.getCleAlias() + "') : chaînage suspendu, rétablir la clé d'origine du SoftHSM.");
         }
     }
 
@@ -380,7 +380,7 @@ public class AuditChainService
                     if (!calcul.hex(LIBELLE_CONTROLE).equals(config.getCleEmpreinte()))
                     {
                         anomaliesGlobales.add("La clé de chaînage du journal d'audit n'est plus celle utilisée jusqu'ici : "
-                            + "les maillons HMAC n'ont pas pu être vérifiés (rétablir la clé d'origine du HSM).");
+                            + "les maillons HMAC n'ont pas pu être vérifiés (rétablir la clé d'origine du SoftHSM).");
                         verifierMaillons(chaine, debutHmac, null, ruptures, hashLiveParEntryId, positionLiveParEntryId);
                     }
                     else
@@ -396,7 +396,7 @@ public class AuditChainService
                 {
                     throw e;
                 }
-                anomaliesGlobales.add("La clé de chaînage du journal d'audit est introuvable dans le HSM : les maillons "
+                anomaliesGlobales.add("La clé de chaînage du journal d'audit est introuvable dans le SoftHSM : les maillons "
                     + "HMAC n'ont pas pu être vérifiés (" + e.getMessage() + ").");
                 verifierMaillons(chaine, debutHmac, null, ruptures, hashLiveParEntryId, positionLiveParEntryId);
             }
@@ -521,7 +521,7 @@ public class AuditChainService
                     if (valide.isPresent() && !valide.get())
                     {
                         ruptures.add(rupture(entree, nom + " : signature du système invalide (scellement modifié "
-                            + "ou fabriqué sans la clé du HSM)"));
+                            + "ou fabriqué sans la clé du SoftHSM)"));
                     }
                 }
 

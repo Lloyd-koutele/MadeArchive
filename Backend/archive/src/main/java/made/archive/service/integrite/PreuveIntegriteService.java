@@ -75,8 +75,8 @@ public class PreuveIntegriteService
         {
             if (!hsm.hasKey(ALIAS_SYSTEME))
             {
-                hsm.storePrivateKey(ALIAS_SYSTEME, pkiService.generateNativeKeyPair());
-                log.info("[Preuves] Clé système '{}' créée dans le HSM fichier", ALIAS_SYSTEME);
+                hsm.provisionnerCle(ALIAS_SYSTEME);
+                log.info("[Preuves] Clé système '{}' créée dans le SoftHSM", ALIAS_SYSTEME);
             }
         }
         catch (Exception e)
@@ -391,7 +391,7 @@ public class PreuveIntegriteService
         if (sigFichier.orElse(false) || enregSurFichier)
         {
             return new Constat(Verdict.PREUVE_ALTEREE, "Fichier conforme (" + (sigFichier.orElse(false)
-                ? "signature du hash" : "signature de l'enregistrement") + ", clé du HSM) mais preuves en base altérées : "
+                ? "signature du hash" : "signature de l'enregistrement") + ", clé du SoftHSM) mais preuves en base altérées : "
                 + (faits.isEmpty() ? "l'enregistrement en base n'est plus conforme à ses preuves" : String.join(", ", faits)), false);
         }
 
@@ -452,7 +452,7 @@ public class PreuveIntegriteService
         if (sig.isPresent())
         {
             points.add(sig.get()
-                ? new Point("SIGNATURE_HASH", Gravite.OK, "Signature du hash PDF/A valide (clé du HSM)")
+                ? new Point("SIGNATURE_HASH", Gravite.OK, "Signature du hash PDF/A valide (clé du SoftHSM)")
                 : new Point("SIGNATURE_HASH", Gravite.ECHEC, "Signature du hash PDF/A INVALIDE"));
             altere |= !sig.get();
         }

@@ -27,8 +27,8 @@ pièces d'identité, contrats...) avec les garanties attendues d'un système
 d'archivage électronique probant :
 
 - **Intégrité prouvable** : chaque document est converti en PDF/A, empreinte
-  SHA-256, signé (PKI, clé propre à l'éditeur, conservée dans un keystore
-  PKCS#12) et horodaté (RFC 3161). Son arrivée dans MinIO est vérifiée avant
+  SHA-256, signé (PKI, clé propre à l'éditeur, générée et conservée dans un
+  SoftHSM, HSM logiciel PKCS#11, jamais exportable) et horodaté (RFC 3161). Son arrivée dans MinIO est vérifiée avant
   toute écriture en base. Il est ensuite contrôlé chaque nuit (contrôle de
   fixité automatisé).
 - **Vérification instantanée** : bouton « Vérifier l'intégrité » (lecture seule)
@@ -37,7 +37,7 @@ d'archivage électronique probant :
   tracée dans le journal. Un tiers peut aussi vérifier une attestation sans
   compte, via un QR code et une page publique à jeton temporaire.
 - **Journal d'audit infalsifiable** : entrées chaînées par HMAC (clé tenue dans
-  le keystore), scellements signés, registre hors base et ancrage quotidien
+  le SoftHSM), scellements signés, registre hors base et ancrage quotidien
   horodaté ; toute modification ou suppression d'une entrée est détectée.
 - **Trois modes de versement** : dépôt unitaire, dépôt en masse, import par
   lien web (durci : contrôle du type réel du fichier, protection SSRF) ou par
@@ -113,7 +113,7 @@ déploiement.
 - PostgreSQL (données), Redis (cache)
 - Tesseract OCR + Apache PDFBox (extraction de texte/position)
 - Ollama + `qwen2.5-coder:14b` (génération de règles d'extraction par IA locale)
-- Signature PKI (keystore PKCS12, Bouncy Castle) + horodatage RFC 3161
+- Signature PKI (SoftHSM via PKCS#11, Bouncy Castle) + horodatage RFC 3161
 - Chiffrement des fichiers AES-256-GCM, détection du type réel (Apache Tika)
 - Flyway (migrations de schéma versionnées)
 
@@ -165,7 +165,7 @@ MadeArchive/
 │   ├── traefik/                        # Dockerfile + template de config Traefik
 │   ├── deploy/helm/                    # Charts Kubernetes (alternative à Docker Compose)
 │   ├── Blockchain/                     # Smart contract Solidity (ancrage optionnel)
-│   ├── hsm/                            # Keystore PKCS12 (clés de signature PKI)
+│   ├── docker-entrypoint.sh            # Initialise le jeton SoftHSM au premier démarrage
 │   ├── docker-compose.yml              # Déploiement de référence (10 services)
 │   ├── .env.example                    # Modèle de configuration — copier en .env
 │   ├── DEPLOYMENT.md                   # Guide de déploiement détaillé
@@ -290,12 +290,14 @@ services:
       MINIO_URL: http://minio:9000
       MEILISEARCH_HOST: http://meilisearch:7700
     volumes:
-      - hsm_data:/app/hsm       # clés de signature PKI : doit survivre aux redéploiements
+      - hsm_data:/app/hsm       # registre des scellements, certificat de l'horodatage : hors base
+      - softhsm_tokens:/var/lib/softhsm/tokens   # jeton SoftHSM (clés de signature PKI) : doit survivre aux redéploiements
 
 volumes:
   postgres_data:
   ollama_data:
   hsm_data:
+  softhsm_tokens:
   traefik_certs:
 ```
 
@@ -321,7 +323,8 @@ MEILI_MASTER_KEY=CHANGE_MOI               # openssl rand -base64 32
 
 CHROMIUM_TOKEN=CHANGE_MOI                 # openssl rand -hex 24
 
-HSM_KEYSTORE_PASSWORD=CHANGE_MOI          # openssl rand -base64 32
+HSM_PIN=CHANGE_MOI                        # code PIN du jeton SoftHSM — openssl rand -hex 12
+HSM_SO_PIN=CHANGE_MOI                     # code PIN administrateur du jeton — openssl rand -hex 12
 
 # DOIT faire exactement 32 octets une fois décodée en Base64
 STORAGE_ENCRYPTION_KEY=CHANGE_MOI         # openssl rand -base64 32
@@ -445,9 +448,8 @@ Backend/archive/
 ├── docker-compose.yml       # tel quel, cloné depuis le dépôt
 ├── .env                     # créé à partir de .env.example, toutes les
 │                            # valeurs "À CHANGER" remplacées, chmod 600
-├── hsm/
-│   └── editors-keystore.p12 # keystore PKI — généré au premier lancement
-│                            # s'il n'existe pas encore
+├── docker-entrypoint.sh     # initialise le jeton SoftHSM (clés de signature) au premier
+│                            # démarrage ; le jeton vit sur un volume nommé
 └── traefik/
     ├── Dockerfile
     └── dynamic.yml.template # régénère traefik/dynamic.yml automatiquement

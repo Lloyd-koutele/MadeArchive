@@ -136,7 +136,7 @@ public class RapportVerificationPdfService
             }
             p.espace(10);
             p.bloc(TEXTE, 8, "Rapport en lecture seule : cette verification ne modifie ni le document ni son statut. "
-                + "Les preuves consultees (cle du HSM, jeton RFC 3161, manifeste verrouille, journal chaine) sont "
+                + "Les preuves consultees (cle du SoftHSM, jeton RFC 3161, manifeste verrouille, journal chaine) sont "
                 + "independantes de la base de donnees.", MARGE, LARGEUR, GRIS);
             p.cs.close();
 

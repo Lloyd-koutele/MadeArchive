@@ -223,7 +223,10 @@ services:
       REDIS_PORT: 6379
       APP_DOMAIN: ${APP_DOMAIN:-localhost:5173}
     volumes:
+      # Registre des scellements du journal et certificat de l'autorité d'horodatage : hors base, donc hors PostgreSQL.
       - hsm_data:/app/hsm
+      # Jeton SoftHSM (clés de signature, clé système, clé de chaînage du journal) : doit survivre aux redéploiements.
+      - softhsm_tokens:/var/lib/softhsm/tokens
 
 volumes:
   postgres_data:
@@ -231,6 +234,7 @@ volumes:
   meilisearch_data:
   ollama_data:
   hsm_data:
+  softhsm_tokens:
   traefik_certs:
 
 networks:

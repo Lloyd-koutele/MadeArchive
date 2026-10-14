@@ -21,7 +21,9 @@ import java.nio.file.Files;
 import java.security.Key;
 import java.security.KeyPair;
 import java.security.KeyStore;
+import java.security.KeyPairGenerator;
 import java.security.PrivateKey;
+import java.security.Provider;
 import java.security.PublicKey;
 import java.security.Security;
 import java.security.Signature;
@@ -46,8 +48,16 @@ public class HsmKeyStoreService
 {
     private static final String KEYSTORE_TYPE = "PKCS12";
     private static final String SIGNATURE_ALGORITHM = "SHA256withRSA";
+    private static final int TAILLE_CLE_RSA = 2048;
+    private static final String NOM_FOURNISSEUR_PKCS11 = "SoftHSM";
 
     private final HsmProperties hsmProperties;
+
+    /** Fournisseur PKCS#11 (SoftHSM) en mode PKCS11 ; null en mode PKCS12 (fichier). */
+    private Provider fournisseurPkcs11;
+
+    /** Magasin du jeton, ouvert une fois (le jeton est vivant : toute clé ajoutée y est immédiatement visible). */
+    private KeyStore magasinPkcs11;
 
     /**
      * Verrou lecture/écriture (pas un verrou global) : signer (sign/hasKey)
@@ -68,6 +78,12 @@ public class HsmKeyStoreService
             Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
         }
 
+        if (hsmProperties.estPkcs11())
+        {
+            initialiserPkcs11();
+            return;
+        }
+
         File file = keystoreFile();
         if (!file.exists())
         {
@@ -77,7 +93,7 @@ public class HsmKeyStoreService
                 File parent = file.getParentFile();
                 if (parent != null && !parent.exists() && !parent.mkdirs())
                 {
-                    throw new BusinessException("Impossible de créer le dossier du HSM fichier : " + parent);
+                    throw new BusinessException("Impossible de créer le dossier du SoftHSM : " + parent);
                 }
 
                 KeyStore keyStore = KeyStore.getInstance(KEYSTORE_TYPE);
@@ -86,11 +102,11 @@ public class HsmKeyStoreService
                 {
                     keyStore.store(out, password());
                 }
-                log.info("[HSM] KeyStore PKCS12 initialisé : {}", file.getAbsolutePath());
+                log.info("[SoftHSM] KeyStore PKCS12 initialisé : {}", file.getAbsolutePath());
             }
             catch (Exception e)
             {
-                throw new BusinessException("Impossible d'initialiser le HSM fichier", e);
+                throw new BusinessException("Impossible d'initialiser le SoftHSM", e);
             }
             finally
             {
@@ -99,11 +115,108 @@ public class HsmKeyStoreService
         }
     }
 
+    /** Ouvre le jeton SoftHSM par PKCS#11. Échoue au démarrage, avec un message clair, si le jeton n'est pas prêt. */
+    private void initialiserPkcs11()
+    {
+        try
+        {
+            String bibliotheque = hsmProperties.getPkcs11Library();
+            if (bibliotheque == null || !new File(bibliotheque).isFile())
+            {
+                throw new BusinessException("Bibliothèque PKCS#11 introuvable : " + bibliotheque
+                    + " (SoftHSM est-il installé ? hsm.pkcs11-library / HSM_PKCS11_LIBRARY)");
+            }
+            char[] pin = pin();
+
+            Provider fournisseur = Security.getProvider("SunPKCS11-" + NOM_FOURNISSEUR_PKCS11);
+            if (fournisseur == null)
+            {
+                Provider base = Security.getProvider("SunPKCS11");
+                if (base == null)
+                {
+                    throw new BusinessException("Le fournisseur Java SunPKCS11 n'est pas disponible dans cette JVM");
+                }
+                fournisseur = base.configure("--name = " + NOM_FOURNISSEUR_PKCS11 + "\n"
+                    + "library = " + bibliotheque + "\n"
+                    + "slotListIndex = " + hsmProperties.getPkcs11SlotListIndex() + "\n");
+                Security.addProvider(fournisseur);
+            }
+
+            KeyStore magasin = KeyStore.getInstance("PKCS11", fournisseur);
+            magasin.load(null, pin);
+            fournisseurPkcs11 = fournisseur;
+            magasinPkcs11 = magasin;
+            log.info("[SoftHSM] Jeton PKCS#11 ouvert (bibliothèque {}, slot {})", bibliotheque,
+                hsmProperties.getPkcs11SlotListIndex());
+        }
+        catch (BusinessException e)
+        {
+            throw e;
+        }
+        catch (Exception e)
+        {
+            throw new BusinessException("Impossible d'ouvrir le jeton SoftHSM (jeton initialisé ? code PIN correct ?) : "
+                + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Génère une paire de clés RSA pour cet alias et la dépose, avec son certificat auto-signé. En mode PKCS11 la paire est
+     * générée À L'INTÉRIEUR du jeton et la clé privée n'en sort jamais (non exportable) ; en mode PKCS12, elle est générée
+     * en mémoire puis déposée dans le fichier. Une clé existante n'est JAMAIS remplacée : sa clé publique est renvoyée.
+     *
+     * @return la clé publique de l'alias
+     */
+    public PublicKey provisionnerCle(String alias)
+    {
+        if (alias == null || alias.isBlank())
+        {
+            throw new BusinessException("L'alias de la clé du SoftHSM est obligatoire");
+        }
+
+        lock.writeLock().lock();
+        try
+        {
+            KeyStore keyStore = loadKeyStore();
+            if (keyStore.containsAlias(alias))
+            {
+                log.warn("[SoftHSM] Une clé existe déjà sous l'alias '{}' : elle n'est pas remplacée", alias);
+                return keyStore.getCertificate(alias).getPublicKey();
+            }
+
+            KeyPairGenerator generateur = fournisseurPkcs11 != null
+                ? KeyPairGenerator.getInstance("RSA", fournisseurPkcs11)
+                : KeyPairGenerator.getInstance("RSA");
+            generateur.initialize(TAILLE_CLE_RSA);
+            KeyPair paire = generateur.generateKeyPair();
+
+            X509Certificate certificate = selfSignedCertificate(paire, fournisseurPkcs11 != null);
+            keyStore.setKeyEntry(alias, paire.getPrivate(), motDePasseCle(), new Certificate[] { certificate });
+            persist(keyStore);
+            log.info("[SoftHSM] Paire de clés RSA {} générée et déposée sous l'alias '{}'{}", TAILLE_CLE_RSA, alias,
+                fournisseurPkcs11 != null ? " (dans le jeton, clé privée non exportable)" : "");
+            return certificate.getPublicKey();
+        }
+        catch (BusinessException e)
+        {
+            throw e;
+        }
+        catch (Exception e)
+        {
+            log.error("[SoftHSM] Erreur lors de la génération de la clé pour l'alias '{}' : {}", alias, e.getMessage());
+            throw new BusinessException("Impossible de générer la clé dans le SoftHSM", e);
+        }
+        finally
+        {
+            lock.writeLock().unlock();
+        }
+    }
+
     public void storePrivateKey(String alias, KeyPair keyPair)
     {
         if (alias == null || alias.isBlank())
         {
-            throw new BusinessException("L'alias de la clé HSM est obligatoire");
+            throw new BusinessException("L'alias de la clé du SoftHSM est obligatoire");
         }
 
         lock.writeLock().lock();
@@ -111,21 +224,21 @@ public class HsmKeyStoreService
         {
             KeyStore keyStore = loadKeyStore();
 
-            X509Certificate certificate = selfSignedCertificate(keyPair);
+            X509Certificate certificate = selfSignedCertificate(keyPair, false);
             keyStore.setKeyEntry(
                 alias,
                 keyPair.getPrivate(),
-                password(),
+                motDePasseCle(),
                 new Certificate[] { certificate }
             );
 
             persist(keyStore);
-            log.info("[HSM] Clé privée déposée dans le HSM fichier sous l'alias '{}'", alias);
+            log.info("[SoftHSM] Clé privée déposée dans le SoftHSM sous l'alias '{}'", alias);
         }
         catch (Exception e)
         {
-            log.error("[HSM] Erreur lors du dépôt de la clé pour l'alias '{}' : {}", alias, e.getMessage());
-            throw new BusinessException("Impossible de déposer la clé privée dans le HSM fichier", e);
+            log.error("[SoftHSM] Erreur lors du dépôt de la clé pour l'alias '{}' : {}", alias, e.getMessage());
+            throw new BusinessException("Impossible de déposer la clé privée dans le SoftHSM", e);
         }
         finally
         {
@@ -150,16 +263,19 @@ public class HsmKeyStoreService
 
             if (!keyStore.containsAlias(alias))
             {
-                throw new BusinessException("Aucune clé HSM trouvée pour l'alias '" + alias + "'");
+                throw new BusinessException("Aucune clé trouvée dans le SoftHSM pour l'alias '" + alias + "'");
             }
 
-            Key key = keyStore.getKey(alias, password());
+            Key key = keyStore.getKey(alias, motDePasseCle());
             if (!(key instanceof PrivateKey privateKey))
             {
-                throw new BusinessException("L'entrée '" + alias + "' du HSM fichier n'est pas une clé privée");
+                throw new BusinessException("L'entrée '" + alias + "' du SoftHSM n'est pas une clé privée");
             }
 
-            Signature signature = Signature.getInstance(SIGNATURE_ALGORITHM);
+            // En mode PKCS11 la clé est une référence vers le jeton : la signature est calculée par le jeton.
+            Signature signature = fournisseurPkcs11 != null
+                ? Signature.getInstance(SIGNATURE_ALGORITHM, fournisseurPkcs11)
+                : Signature.getInstance(SIGNATURE_ALGORITHM);
             signature.initSign(privateKey);
             signature.update(hexStringToByteArray(sha256Hash));
 
@@ -171,8 +287,8 @@ public class HsmKeyStoreService
         }
         catch (Exception e)
         {
-            log.error("[HSM] Erreur lors de la signature avec l'alias '{}' : {}", alias, e.getMessage());
-            throw new BusinessException("Impossible de signer avec la clé du HSM fichier", e);
+            log.error("[SoftHSM] Erreur lors de la signature avec l'alias '{}' : {}", alias, e.getMessage());
+            throw new BusinessException("Impossible de signer avec la clé du SoftHSM", e);
         }
         finally
         {
@@ -217,7 +333,7 @@ public class HsmKeyStoreService
         }
         catch (Exception e)
         {
-            log.warn("[HSM] Lecture de la clé publique '{}' impossible : {}", alias, e.getMessage());
+            log.warn("[SoftHSM] Lecture de la clé publique '{}' impossible : {}", alias, e.getMessage());
             return Optional.empty();
         }
         finally
@@ -280,7 +396,7 @@ public class HsmKeyStoreService
     }
 
     /**
-     * Dépose dans le HSM fichier une clé secrète HMAC-SHA256 de 256 bits sous cet alias, si elle n'y est pas déjà.
+     * Dépose dans le SoftHSM une clé secrète HMAC-SHA256 de 256 bits sous cet alias, si elle n'y est pas déjà.
      * Une clé existante n'est JAMAIS remplacée (la remplacer rendrait invérifiable tout ce qu'elle a authentifié).
      *
      * @return true si la clé vient d'être créée
@@ -289,7 +405,7 @@ public class HsmKeyStoreService
     {
         if (alias == null || alias.isBlank())
         {
-            throw new BusinessException("L'alias de la clé HSM est obligatoire");
+            throw new BusinessException("L'alias de la clé du SoftHSM est obligatoire");
         }
         lock.writeLock().lock();
         try
@@ -299,12 +415,15 @@ public class HsmKeyStoreService
             {
                 return false;
             }
-            KeyGenerator generateur = KeyGenerator.getInstance(HMAC_ALGORITHM);
+            KeyGenerator generateur = fournisseurPkcs11 != null
+                ? KeyGenerator.getInstance(HMAC_ALGORITHM, fournisseurPkcs11)
+                : KeyGenerator.getInstance(HMAC_ALGORITHM);
             generateur.init(256);
             SecretKey cle = generateur.generateKey();
-            keyStore.setEntry(alias, new KeyStore.SecretKeyEntry(cle), new KeyStore.PasswordProtection(password()));
+            keyStore.setEntry(alias, new KeyStore.SecretKeyEntry(cle),
+                fournisseurPkcs11 != null ? null : new KeyStore.PasswordProtection(password()));
             persist(keyStore);
-            log.info("[HSM] Clé secrète HMAC déposée dans le HSM fichier sous l'alias '{}'", alias);
+            log.info("[SoftHSM] Clé secrète HMAC déposée dans le SoftHSM sous l'alias '{}'", alias);
             return true;
         }
         catch (BusinessException e)
@@ -313,8 +432,8 @@ public class HsmKeyStoreService
         }
         catch (Exception e)
         {
-            log.error("[HSM] Erreur lors du dépôt de la clé secrète '{}' : {}", alias, e.getMessage());
-            throw new BusinessException("Impossible de déposer la clé secrète dans le HSM fichier", e);
+            log.error("[SoftHSM] Erreur lors du dépôt de la clé secrète '{}' : {}", alias, e.getMessage());
+            throw new BusinessException("Impossible de déposer la clé secrète dans le SoftHSM", e);
         }
         finally
         {
@@ -338,15 +457,24 @@ public class HsmKeyStoreService
             KeyStore keyStore = loadKeyStore();
             if (!keyStore.containsAlias(alias))
             {
-                throw new BusinessException("Aucune clé secrète HSM trouvée pour l'alias '" + alias + "'");
+                throw new BusinessException("Aucune clé secrète trouvée dans le SoftHSM pour l'alias '" + alias + "'");
             }
-            Key cle = keyStore.getKey(alias, password());
+            Key cle = keyStore.getKey(alias, motDePasseCle());
             if (cle == null || cle instanceof PrivateKey)
             {
-                throw new BusinessException("L'entrée '" + alias + "' du HSM fichier n'est pas une clé secrète");
+                throw new BusinessException("L'entrée '" + alias + "' du SoftHSM n'est pas une clé secrète");
             }
-            mac = Mac.getInstance(HMAC_ALGORITHM);
-            mac.init(new SecretKeySpec(cle.getEncoded(), HMAC_ALGORITHM));
+            if (fournisseurPkcs11 != null)
+            {
+                // Clé du jeton, non exportable : le HMAC est calculé par le jeton.
+                mac = Mac.getInstance(HMAC_ALGORITHM, fournisseurPkcs11);
+                mac.init(cle);
+            }
+            else
+            {
+                mac = Mac.getInstance(HMAC_ALGORITHM);
+                mac.init(new SecretKeySpec(cle.getEncoded(), HMAC_ALGORITHM));
+            }
         }
         catch (BusinessException e)
         {
@@ -354,8 +482,8 @@ public class HsmKeyStoreService
         }
         catch (Exception e)
         {
-            log.error("[HSM] Erreur d'ouverture de la clé secrète '{}' : {}", alias, e.getMessage());
-            throw new BusinessException("Impossible d'ouvrir la clé secrète du HSM fichier", e);
+            log.error("[SoftHSM] Erreur d'ouverture de la clé secrète '{}' : {}", alias, e.getMessage());
+            throw new BusinessException("Impossible d'ouvrir la clé secrète du SoftHSM", e);
         }
         finally
         {
@@ -366,7 +494,7 @@ public class HsmKeyStoreService
         return action.apply(calcul);
     }
 
-    /** Indique si une clé existe déjà pour cet alias dans le HSM fichier. */
+    /** Indique si une clé existe déjà pour cet alias dans le SoftHSM. */
     public boolean hasKey(String alias)
     {
         lock.readLock().lock();
@@ -376,7 +504,7 @@ public class HsmKeyStoreService
         }
         catch (Exception e)
         {
-            throw new BusinessException("Impossible de consulter le HSM fichier", e);
+            throw new BusinessException("Impossible de consulter le SoftHSM", e);
         }
         finally
         {
@@ -390,6 +518,10 @@ public class HsmKeyStoreService
 
     private KeyStore loadKeyStore() throws Exception
     {
+        if (magasinPkcs11 != null)
+        {
+            return magasinPkcs11;
+        }
         KeyStore keyStore = KeyStore.getInstance(KEYSTORE_TYPE);
         try (FileInputStream in = new FileInputStream(keystoreFile()))
         {
@@ -401,6 +533,10 @@ public class HsmKeyStoreService
     /** Écrit le KeyStore via un fichier temporaire + remplacement atomique pour éviter toute corruption. */
     private void persist(KeyStore keyStore) throws Exception
     {
+        if (magasinPkcs11 != null)
+        {
+            return;   // le jeton écrit lui-même, immédiatement
+        }
         File target = keystoreFile();
         File tmp = new File(target.getParentFile(), target.getName() + ".tmp");
 
@@ -414,7 +550,7 @@ public class HsmKeyStoreService
             java.nio.file.StandardCopyOption.ATOMIC_MOVE);
     }
 
-    private X509Certificate selfSignedCertificate(KeyPair keyPair) throws Exception
+    private X509Certificate selfSignedCertificate(KeyPair keyPair, boolean cleDansLeJeton) throws Exception
     {
         X500Name dn = new X500Name(hsmProperties.getCertificateDn());
         Date notBefore = new Date();
@@ -425,8 +561,12 @@ public class HsmKeyStoreService
         X509v3CertificateBuilder builder = new JcaX509v3CertificateBuilder(
             dn, serial, notBefore, notAfter, dn, keyPair.getPublic());
 
-        ContentSigner signer = new JcaContentSignerBuilder(SIGNATURE_ALGORITHM)
-            .build(keyPair.getPrivate());
+        JcaContentSignerBuilder constructeur = new JcaContentSignerBuilder(SIGNATURE_ALGORITHM);
+        if (cleDansLeJeton)
+        {
+            constructeur.setProvider(fournisseurPkcs11);   // la clé privée ne sort pas du jeton : c'est lui qui signe
+        }
+        ContentSigner signer = constructeur.build(keyPair.getPrivate());
 
         return new JcaX509CertificateConverter()
             .setProvider("BC")
@@ -441,6 +581,22 @@ public class HsmKeyStoreService
             throw new BusinessException("hsm.keystore-path (HSM_KEYSTORE_PATH) doit être configuré");
         }
         return new File(path);
+    }
+
+    /** Mot de passe d'une entrée : celui du fichier en mode PKCS12 ; aucun en mode PKCS11 (le jeton est ouvert par le PIN). */
+    private char[] motDePasseCle()
+    {
+        return fournisseurPkcs11 != null ? null : password();
+    }
+
+    private char[] pin()
+    {
+        String pin = hsmProperties.getPin();
+        if (pin == null || pin.isBlank())
+        {
+            throw new BusinessException("hsm.pin (HSM_PIN) doit être configuré pour le SoftHSM");
+        }
+        return pin.toCharArray();
     }
 
     private char[] password()

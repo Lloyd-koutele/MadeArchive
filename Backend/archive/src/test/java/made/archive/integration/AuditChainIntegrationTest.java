@@ -107,6 +107,8 @@ class AuditChainIntegrationTest
     @DynamicPropertySource
     static void hsm(DynamicPropertyRegistry registre)
     {
+        // Fichier keystore temporaire : ces tests n'exigent pas SoftHSM (le mode PKCS11 est testé par HsmKeyStoreServicePkcs11Test).
+        registre.add("hsm.type", () -> "PKCS12");
         registre.add("hsm.keystore-path", () -> DOSSIER_HSM.resolve("hsm.p12").toString());
         registre.add("hsm.keystore-password", () -> "mot-de-passe-de-test");
     }

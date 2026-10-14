@@ -1,6 +1,5 @@
 package made.archive.service.user;
 
-import java.security.KeyPair;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -657,13 +656,13 @@ public class UserService
     {
         try
         {
-            KeyPair keyPair = pkiService.generateNativeKeyPair();
             String alias = "editor-" + user.getId();
 
-            hsmKeyStoreService.storePrivateKey(alias, keyPair);
+            // La paire est générée dans le SoftHSM : la clé privée n'est jamais en mémoire dans l'application.
+            java.security.PublicKey clePublique = hsmKeyStoreService.provisionnerCle(alias);
 
             user.setPkiKeyAlias(alias);
-            user.setPkiPublicKey(pkiService.encodePublicKeyToPem(keyPair.getPublic()));
+            user.setPkiPublicKey(pkiService.encodePublicKeyToPem(clePublique));
             user.setPkiKeyStatus(PkiKeyStatus.ACTIVE);
             user.setPkiKeyCreatedAt(LocalDateTime.now());
             userRepository.save(user);

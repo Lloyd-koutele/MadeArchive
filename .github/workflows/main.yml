@@ -38,6 +38,11 @@ jobs:
           java-version: '17'
           cache: gradle
 
+      # SoftHSM : les tests de HsmKeyStoreServicePkcs11Test (clés générées dans un vrai jeton PKCS#11) ne s'exécutent que
+      # s'il est installé ; sans lui ils sont ignorés.
+      - name: Installer SoftHSM
+        run: sudo apt-get update && sudo apt-get install -y softhsm2
+
       - name: Exécuter les tests unitaires
         working-directory: ${{ env.PROJET }}
         run: ./gradlew test
