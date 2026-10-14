@@ -16,7 +16,7 @@ public class PdfAProperties
      * Partie de la norme ISO 19005 visée (niveau de conformité toujours "b") :
      * 2 → PDF/A-2b, 3 → PDF/A-3b. Seules ces deux valeurs sont acceptées.
      */
-    private int partie = 3;
+    private int partie = 2;
 
     /** Exécutable Ghostscript — "gs" s'il est dans le PATH (cas du Dockerfile). */
     private String ghostscriptChemin = "gs";
