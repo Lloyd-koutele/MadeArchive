@@ -39,8 +39,8 @@ public class HorodatageProperties
     private String password;
 
     /**
-     * Fichier des empreintes de certificats de TSA "ancrées" (une par ligne, SHA-256 hex) — vide = à côté du
-     * KeyStore HSM (même volume, donc hors base de données). Alimenté automatiquement par chaque réponse EN
+     * Fichier des empreintes de certificats de TSA "ancrées" (une par ligne, SHA-256 hex) — vide = dans le
+     * dossier de preuves (voir DossierPreuves, hors base de données). Alimenté automatiquement par chaque réponse EN
      * DIRECT d'un TSA (voir TsaAncreService) ; jamais par un jeton lu en base.
      */
     private String ancresPath;

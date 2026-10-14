@@ -97,7 +97,7 @@ class HorodatageVerificationServiceTest
     {
         HorodatageProperties p = new HorodatageProperties();
         p.setAncresPath(dossier.resolve("ancres.txt").toString());
-        return new TsaAncreService(p, new HsmProperties());
+        return new TsaAncreService(p, new made.archive.config.DossierPreuves("", new HsmProperties()));
     }
 
     @Test

@@ -13,7 +13,7 @@ import org.springframework.stereotype.Service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import made.archive.config.HsmProperties;
+import made.archive.config.DossierPreuves;
 import made.archive.entite.AuditChainSeal;
 import made.archive.security.HsmKeyStoreService;
 import made.archive.service.document.HashService;
@@ -44,25 +44,20 @@ public class RegistreScellementsService
     public record Ligne(long id, long creeLeEpoch, String chainHash, String empreinteSignature) {}
 
     /**
-     * @param disponible       false si aucun emplacement n'est configuré (pas de KeyStore HSM) : rien à comparer
+     * @param disponible       false si aucun dossier de preuves n'est configuré : rien à comparer
      * @param fichierPresent   false si le fichier n'existe pas
      * @param lignes           lignes dont la signature est valide
      * @param lignesInvalides  nombre de lignes illisibles ou à signature invalide (registre altéré)
      */
     public record Lecture(boolean disponible, boolean fichierPresent, List<Ligne> lignes, int lignesInvalides) {}
 
-    private final HsmProperties hsmProperties;
+    private final DossierPreuves dossierPreuves;
     private final HsmKeyStoreService hsm;
     private final HashService hashService;
 
     private Optional<Path> fichier()
     {
-        String chemin = hsmProperties.getKeystorePath();
-        if (chemin == null || chemin.isBlank())
-        {
-            return Optional.empty();
-        }
-        return Optional.of(Path.of(chemin).resolveSibling(NOM_FICHIER));
+        return dossierPreuves.fichier(NOM_FICHIER);
     }
 
     private String contenu(AuditChainSeal s)

@@ -217,14 +217,17 @@ services:
       CHROMIUM_WS_ENDPOINT: ws://chromium:3000/playwright/chromium?token=${CHROMIUM_TOKEN}
       MINIO_URL: http://minio:9000
       MEILISEARCH_HOST: http://meilisearch:7700
-      HSM_KEYSTORE_PATH: /app/hsm/editors-keystore.p12
+      PREUVES_DOSSIER: /app/preuves
+      HORODATAGE_ANCRES_PATH: /app/tsa_ancre/tsa-ancres.txt
       GOTENBERG_URL: http://gotenberg:3000
       REDIS_HOST: redis
       REDIS_PORT: 6379
       APP_DOMAIN: ${APP_DOMAIN:-localhost:5173}
     volumes:
-      # Registre des scellements du journal et certificat de l'autorité d'horodatage : hors base, donc hors PostgreSQL.
-      - hsm_data:/app/hsm
+      # Registre des scellements du journal : hors base, donc hors PostgreSQL. Aucune clé ici : elles sont dans le jeton SoftHSM.
+      - preuves_data:/app/preuves
+      # Empreintes des certificats des autorités d'horodatage (tsa-ancres.txt) : racine de confiance des jetons RFC 3161, hors base.
+      - tsa_ancre_data:/app/tsa_ancre
       # Jeton SoftHSM (clés de signature, clé système, clé de chaînage du journal) : doit survivre aux redéploiements.
       - softhsm_tokens:/var/lib/softhsm/tokens
 
@@ -233,7 +236,8 @@ volumes:
   minio_data:
   meilisearch_data:
   ollama_data:
-  hsm_data:
+  preuves_data:
+  tsa_ancre_data:
   softhsm_tokens:
   traefik_certs:
 

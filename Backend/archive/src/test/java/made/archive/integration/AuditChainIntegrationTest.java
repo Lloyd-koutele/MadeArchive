@@ -86,7 +86,7 @@ class AuditChainIntegrationTest
     @EntityScan(basePackages = "made.archive.entite")
     @EnableJpaRepositories(basePackages = "made.archive.repository")
     @Import({ AuditChainService.class, HashService.class, HsmKeyStoreService.class, HsmProperties.class,
-              RegistreScellementsService.class, PkiService.class })
+              RegistreScellementsService.class, PkiService.class, made.archive.config.DossierPreuves.class })
     static class Config {}
 
     /** HSM fichier réel (KeyStore PKCS12 temporaire) : la chaîne est testée avec une vraie clé HMAC et de vraies signatures. */
@@ -109,6 +109,7 @@ class AuditChainIntegrationTest
     {
         // Fichier keystore temporaire : ces tests n'exigent pas SoftHSM (le mode PKCS11 est testé par HsmKeyStoreServicePkcs11Test).
         registre.add("hsm.type", () -> "PKCS12");
+        registre.add("preuves.dossier", () -> DOSSIER_HSM.toString());
         registre.add("hsm.keystore-path", () -> DOSSIER_HSM.resolve("hsm.p12").toString());
         registre.add("hsm.keystore-password", () -> "mot-de-passe-de-test");
     }

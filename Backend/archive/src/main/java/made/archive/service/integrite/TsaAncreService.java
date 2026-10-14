@@ -19,7 +19,7 @@ import org.springframework.stereotype.Service;
 
 import lombok.extern.slf4j.Slf4j;
 import made.archive.config.HorodatageProperties;
-import made.archive.config.HsmProperties;
+import made.archive.config.DossierPreuves;
 
 /**
  * Racine de confiance des jetons d'horodatage : les certificats de TSA dont une réponse EN DIRECT a déjà été
@@ -27,8 +27,8 @@ import made.archive.config.HsmProperties;
  *
  * Un jeton RFC 3161 embarque le certificat qui l'a signé : sans ancre, n'importe qui peut fabriquer un jeton
  * valide avec son propre certificat. On retient donc l'empreinte du certificat de chaque réponse obtenue
- * directement auprès du TSA configuré (voir HorodatageService.horodater) dans un fichier posé à côté du KeyStore
- * HSM — même volume, hors de portée d'un attaquant qui n'a que la base. Un jeton lu plus tard n'est tenu pour
+ * directement auprès du TSA configuré (voir HorodatageService.horodater) dans un fichier du dossier de preuves
+ * (DossierPreuves) — volume dédié, hors de portée d'un attaquant qui n'a que la base. Un jeton lu plus tard n'est tenu pour
  * "ancré" que si son certificat figure dans ce fichier. Le premier jeton reçu est accepté sur la foi du réseau
  * à cet instant (principe "faire confiance à la première utilisation") ; les empreintes peuvent aussi être
  * fournies d'avance (horodatage.ancres-supplementaires).
@@ -40,9 +40,9 @@ public class TsaAncreService
     private final Path fichier;
     private final Set<String> empreintes = ConcurrentHashMap.newKeySet();
 
-    public TsaAncreService(HorodatageProperties props, HsmProperties hsmProps)
+    public TsaAncreService(HorodatageProperties props, DossierPreuves dossierPreuves)
     {
-        this.fichier = resoudreFichier(props, hsmProps);
+        this.fichier = resoudreFichier(props, dossierPreuves);
 
         if (props.getAncresSupplementaires() != null)
         {
@@ -69,17 +69,13 @@ public class TsaAncreService
         }
     }
 
-    private static Path resoudreFichier(HorodatageProperties props, HsmProperties hsmProps)
+    private static Path resoudreFichier(HorodatageProperties props, DossierPreuves dossierPreuves)
     {
         if (props.getAncresPath() != null && !props.getAncresPath().isBlank())
         {
             return Path.of(props.getAncresPath());
         }
-        if (hsmProps.getKeystorePath() != null && !hsmProps.getKeystorePath().isBlank())
-        {
-            return Path.of(hsmProps.getKeystorePath()).resolveSibling("tsa-ancres.txt");
-        }
-        return null;
+        return dossierPreuves.fichier("tsa-ancres.txt").orElse(null);
     }
 
     /** Signataire du jeton, tel qu'embarqué dedans — null si le jeton n'embarque pas son certificat. */

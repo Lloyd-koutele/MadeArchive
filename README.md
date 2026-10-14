@@ -290,13 +290,15 @@ services:
       MINIO_URL: http://minio:9000
       MEILISEARCH_HOST: http://meilisearch:7700
     volumes:
-      - hsm_data:/app/hsm       # registre des scellements, certificat de l'horodatage : hors base
+      - preuves_data:/app/preuves   # registre des scellements du journal : hors base (aucune clé)
+      - tsa_ancre_data:/app/tsa_ancre   # empreintes des certificats des autorités d'horodatage : hors base
       - softhsm_tokens:/var/lib/softhsm/tokens   # jeton SoftHSM (clés de signature PKI) : doit survivre aux redéploiements
 
 volumes:
   postgres_data:
   ollama_data:
-  hsm_data:
+  preuves_data:
+  tsa_ancre_data:
   softhsm_tokens:
   traefik_certs:
 ```
