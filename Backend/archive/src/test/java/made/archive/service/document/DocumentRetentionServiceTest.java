@@ -50,6 +50,7 @@ class DocumentRetentionServiceTest
     private AuditLogService auditLogService;
     private NotificationService notificationService;
     private UserRepository userRepository;
+    private made.archive.service.organisation.UniteOrganisationnelleService uoService;
     private DocumentRetentionService service;
 
     @BeforeEach
@@ -61,8 +62,9 @@ class DocumentRetentionServiceTest
         auditLogService = mock(AuditLogService.class);
         notificationService = mock(NotificationService.class);
         userRepository = mock(UserRepository.class);
+        uoService = mock(made.archive.service.organisation.UniteOrganisationnelleService.class);
         service = new DocumentRetentionService(documentRepository, storageService, meilisearchService,
-            auditLogService, notificationService, userRepository);
+            auditLogService, notificationService, userRepository, uoService);
     }
 
     private Document documentEnCorbeille(SortFinal sort, MotifSuppression motif, LocalDate echeance)
@@ -101,6 +103,56 @@ class DocumentRetentionServiceTest
         u.setId(UUID.randomUUID());
         u.setEmail(email);
         return u;
+    }
+
+    private User avecRole(String email, Role_Name role)
+    {
+        User u = utilisateur(email);
+        Set<Role> roles = new HashSet<>();
+        roles.add(new Role(1L, role));
+        u.setRoles(roles);
+        return u;
+    }
+
+    // ── Notification à l'entrée en corbeille ───────────────────────────────
+
+    @Test
+    void notifierMiseEnCorbeille_documentPublic_editeursUoAdminUoEtAdmin_sansActeurNiSimpleUser()
+    {
+        Document d = documentEnCorbeille(SortFinal.DETRUIRE, MotifSuppression.ERREUR_ARCHIVAGE, LocalDate.now().plusDays(6));
+        d.setAccess(made.archive.entite.TypeAccess.PUBLIC);
+        User acteur = avecRole("acteur@x.sn", Role_Name.EDITOR);
+        User autreEditeur = avecRole("ed2@x.sn", Role_Name.EDITOR);
+        User simple = avecRole("u@x.sn", Role_Name.USER);
+        User adminUo = avecRole("auo@x.sn", Role_Name.ADMIN_UO);
+        User admin = avecRole("adm@x.sn", Role_Name.ADMIN);
+        when(userRepository.findByUniteOrganisationnelleId(1L)).thenReturn(List.of(acteur, autreEditeur, simple));
+        when(uoService.getAdminUOAvecAutoriteSur(1L)).thenReturn(List.of(adminUo));
+        when(userRepository.findByRoleName(Role_Name.ADMIN)).thenReturn(List.of(admin));
+
+        service.notifierMiseEnCorbeille(d, acteur, "message");
+
+        verify(notificationService).notifier(eq(List.of(autreEditeur, adminUo, admin)),
+            eq(NotificationType.DOCUMENT_MIS_EN_CORBEILLE), eq("message"));
+    }
+
+    @Test
+    void notifierMiseEnCorbeille_documentPrive_seulementLesMembresDuGroupeEditeursOuAdmins()
+    {
+        Document d = documentEnCorbeille(SortFinal.DETRUIRE, MotifSuppression.ERREUR_ARCHIVAGE, LocalDate.now().plusDays(6));
+        d.setAccess(made.archive.entite.TypeAccess.PRIVE);
+        User membreEditeur = avecRole("ed@x.sn", Role_Name.EDITOR);
+        User membreSimple = avecRole("u@x.sn", Role_Name.USER);
+        made.archive.entite.GroupeAccess groupe = new made.archive.entite.GroupeAccess();
+        groupe.setMembres(List.of(membreEditeur, membreSimple));
+        d.setGroupe(groupe);
+        when(userRepository.findByRoleName(Role_Name.ADMIN)).thenReturn(List.of(avecRole("adm@x.sn", Role_Name.ADMIN)));
+
+        service.notifierMiseEnCorbeille(d, null, "message");
+
+        // l'ADMIN global n'est pas membre du groupe : pas d'accès au document privé, pas de notification
+        verify(notificationService).notifier(eq(List.of(membreEditeur)),
+            eq(NotificationType.DOCUMENT_MIS_EN_CORBEILLE), eq("message"));
     }
 
     // ── Qui est supprimé automatiquement ? ─────────────────────────────────

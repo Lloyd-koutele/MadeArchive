@@ -8,7 +8,8 @@ export type NotificationType =
     | 'DOCUMENT_HORODATAGE_ECHEC'
     | 'DOCUMENT_HORODATAGE_REUSSI'
     | 'GROUPE_MEMBRE_AJOUTE'
-    | 'GROUPE_MEMBRE_RETIRE';
+    | 'GROUPE_MEMBRE_RETIRE'
+    | 'DOCUMENT_MIS_EN_CORBEILLE';
 
 export interface NotificationDto {
     id:       number;

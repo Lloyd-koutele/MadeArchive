@@ -524,6 +524,11 @@ public class DocumentService
                 + ", suppression définitive prévue le " + doc.getSuppressionPrevueLe(),
             true, details);
 
+        documentRetentionService.notifierMiseEnCorbeille(doc, user,
+            "Le document \"" + doc.getTitre() + "\" (type « " + doc.getTypeDocument().getNom() + " ») a été envoyé à la corbeille par "
+                + user.getEmail() + " — motif : " + motif + (commentaireNet != null ? " (" + commentaireNet + ")" : "")
+                + ". Suppression définitive prévue le " + doc.getSuppressionPrevueLe() + " ; restaurez-le avant si nécessaire.");
+
         return doc.getSuppressionPrevueLe();
     }
 

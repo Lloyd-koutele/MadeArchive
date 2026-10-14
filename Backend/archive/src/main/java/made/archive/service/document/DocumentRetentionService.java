@@ -22,6 +22,7 @@ import made.archive.exception.BusinessException;
 import made.archive.repository.DocumentRepository;
 import made.archive.repository.UserRepository;
 import made.archive.service.notification.NotificationService;
+import made.archive.service.organisation.UniteOrganisationnelleService;
 import made.archive.service.audit.AuditLogService;
 import made.archive.service.storage.StorageService;
 
@@ -61,6 +62,7 @@ public class DocumentRetentionService
     private final AuditLogService    auditLogService;
     private final NotificationService notificationService;
     private final UserRepository     userRepository;
+    private final UniteOrganisationnelleService uniteOrganisationnelleService;
 
     /** Une alerte par jour tant qu'il reste au plus ce nombre de jours avant la suppression automatique. */
     public static final int JOURS_ALERTE_SUPPRESSION = 3;
@@ -85,6 +87,93 @@ public class DocumentRetentionService
         {
             envoyerCorbeilleAutomatique(document);
         }
+        notifierMisesEnCorbeilleAutomatiques(expired);
+    }
+
+    /**
+     * Un seul message par UO, type de document et échéance, pas un par document : une fin de rétention
+     * touche souvent des dizaines de documents d'un coup (même logique que alerterSuppressionsImminentes).
+     */
+    private void notifierMisesEnCorbeilleAutomatiques(List<Document> documents)
+    {
+        java.util.Map<String, List<Document>> groupes = documents.stream()
+            .collect(java.util.stream.Collectors.groupingBy(d ->
+                uoId(d) + "|" + d.getTypeDocument().getId() + "|" + d.getSuppressionPrevueLe(),
+                java.util.LinkedHashMap::new, java.util.stream.Collectors.toList()));
+
+        for (List<Document> groupe : groupes.values())
+        {
+            Document modele = groupe.get(0);
+            int n = groupe.size();
+            String sujet = n == 1
+                ? "Le document \"" + modele.getTitre() + "\""
+                : n + " documents de type « " + modele.getTypeDocument().getNom() + " »";
+            String suite = estSupprimableAutomatiquement(modele)
+                ? "suppression définitive automatique prévue le " + modele.getSuppressionPrevueLe()
+                : "conservation permanente : " + (n == 1 ? "il y reste" : "ils y restent") + " jusqu'à décision d'un éditeur";
+            notifierMiseEnCorbeille(modele, null, sujet + " (" + (n == 1 ? "type « " + modele.getTypeDocument().getNom() + " », " : "")
+                + "échéance de conservation atteinte) " + (n == 1 ? "a été envoyé" : "ont été envoyés")
+                + " automatiquement à la corbeille — " + suite + ".");
+        }
+    }
+
+    /**
+     * Prévient les éditeurs, ADMIN_UO et ADMIN qui ont accès au document qu'il vient d'entrer en corbeille.
+     * Document public : éditeurs de son UO, ADMIN_UO ayant autorité sur elle, ADMIN globaux. Document privé :
+     * seulement ceux de ces profils qui sont membres de son groupe (un administrateur non membre n'a pas
+     * accès à un document privé). L'acteur est exclu : il sait ce qu'il vient de faire. Best-effort — ne fait
+     * jamais échouer la mise en corbeille.
+     *
+     * @param acteur utilisateur à l'origine de la suppression, null pour le système
+     */
+    public void notifierMiseEnCorbeille(Document document, User acteur, String message)
+    {
+        try
+        {
+            java.util.Map<java.util.UUID, User> destinataires = new java.util.LinkedHashMap<>();
+            java.util.function.Consumer<User> ajouter = u -> { if (u != null && u.getId() != null) destinataires.put(u.getId(), u); };
+
+            if (document.getAccess() == made.archive.entite.TypeAccess.PRIVE)
+            {
+                if (document.getGroupe() != null)
+                {
+                    document.getGroupe().getMembres().stream().filter(DocumentRetentionService::estEditeurOuAdmin).forEach(ajouter);
+                }
+                else if (document.getUploadedBy() != null && estEditeurOuAdmin(document.getUploadedBy()))
+                {
+                    ajouter.accept(document.getUploadedBy());
+                }
+            }
+            else
+            {
+                Long uo = uoId(document);
+                if (uo != null)
+                {
+                    userRepository.findByUniteOrganisationnelleId(uo).stream()
+                        .filter(DocumentRetentionService::estEditeurOuAdmin).forEach(ajouter);
+                    uniteOrganisationnelleService.getAdminUOAvecAutoriteSur(uo).forEach(ajouter);
+                }
+                userRepository.findByRoleName(Role_Name.ADMIN).forEach(ajouter);
+            }
+
+            if (acteur != null)
+            {
+                destinataires.remove(acteur.getId());
+            }
+            notificationService.notifier(new java.util.ArrayList<>(destinataires.values()),
+                NotificationType.DOCUMENT_MIS_EN_CORBEILLE, message);
+        }
+        catch (Exception e)
+        {
+            log.warn("[Retention] Notification de mise en corbeille non envoyée pour {} : {}",
+                document.getId(), e.getMessage());
+        }
+    }
+
+    private static boolean estEditeurOuAdmin(User u)
+    {
+        return u.getRoles().stream().anyMatch(r ->
+            r.getName() == Role_Name.EDITOR || r.getName() == Role_Name.ADMIN || r.getName() == Role_Name.ADMIN_UO);
     }
 
     /**

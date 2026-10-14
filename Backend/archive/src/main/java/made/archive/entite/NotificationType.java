@@ -71,6 +71,11 @@ public enum NotificationType
     /** Documents en corbeille que le système va supprimer dans moins de 3 jours (une alerte par jour). */
     DOCUMENT_SUPPRESSION_IMMINENTE,
 
+    /** Un document vient d'être mis en corbeille (par un éditeur ou automatiquement en fin de rétention) —
+     *  envoyée aux éditeurs, ADMIN_UO et ADMIN ayant accès au document, sauf à l'auteur de l'action.
+     *  Voir DocumentRetentionService.notifierMiseEnCorbeille. */
+    DOCUMENT_MIS_EN_CORBEILLE,
+
     /** Les preuves d'intégrité en base d'un document (empreinte, signature, jeton, ancrage) ont été modifiées
      *  hors de l'application, ou la vérification d'un ancrage/scellement a échoué — envoyée aux ADMIN globaux
      *  et aux ADMIN_UO ayant autorité. Voir service.integrite.PreuveIntegriteService. */
