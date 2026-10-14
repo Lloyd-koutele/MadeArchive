@@ -203,7 +203,7 @@ public class GoogleDriveService
         String url = proprietes.getApiBaseUrl() + "/drive/v3/files"
             + "?q=" + URLEncoder.encode(q, StandardCharsets.UTF_8)
             + "&fields=" + URLEncoder.encode("nextPageToken,files(id,name,mimeType,size)", StandardCharsets.UTF_8)
-            + "&pageSize=100&orderBy=name&supportsAllDrives=true&includeItemsFromAllDrives=true"
+            + "&pageSize=1000&orderBy=name&supportsAllDrives=true&includeItemsFromAllDrives=true"
             + (pageToken != null ? "&pageToken=" + URLEncoder.encode(pageToken, StandardCharsets.UTF_8) : "")
             + "&key=" + URLEncoder.encode(proprietes.getApiKey(), StandardCharsets.UTF_8);
         try

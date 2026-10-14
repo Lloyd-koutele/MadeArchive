@@ -26,13 +26,13 @@ public class GoogleDriveProperties
     private String apiBaseUrl = "https://www.googleapis.com";
 
     /** Nombre maximal de fichiers retenus pour un dossier (sous-dossiers compris). */
-    private int maxFichiers = 100;
+    private int maxFichiers = 10000;
 
     /** Profondeur maximale de descente dans les sous-dossiers (0 = le dossier seul). */
     private int maxProfondeur = 3;
 
     /** Nombre maximal d'appels à l'API pour lister UN dossier — borne le temps et le quota consommés. */
-    private int maxAppels = 30;
+    private int maxAppels = 100;
 
     public boolean active()
     {

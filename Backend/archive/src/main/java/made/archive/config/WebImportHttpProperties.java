@@ -9,15 +9,16 @@ import org.springframework.stereotype.Component;
  * via lien web (WebImportService — chemin fichier direct / page web, PAS le
  * navigateur headless qui a sa propre limite, voir WebImportHeadlessProperties).
  *
- * Chaque téléchargement est bufferisé entièrement en mémoire (jusqu'à 50 Mo
- * par fichier) — sans cette limite, un afflux de demandes simultanées (100 à
+ * Chaque téléchargement est bufferisé entièrement en mémoire (jusqu'à 101 Mo
+ * par fichier, la limite générale de l'application) — sans cette limite, un afflux de demandes simultanées (100 à
  * quelques milliers, sous le plafond de threads Tomcat) pourrait à lui seul
  * consommer plusieurs Go de tas JVM et dégrader TOUTE l'application (upload,
  * consultation de documents...), qui partage le même processus. Plus permissif
  * que la limite du navigateur headless (3 par défaut) car un téléchargement
  * HTTP simple coûte bien moins cher en ressources qu'un onglet Chromium.
  *
- * Défaut 100 → ~5 Go de pire cas pour cette seule fonctionnalité (100 × 50 Mo).
+ * Défaut 20 → ~2 Go de pire cas pour cette seule fonctionnalité (20 × 101 Mo). Au-delà de ce nombre de
+ * téléchargements simultanés, les demandes patientent (attenteSlotSecondes) puis sont refusées.
  * Ce chiffre suppose un serveur dimensionné en conséquence pour TOUT le reste
  * de la pile (Ollama à lui seul — un modèle 7B chargé — consomme déjà
  * couramment 4,5-5,5 Go) : viser au moins 16 Go de RAM pour le serveur, pas
@@ -29,9 +30,9 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "web-import.http")
 public class WebImportHttpProperties
 {
-    private int maxConcurrent       = 100;
+    private int maxConcurrent       = 20;
     private int attenteSlotSecondes = 10;
 
     /** Accès sortants (aperçu d'un lien, téléchargement d'un fichier) autorisés par utilisateur et par minute — voir LimiteurImports. */
-    private int limiteParMinute     = 30;
+    private int limiteParMinute     = 10000;
 }

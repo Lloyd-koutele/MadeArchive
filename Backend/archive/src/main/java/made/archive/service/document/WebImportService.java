@@ -3,6 +3,7 @@ package made.archive.service.document;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import made.archive.config.LimitesFichiersProperties;
 import made.archive.config.WebImportHttpProperties;
 import made.archive.dto.WebImportFileDto;
 import made.archive.dto.WebImportPreviewRequestDto;
@@ -108,8 +109,6 @@ public class WebImportService
     );
 
     private static final long     TAILLE_MAX_PAGE_OCTETS = 5L * 1024 * 1024;   // 5 Mo — page HTML à scraper
-    static final long             TAILLE_MAX_FICHIER     = 50L * 1024 * 1024;  // 50 Mo — par fichier téléchargé
-    static final int              MAX_LIENS_DECOUVERTS   = 50;
 
     private static final Pattern PATTERN_DRIVE_DOSSIER = Pattern.compile(
         "drive\\.google\\.com/drive/(?:u/\\d+/)?folders/([a-zA-Z0-9_-]+)");
@@ -145,6 +144,8 @@ public class WebImportService
     private final LimiteurImports              limiteur;
     private final AuditLogService              auditLogService;
     private final GoogleDriveService           googleDrive;
+    /** Mêmes limites que le dépôt depuis l'ordinateur (taille d'un fichier, taille totale, nombre de fichiers). */
+    private final LimitesFichiersProperties    limites;
 
     private Semaphore permis;
 
@@ -265,12 +266,12 @@ public class WebImportService
         String dossierId = googleDrive.extraireIdDossier(uri.toString())
             .orElseThrow(() -> new BusinessException("Lien de dossier Google Drive invalide"));
 
-        GoogleDriveService.Listage listage = googleDrive.lister(dossierId, EXTENSIONS_SUPPORTEES, TAILLE_MAX_FICHIER);
+        GoogleDriveService.Listage listage = googleDrive.lister(dossierId, EXTENSIONS_SUPPORTEES, limites.maxFichierOctets());
         if (listage.fichiers().isEmpty())
         {
             throw new BusinessException(
                 "Aucun document pris en charge dans ce dossier Google Drive (extensions : "
-                + String.join(", ", EXTENSIONS_SUPPORTEES) + " ; fichiers de plus de 50 Mo ignorés).");
+                + String.join(", ", EXTENSIONS_SUPPORTEES) + " ; fichiers de plus de " + limites.getMaxFichier().toMegabytes() + " Mo ignorés).");
         }
         return WebImportPreviewResponseDto.builder()
             .sourceUrl(uri.toString())
@@ -341,12 +342,27 @@ public class WebImportService
             throw new BusinessException("Aucun fichier confirmé à importer");
         }
 
+        if (urls.size() > limites.getMaxFichiers())
+        {
+            throw new BusinessException("Trop de fichiers : une importation est limitée à " + limites.getMaxFichiers()
+                + " fichiers (" + urls.size() + " demandés).");
+        }
+
         limiteur.consommer(acteur != null ? acteur.getId() : null, urls.size(), proprietesHttp.getLimiteParMinute());
 
         List<FichierDistant> resultats = new ArrayList<>();
+        long totalOctets = 0;
 
         for (String url : urls)
         {
+            // Même plafond de taille totale qu'un dépôt local : ce qui ne tient plus dans la demande n'est pas téléchargé.
+            long reste = limites.maxTotalOctets() - totalOctets;
+            if (reste <= 0)
+            {
+                log.warn("[WebImport] Taille totale maximale atteinte ({} Mo) : les fichiers restants ne sont pas importés",
+                    limites.getMaxTotal().toMegabytes());
+                break;
+            }
             try
             {
                 URI uri = resoudreEtValider(url);
@@ -359,9 +375,10 @@ public class WebImportService
                     nomImpose = googleDrive.nomImpose(uri).orElse(null);
                     uri = googleDrive.avecCle(uri);
                 }
-                ClientHttpSecurise.Reponse reponse = executer(uri, TAILLE_MAX_FICHIER);
+                ClientHttpSecurise.Reponse reponse = executer(uri, Math.min(limites.maxFichierOctets(), reste));
 
                 byte[] contenu = reponse.corps();
+                totalOctets += contenu.length;
                 resultats.add(new FichierDistant(nomImpose != null ? nomImpose : nommerFichierDirect(uri, reponse), contenu));
                 log.info("[WebImport] Téléchargé : {} ({} octets)", ClientHttpSecurise.hoteDe(url), contenu.length);
             }
@@ -520,7 +537,7 @@ public class WebImportService
             String extension = extraireExtension(href);
             if (extension == null || !EXTENSIONS_SUPPORTEES.contains(extension)) continue;
 
-            if (trouves.size() >= MAX_LIENS_DECOUVERTS) break;
+            if (trouves.size() >= limites.getMaxFichiers()) break;
             trouves.putIfAbsent(href, nommerDepuisChemin(href, extension));
         }
 

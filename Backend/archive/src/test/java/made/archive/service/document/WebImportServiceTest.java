@@ -49,7 +49,23 @@ class WebImportServiceTest
         new WebImportHttpProperties(),
         limiteur,
         audit,
-        mock(made.archive.service.importweb.GoogleDriveService.class));
+        mock(made.archive.service.importweb.GoogleDriveService.class),
+        new made.archive.config.LimitesFichiersProperties());
+
+    @Test
+    void refuseUneImportationDeplusDeFichiersQueLaLimiteGenerale()
+    {
+        made.archive.config.LimitesFichiersProperties limites = new made.archive.config.LimitesFichiersProperties();
+        limites.setMaxFichiers(2);
+        WebImportService restreint = new WebImportService(
+            mock(HeadlessBrowserImportService.class), mock(ClientHttpSecurise.class), new WebImportHttpProperties(),
+            limiteur, audit, mock(made.archive.service.importweb.GoogleDriveService.class), limites);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                () -> restreint.telecharger(java.util.List.of("https://a.test/1.pdf", "https://a.test/2.pdf", "https://a.test/3.pdf"), null))
+            .isInstanceOf(made.archive.exception.BusinessException.class)
+            .hasMessageContaining("limitée à 2 fichiers");
+    }
 
     @Test
     void reconnaitUnDossierGoogleDrive()
