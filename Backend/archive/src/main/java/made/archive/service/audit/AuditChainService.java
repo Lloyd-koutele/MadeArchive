@@ -262,6 +262,14 @@ public class AuditChainService
      *
      * @return true si un nouveau scellement a été enregistré
      */
+    /** Vrai si le dernier passage de scellement a échoué faute d'horodatage (TSA injoignable ou refus) : le planificateur espace alors les nouvelles tentatives. */
+    private final java.util.concurrent.atomic.AtomicBoolean horodatageEnEchec = new java.util.concurrent.atomic.AtomicBoolean(false);
+
+    public boolean scellementEnEchec()
+    {
+        return horodatageEnEchec.get();
+    }
+
     public boolean scellerSiNecessaire()
     {
         if (configRepository.findById(AuditChainConfig.ID_UNIQUE).isEmpty())
@@ -273,6 +281,7 @@ public class AuditChainService
         JournalAudit bout = journalAuditRepository.findTopByPositionChaineIsNotNullOrderByPositionChaineDesc();
         if (bout == null)
         {
+            horodatageEnEchec.set(false);
             return false;
         }
 
@@ -280,16 +289,19 @@ public class AuditChainService
         if (dernierReussi != null && bout.getId().equals(dernierReussi.getDernierEntryId()))
         {
             log.debug("[Chaine-Audit] Aucune activité depuis le dernier scellement — pas d'appel à la TSA");
+            horodatageEnEchec.set(false);
             return false;
         }
 
         HorodatageService.HorodatageResult resultat = horodatageService.horodater(bout.getChainHash());
         if (resultat == null)
         {
+            horodatageEnEchec.set(true);
             log.warn("[Chaine-Audit] Scellement horodaté échoué — le chaînage continue normalement, "
-                + "nouvelle tentative au prochain passage (jusqu'à la position {} à sceller)", bout.getPositionChaine());
+                + "nouvelle tentative dans quelques minutes (jusqu'à la position {} à sceller)", bout.getPositionChaine());
             return false;
         }
+        horodatageEnEchec.set(false);
 
         AuditChainSeal seal = tx.execute(statut ->
         {

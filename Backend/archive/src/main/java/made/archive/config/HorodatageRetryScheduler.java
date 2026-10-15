@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
  * injoignable...) ou n'a jamais été tenté à l'upload — voir HorodatageService
  * (best-effort, ne bloque jamais l'archivage).
  *
- * Toutes les heures : contrairement à la vérification d'intégrité (une fois
+ * Toutes les 5 minutes par défaut (horodatage.reprise-intervalle-ms) : contrairement à la vérification d'intégrité (une fois
  * par jour suffit, coûteuse — retélécharge chaque PDF/A) ou la purge de
  * rétention (une échéance légale, pas urgente à la minute près), un document
  * sans horodatage reste temporairement sans cette preuve tierce — mieux vaut
@@ -24,7 +24,8 @@ public class HorodatageRetryScheduler
 {
     private final HorodatageService horodatageService;
 
-    @Scheduled(cron = "0 0 * * * *")
+    @Scheduled(fixedDelayString = "${horodatage.reprise-intervalle-ms:300000}",
+               initialDelayString = "${horodatage.reprise-intervalle-ms:300000}")
     public void retenterEchecs()
     {
         try

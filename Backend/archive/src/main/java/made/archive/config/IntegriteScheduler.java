@@ -23,7 +23,7 @@ import made.archive.service.integrite.ScellementRattrapageService;
  *     n'attend pas la nuit suivante ; les clés sont ensuite contrôlées à chaque archivage ;
  *   - chaque nuit à 04:00 (après le contrôle de routine de 03:00) : rattrapage, ancrage du catalogue, reprise des
  *     jetons manquants, VÉRIFICATION de tous les ancrages et de la chaîne du journal d'audit ;
- *   - chaque heure : reprise des jetons d'ancrage encore manquants.
+ *   - toutes les 5 minutes : reprise des jetons d'ancrage encore manquants.
  *
  * Une anomalie alerte les ADMIN globaux (une alerte par anomalie nouvelle, pas une par nuit tant qu'elle persiste).
  */
@@ -127,7 +127,8 @@ public class IntegriteScheduler
         }
     }
 
-    @Scheduled(cron = "0 30 * * * *")
+    @Scheduled(fixedDelayString = "${horodatage.reprise-intervalle-ms:300000}",
+               initialDelayString = "${horodatage.reprise-intervalle-ms:300000}")
     public void reprendreHorodatagesManquants()
     {
         try
