@@ -60,7 +60,8 @@ class AuthServiceRefreshTest
         audit = mock(AuditLogService.class);
 
         service = new AuthService(mock(UserRepository.class), jwt, actifs, mock(PasswordEncoder.class), sessions, audit,
-            mock(UniteOrganisationnelleService.class), mock(LoginAttemptService.class), mock(ClientIpResolver.class));
+            mock(UniteOrganisationnelleService.class), mock(LoginAttemptService.class), mock(ClientIpResolver.class),
+            mock(made.archive.security.SessionInvalidationService.class));
         ReflectionTestUtils.setField(service, "refreshExpiration", REFRESH_MS);
         ReflectionTestUtils.setField(service, "sessionMaxExpiration", 8 * 3_600_000L);
 

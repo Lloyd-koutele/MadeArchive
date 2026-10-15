@@ -25,6 +25,7 @@ import made.archive.repository.UserActiveTokenRepository;
 import made.archive.repository.UserRepository;
 import made.archive.security.ClientIpResolver;
 import made.archive.security.JwtService;
+import made.archive.security.SessionInvalidationService;
 import made.archive.service.audit.AuditLogService;
 import made.archive.service.organisation.UniteOrganisationnelleService;
 
@@ -42,6 +43,7 @@ public class AuthService
     private final UniteOrganisationnelleService uniteOrganisationnelleService;
     private final LoginAttemptService loginAttemptService;
     private final ClientIpResolver clientIpResolver;
+    private final SessionInvalidationService sessionInvalidationService;
 
     @Value("${jwt.refresh.expiration}")
     private long refreshExpiration;
@@ -331,13 +333,15 @@ public class AuthService
             List<DeviceSession> remaining = deviceSessionRepository
                 .findAllByUserAndRevokedFalse(device.getUser());
 
-            // 💡 4. Si la liste est vide (c'était le tout dernier appareil connecté)
-            if (remaining.isEmpty()) 
+            // 4. Dernier appareil connecté : le jeton d'accès est RÉVOQUÉ, pas seulement marqué expiré. Un JWT déjà
+            //    émis reste sinon accepté jusqu'à son échéance naturelle (JwtAuthFilter ne lit pas user_active_token) ;
+            //    l'invalider fait refuser, dès le prochain appel, tout jeton émis avant cet instant (même copié
+            //    ailleurs). Il expire aussi l'enregistrement du jeton actif : la prochaine connexion en génère
+            //    un autre, émis après l'invalidation donc accepté.
+            if (remaining.isEmpty())
             {
-                activeTokenRepository.findByUser(device.getUser())
-                    .ifPresent(activeToken -> {
-                    activeToken.setExpiresAt(Instant.now());
-                    activeTokenRepository.save(activeToken);});
+                sessionInvalidationService.invalider(device.getUser(),
+                    SessionInvalidationService.RAISON_SESSION_INVALIDEE);
             }
         });
 
