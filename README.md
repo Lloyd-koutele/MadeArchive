@@ -67,7 +67,7 @@ flowchart TB
     A --> MI[("minio<br/>stockage des documents")]
     A --> ME[("meilisearch<br/>index plein texte")]
     A --> RE[("redis<br/>cache / sessions")]
-    A --> OL["ollama<br/>génération de regex par IA locale"]
+    A -.-> OL["ollama (optionnel)<br/>génération de regex par IA locale"]
     A --> GO["gotenberg<br/>conversion en PDF"]
     A --> CH["chromium headless<br/>rendu / captures"]
 ```
@@ -81,13 +81,13 @@ flowchart TB
 | **minio** | Stockage objet compatible S3 — fichiers PDF/A archivés (chiffrés). |
 | **meilisearch** | Index de recherche plein texte sur le contenu OCRisé des documents. |
 | **redis** | Cache et sessions. |
-| **ollama** | Modèle de langage local (`qwen2.5-coder:14b`) — génère les règles d'extraction (regex) de métadonnées à partir du texte OCR, sans envoyer aucune donnée à un service externe. |
+| **ollama** (optionnel, profil `ollama`) | Modèle de langage local (`qwen2.5-coder:14b`) — génère les règles d'extraction (regex) de métadonnées à partir du texte OCR, sans envoyer aucune donnée à un service externe. |
 | **gotenberg** | Conversion des documents bureautiques en PDF. La mise en conformité PDF/A est faite ensuite par l'application (Ghostscript, contrôle veraPDF). |
 | **chromium** (headless) | Rendu de pages/captures pour certains imports et exports. |
 
 ## Rôle de chaque conteneur
 
-Détail des 10 services déclarés dans `docker-compose.yml` :
+Détail des services déclarés dans `docker-compose.yml` (9 de base, plus Ollama, **optionnel** : il ne démarre que si le profil `ollama` est activé, voir plus bas) :
 
 | Service | Image | Exposition réseau |
 |---|---|---|
@@ -98,7 +98,7 @@ Détail des 10 services déclarés dans `docker-compose.yml` :
 | `minio` | `minio/minio` | Interne uniquement |
 | `meilisearch` | `getmeili/meilisearch` | Interne uniquement |
 | `redis` | `redis:7-alpine` | Interne uniquement |
-| `ollama` | `ollama/ollama` | Interne uniquement |
+| `ollama` | `ollama/ollama` | Interne uniquement — **optionnel** (profil `ollama`) |
 | `gotenberg` | `gotenberg/gotenberg:8` | Interne uniquement |
 | `chromium` | `ghcr.io/browserless/chromium` | Interne uniquement |
 
@@ -166,7 +166,8 @@ MadeArchive/
 │   ├── deploy/helm/                    # Charts Kubernetes (alternative à Docker Compose)
 │   ├── Blockchain/                     # Smart contract Solidity (ancrage optionnel)
 │   ├── docker-entrypoint.sh            # Initialise le jeton SoftHSM au premier démarrage
-│   ├── docker-compose.yml              # Déploiement de référence (10 services)
+│   ├── docker-compose.yml              # Déploiement de référence (9 services + Ollama optionnel)
+│   ├── docker-compose.override.yml     # Développement local UNIQUEMENT (build depuis les sources) — à ne pas utiliser sur un serveur
 │   ├── .env.example                    # Modèle de configuration — copier en .env
 │   ├── DEPLOYMENT.md                   # Guide de déploiement détaillé
 │   └── build.gradle
@@ -219,11 +220,45 @@ commandes) est dans `Backend/archive/DEPLOYMENT.md` ; voici l'enchaînement :
 3. Configurer .env  → cp .env.example .env  (voir ci-dessous pour l'emplacement)
 4. Domaine          → une seule variable à éditer dans .env
 5. Sécurité         → vérifier qu'aucun service interne n'est publié (section 5, DEPLOYMENT.md)
-6. Démarrer         → docker compose up -d --build
+6. Démarrer         → docker compose -f docker-compose.yml up -d   (le « -f » est important : voir l'encadré ci-dessous)
+                       Ollama est optionnel : COMPOSE_PROFILES=ollama dans .env pour l'activer
 7. Admin            → créer le premier compte administrateur
 8. Vérifier         → contrôles post-déploiement (DEPLOYMENT.md section 8)
 9. Mettre à jour    → tag Git de version → publication auto (ghcr.io) → docker compose pull && up -d
 ```
+
+### Attention : le fichier `docker-compose.override.yml`
+
+Docker Compose **fusionne automatiquement** `docker-compose.override.yml` avec
+`docker-compose.yml` quand les deux sont dans le même dossier. Ce fichier ne sert
+qu'au développement local : il remplace les images publiées par une compilation
+depuis les sources (il faudrait alors Java 17, `./gradlew bootJar` et Node). Sur un
+serveur où le dépôt a été cloné en entier, il faut donc **l'ignorer** :
+
+```bash
+docker compose -f docker-compose.yml pull
+docker compose -f docker-compose.yml up -d
+```
+
+(ou supprimer `docker-compose.override.yml` du serveur). Quelqu'un qui n'a copié que
+`docker-compose.yml` et `.env` n'a pas ce problème.
+
+### Activer Ollama (optionnel)
+
+La génération automatique des règles d'extraction par IA locale demande ~10 Go de
+RAM et le téléchargement d'un modèle de ~9 Go. Elle est désactivée par défaut. Pour
+l'activer, décommentez dans `.env` :
+
+```bash
+COMPOSE_PROFILES=ollama
+OLLAMA_BASE_URL=http://ollama:11434
+```
+
+puis relancez `docker compose -f docker-compose.yml up -d` ; le conteneur télécharge
+le modèle au premier démarrage (plusieurs minutes, le reste de l'application reste
+disponible pendant ce temps). Sans Ollama, tout fonctionne sauf ce pré-remplissage
+automatique ; les champs se saisissent alors à la main, ou avec une API de LLM externe
+(variables `LLM_API_*`, voir `.env.example`).
 
 ### Configurer le nom de domaine
 
@@ -280,7 +315,9 @@ services:
       postgres: { condition: service_healthy }
       minio: { condition: service_healthy }
       meilisearch: { condition: service_healthy }
-      ollama: { condition: service_healthy }
+      gotenberg: { condition: service_healthy }
+      # "ollama" n'est volontairement PAS ici : il est optionnel (profil "ollama"). Sans lui, seule la
+      # génération automatique de règles d'extraction est désactivée ; tout le reste fonctionne.
     environment:
       # Ces valeurs SURCHARGENT .env : à l'intérieur des conteneurs, les
       # services se joignent par leur NOM Docker ("postgres", "minio"...),
@@ -498,6 +535,22 @@ docker compose --env-file /etc/madearchive/.env up -d
 Ne jamais commiter `.env` dans git (`.env.example` seul est versionné —
 déjà garanti par `.gitignore`), ne jamais le placer dans un chemin servi par
 le frontend/Traefik.
+
+## Sauvegardes
+
+Le système ne sauvegarde rien tout seul : c'est à l'institution de le mettre en place.
+À sauvegarder, régulièrement et **hors du serveur** :
+
+- **La base PostgreSQL** (`pg_dump`) ;
+- **Les volumes de données** : `minio_data` (documents archivés), `softhsm_tokens` (clés de
+  signature), `preuves_data` (registre des scellements du journal), `tsa_ancre_data`
+  (empreintes des autorités d'horodatage) ; les volumes `meilisearch_data` (index) et
+  `ollama_data` (modèle) se reconstruisent et n'ont pas besoin d'être sauvegardés ;
+- **Le fichier `.env`**, séparément et de façon sécurisée : sans `STORAGE_ENCRYPTION_KEY`,
+  `HSM_PIN` et `HSM_SO_PIN`, les documents chiffrés et les clés sauvegardés sont **inutilisables**.
+
+Le détail des commandes est dans `Backend/archive/DEPLOYMENT.md`, section 10. Ne jamais lancer
+`docker compose down -v` en production : l'option `-v` supprime les volumes, donc les archives.
 
 ## Documentation complémentaire
 

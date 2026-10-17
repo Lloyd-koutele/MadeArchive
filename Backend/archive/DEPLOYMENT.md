@@ -45,6 +45,11 @@ openssl rand -hex 24      # pour CHROMIUM_TOKEN
 Variables dans `.env` :
 - **À changer par vous** (mots de passe, clés, domaine, email) — voir les
   commentaires "À CHANGER" dans `.env.example`.
+- **Optionnel : Ollama** (génération automatique des règles d'extraction par IA
+  locale). Il ne démarre **pas** par défaut. Pour l'activer, décommentez
+  `COMPOSE_PROFILES=ollama` dans `.env` et mettez `OLLAMA_BASE_URL=http://ollama:11434` ;
+  prévoir ~10 Go de RAM et un premier téléchargement de ~9 Go. Sans Ollama, tout le reste
+  fonctionne.
 
 
 ## 4. Le domaine se configure une seule fois, dans `.env`
@@ -69,25 +74,40 @@ chemin (ex. `madearchive.sn`, pas `https://madearchive.sn/`).
 
 ## 5. Sécurité — à vérifier avant de démarrer
 
-Dans `docker-compose.yml`, chaque service interne (MinIO, Meilisearch,
-Ollama, Redis, Gotenberg, Chromium, PostgreSQL) publie actuellement son
-port sur `0.0.0.0` — pratique en local, **dangereux sur un serveur avec IP
-publique**. Avant un vrai déploiement :
+Dans `docker-compose.yml`, les services internes (MinIO, Meilisearch,
+Ollama, Redis, Gotenberg, Chromium, PostgreSQL) ne publient leur port que sur
+`127.0.0.1` : ils sont joignables depuis le serveur lui-même (tunnel SSH si besoin
+d'y accéder depuis votre poste), pas depuis Internet. Seuls les ports **80 et 443**
+(Traefik) sont publiés sur toutes les interfaces. Vérifiez-le avant d'ouvrir le
+serveur au public :
 
-- Soit **retirer complètement** le bloc `ports:` de ces services (le réseau
-  Docker interne suffit à `app` pour les joindre, aucune publication
-  nécessaire) ;
-- Soit les restreindre à `127.0.0.1:PORT:PORT` (accessible uniquement
-  depuis le VPS lui-même, via tunnel SSH si besoin d'y accéder depuis votre
-  poste).
+```bash
+docker ps --format '{{.Names}}  {{.Ports}}'
+```
 
-Seuls les ports **80 et 443** (Traefik) doivent rester publiés sur
-`0.0.0.0`.
+Aucun port autre que `0.0.0.0:80` et `0.0.0.0:443` ne doit apparaître avec `0.0.0.0`.
+Si vous avez modifié le fichier et qu'un service apparaît avec `0.0.0.0`, remettez
+`127.0.0.1:` devant le port, ou retirez le bloc `ports:` (le réseau Docker interne
+suffit à `app` pour joindre ces services).
 
 ## 6. Construire et démarrer
 
-Le `Dockerfile` du backend attend un `.jar` déjà compilé (pas encore
-converti en build multi-étapes comme celui du frontend) :
+**Sur un serveur** (cas normal) : les images `app`, `frontend` et `traefik` sont
+publiées sur `ghcr.io`, il n'y a rien à compiler :
+
+```bash
+docker compose -f docker-compose.yml pull
+docker compose -f docker-compose.yml up -d
+```
+
+Le `-f docker-compose.yml` est **indispensable si vous avez cloné le dépôt entier** : sinon
+Docker Compose fusionne automatiquement `docker-compose.override.yml`, qui remplace les
+images publiées par une compilation depuis les sources (et échoue faute de `.jar`). Vous
+pouvez aussi supprimer `docker-compose.override.yml` du serveur.
+
+**En développement local** (code source présent, on veut voir ses changements sans publier
+d'image) : le `Dockerfile` du backend attend un `.jar` déjà compilé (pas de build
+multi-étapes comme le frontend), et l'override ci-dessus est alors voulu :
 
 ```bash
 ./gradlew bootJar -x test
@@ -126,6 +146,9 @@ condition que le DNS pointe déjà vers le VPS et que le port 80 soit
 joignable publiquement au moment du premier démarrage de Traefik.
 
 ## 9. Mettre à jour un déploiement existant
+
+(Sur un serveur où le dépôt a été cloné en entier, ajoutez `-f docker-compose.yml` aux
+commandes `docker compose` ci-dessous, pour les raisons données à la section 6.)
 
 Point souvent mal compris : **pousser du code sur GitHub ne met à jour
 ni les images Docker déjà publiées, ni un serveur déjà déployé.** Ce sont
@@ -240,21 +263,54 @@ déploiement avec domaine public utilise Let's Encrypt (`certResolver`,
 voir section 4), pas mkcert. Ce mécanisme ne concerne que les
 répétitions/tests en local (VM Multipass, poste de développement).
 
+## 10. Sauvegardes
+
+Rien n'est sauvegardé automatiquement. À faire régulièrement (par exemple chaque nuit, via
+`cron`) et à **copier hors du serveur** :
+
+```bash
+set -a; . ./.env; set +a          # charge DB_USERNAME dans le shell
+mkdir -p sauvegarde
+
+# 1. Base de données
+docker exec postgres pg_dump -U "$DB_USERNAME" madearchive | gzip > "sauvegarde/madearchive-$(date +%F).sql.gz"
+
+# 2. Volumes de données (préfixe « archive_ » = nom du dossier du projet ; voir « docker volume ls »)
+for v in minio_data softhsm_tokens preuves_data tsa_ancre_data; do
+  docker run --rm -v "archive_$v":/data -v "$PWD/sauvegarde":/sauvegarde alpine \
+    tar czf "/sauvegarde/$v-$(date +%F).tgz" -C /data .
+done
+```
+
+Pour une copie parfaitement cohérente, arrêtez brièvement l'application pendant la copie des
+volumes (`docker compose stop app`, puis `docker compose start app`).
+
+**Ne sauvegardez pas** `meilisearch_data` (l'index se reconstruit) ni `ollama_data` (le modèle
+se retélécharge).
+
+**Le fichier `.env` doit être sauvegardé séparément et de façon sécurisée** (gestionnaire de mots de
+passe, coffre chiffré), jamais avec les données : sans `STORAGE_ENCRYPTION_KEY`, les documents
+sauvegardés restent chiffrés et illisibles ; sans `HSM_PIN` et `HSM_SO_PIN`, le jeton SoftHSM
+sauvegardé ne peut pas être rouvert. Copiez-le au moment où vous le créez, et à chaque changement.
+
+**Testez la restauration** sur une machine à part au moins une fois, avant d'en avoir besoin :
+
+```bash
+gunzip -c sauvegarde/madearchive-AAAA-MM-JJ.sql.gz | docker exec -i postgres psql -U "$DB_USERNAME" madearchive
+docker run --rm -v "archive_minio_data":/data -v "$PWD/sauvegarde":/sauvegarde alpine \
+  tar xzf /sauvegarde/minio_data-AAAA-MM-JJ.tgz -C /data
+```
+
 ## Limites connues (axes d'évolution, pas des blocages)
 
-- **Volumes anonymes pour MinIO et Meilisearch** — l'un et l'autre ne
-  survivent pas à un `docker compose down` fait sans y penser. Sans
-  conséquence pour Meilisearch (l'index se reconstruit tout seul au
-  prochain démarrage), mais MinIO perd alors les documents réellement
-  archivés — constaté en conditions réelles, un vrai problème pour un
-  système d'archivage. Passé en volume nommé une première fois puis
-  **délibérément repassé en anonyme pour la phase de développement**
-  (pratique pour repartir d'un stockage vierge en supprimant juste le
-  conteneur) — voir le commentaire dans `docker-compose.yml`, section
-  `minio`, pour repasser en persistant avant un vrai déploiement.
-  PostgreSQL utilise déjà un volume nommé (jamais remis en cause).
-- **Aucune sauvegarde automatisée** (base de données, fichiers MinIO) — à
-  mettre en place séparément selon votre fournisseur.
+- **Les données vivent dans des volumes nommés** (`postgres_data`, `minio_data`,
+  `softhsm_tokens`, `preuves_data`, `tsa_ancre_data`) : ils survivent à un
+  `docker compose down`, mais **pas à `docker compose down -v`**, qui supprime les
+  volumes, donc les documents archivés et les clés de signature. Ne jamais utiliser
+  l'option `-v` en production.
+- **Aucune sauvegarde automatisée** — voir la section 10 pour la procédure manuelle ;
+  l'automatiser (cron, outil de sauvegarde de l'hébergeur) reste à la charge de
+  l'institution.
 - **Publication d'image automatisée (CI), déploiement lui-même toujours
   manuel** — un tag Git republie les images sur ghcr.io automatiquement
   (voir section 9), mais personne ne se connecte au VPS à votre place :
