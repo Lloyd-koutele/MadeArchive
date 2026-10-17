@@ -572,8 +572,7 @@ function MesDocumentsEditor({
     const handleEnvoyerCorbeille = async (documentId: string) => {
         const raison = await demanderMotif({
             title: 'Supprimer ce document',
-            message: 'Pourquoi supprimer ce document ? Il sera supprimé définitivement à l\'échéance du délai '
-                + 'de grâce — vous pourrez le restaurer d\'ici là.',
+            message: 'Pourquoi supprimer ce document ?',
         });
         if (!raison) return;
 
@@ -629,8 +628,7 @@ function MesDocumentsEditor({
     const handleEnvoyerCorbeilleRapide = async (doc: DocumentListItemDto) => {
         const raison = await demanderMotif({
             title: 'Supprimer ce document',
-            message: `Pourquoi supprimer "${doc.titre}" ? Il sera supprimé définitivement à l'échéance du délai `
-                + 'de grâce — vous pourrez le restaurer d\'ici là.',
+            message: `Pourquoi supprimer "${doc.titre}" ? `,
         });
         if (!raison) return;
 
@@ -706,9 +704,7 @@ function MesDocumentsEditor({
 
         const raison = await demanderMotif({
             title: `Supprimer ${ids.length} document${ids.length > 1 ? 's' : ''}`,
-            message: `Pourquoi supprimer ${ids.length > 1 ? 'ces ' + ids.length + ' documents' : 'ce document'} ? `
-                + 'Le même motif sera enregistré pour chacun. Ils seront supprimés définitivement à l\'échéance du '
-                + 'délai de grâce — vous pourrez les restaurer d\'ici là.',
+            message: `Pourquoi supprimer ${ids.length > 1 ? 'ces ' + ids.length + ' documents' : 'ce document'} ? `,
         });
         if (!raison) return;
 
@@ -964,7 +960,9 @@ function MesDocumentsEditor({
     // unique (dossier-context-menu-anchored, voir Editor.css) ; centré à
     // l'écran pour une sélection multiple (dossier-context-menu-centre) —
     // aucune carte unique à désigner dans ce cas. ───────────────────────────
-    const contextMenuJsx = contextMenu && (
+    // Rendu dans document.body (portail) : .main-content porte un transform (AdminDashboard.css) qui devient le repère des
+    // éléments position:fixed ; sans portail, top/left (coordonnées de la fenêtre) seraient décalés de la largeur de la sidebar.
+    const contextMenuJsx = contextMenu && createPortal(
         <div
             className="dossier-context-menu-overlay"
             onClick={() => setContextMenu(null)}
@@ -1017,7 +1015,7 @@ function MesDocumentsEditor({
                 </button>
             </div>
         </div>
-    );
+    , document.body);
 
     return (
         <div className="mes-docs-wrapper">

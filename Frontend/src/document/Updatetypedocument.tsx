@@ -135,10 +135,12 @@ function UpdateTypeDocument({ initialData, onsuccess }: UpdateTypeDocumentProps)
                     delaiGrace={delaiGrace} onDelaiGraceChange={setDelaiGrace}
                     activites={activites} activiteId={activiteId} onActiviteChange={setActiviteId}
                     metaData={metaData} onMetaDataChange={setMetaData}
+                    actions={(
+                        <button type="submit" className="form-submit-btn td-submit" disabled={isLoading}>
+                            {isLoading ? 'Mise à jour en cours...' : 'Mettre à jour'}
+                        </button>
+                    )}
                 />
-                <button type="submit" className="form-submit-btn td-submit" disabled={isLoading}>
-                    {isLoading ? 'Mise à jour en cours...' : 'Mettre à jour'}
-                </button>
             </form>
         </div>
     );

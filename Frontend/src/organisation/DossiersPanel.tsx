@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
     creerDossier,
     modifierDossier,
@@ -930,8 +931,7 @@ function DossiersPanel({ uoId, canCreate = true, initialDossierId = null, initia
     const handleEnvoyerCorbeilleRapide = async (doc: DocumentListItemDto) => {
         const raison = await demanderMotif({
             title: 'Supprimer ce document',
-            message: `Pourquoi supprimer "${doc.titre}" ? Il sera supprimé définitivement à l'échéance du délai `
-                + 'de grâce — vous pourrez le restaurer d\'ici là.',
+            message: `Pourquoi supprimer "${doc.titre}" ?`
         });
         if (!raison) return;
 
@@ -1239,7 +1239,9 @@ function DossiersPanel({ uoId, canCreate = true, initialDossierId = null, initia
     // handleContextMenuDossier/handleSupprimerSelection. Overlay plein écran
     // transparent pour fermer au clic/clic-droit ailleurs, comme un menu
     // contextuel natif. ──────────────────────────────────────────────────
-    const contextMenuJsx = contextMenu && (
+    // Rendu dans document.body (portail) : .main-content porte un transform (AdminDashboard.css) qui devient le repère des
+    // éléments position:fixed ; sans portail, top/left (coordonnées de la fenêtre) seraient décalés de la largeur de la sidebar.
+    const contextMenuJsx = contextMenu && createPortal(
         <div
             className="dossier-context-menu-overlay"
             onClick={e => traiterClicOverlay(e, false)}
@@ -1270,7 +1272,7 @@ function DossiersPanel({ uoId, canCreate = true, initialDossierId = null, initia
                 </button>
             </div>
         </div>
-    );
+    , document.body);
 
     if (!uoId) {
         return <div className="dossiers-panel-empty">Sélectionnez une unité organisationnelle.</div>;

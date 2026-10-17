@@ -13,6 +13,7 @@ import ExportPanel from '../organisation/ExportPanel';
 import AuditLogPanel from './AuditLogPanel';
 import FixityCheckPanel from './FixityCheckPanel';
 import DocumentsArchivesPanel from './DocumentsArchivesPanel';
+import DossiersPanel from '../organisation/DossiersPanel';
 import Corbeille from '../document/Corbeille';
 import { getAllUsers, getUsersByUO, updateUserStatus as updateStatus, supprimerUtilisateur, annulerSuppressionUtilisateur } from "../services/admin/AdminService";
 import {
@@ -67,7 +68,7 @@ interface UONode {
 }
 
 type MainView = 'profile' | 'contenu';
-type Tab = 'utilisateurs' | 'archives' | 'corbeille' | 'journal';
+type Tab = 'utilisateurs' | 'archives' | 'dossiers' | 'corbeille' | 'journal';
 
 const GLOBAL_VIEW_ID = -1;
 const GLOBAL_VIEW_NODE: UONode = {
@@ -490,6 +491,12 @@ function AdminDashboard() {
                                     Documents archivés
                                 </button>
                                 <button
+                                    className={`uo-tab ${tab === 'dossiers' ? 'active' : ''}`}
+                                    onClick={() => setTab('dossiers')}
+                                >
+                                    <i className="fa-solid fa-folder" /> Dossiers
+                                </button>
+                                <button
                                     className={`uo-tab ${tab === 'corbeille' ? 'active' : ''}`}
                                     onClick={() => setTab('corbeille')}
                                 >
@@ -542,6 +549,12 @@ function AdminDashboard() {
 
                             {tab === 'archives' && (
                                 <DocumentsArchivesPanel uoId={currentUO.id === GLOBAL_VIEW_ID ? null : currentUO.id} />
+                            )}
+
+                            {/* Lecture seule : l'administrateur général consulte les dossiers d'une UO (la création reste
+                                réservée à l'éditeur). Vue globale = aucune UO choisie : le panneau invite à en sélectionner une. */}
+                            {tab === 'dossiers' && (
+                                <DossiersPanel uoId={currentUO.id === GLOBAL_VIEW_ID ? null : currentUO.id} canCreate={false} />
                             )}
 
                             {tab === 'corbeille' && (

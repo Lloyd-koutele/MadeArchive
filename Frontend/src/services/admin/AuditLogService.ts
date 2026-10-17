@@ -30,6 +30,8 @@ export interface AuditLogDto {
     acteurEmail: string | null;
     acteurRole: string | null;
     adresseIp: string | null;
+    /** SYSTEME = tâche interne (aucune IP) ; VISITEUR = personne non connectée (IP enregistrée) ; null = utilisateur identifié. */
+    origine?: 'SYSTEME' | 'VISITEUR' | null;
     action: AuditAction;
     cibleType: AuditCible | null;
     cibleId: string | null;

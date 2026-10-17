@@ -786,38 +786,21 @@ function ImportDocuments({ onsuccess, preselectedTypeId, preselectedDossierId, p
         </>
     );
 
+    // À l'étape de validation, la fenêtre prend la hauteur de l'écran : la visionneuse et les boutons restent fixes,
+    // seul le panneau de droite (métadonnées puis accès/dossier/emplacement) défile (voir Editor.css, .upload-wrapper--valider).
+    const enValidation = step === 'source' || (step === 'validate' && fileStates.length > 0 && !!selectedType);
+
     return (
-        <div className="upload-wrapper">
+        <div className={`upload-wrapper${enValidation ? ' upload-wrapper--valider' : ''}`}>
 
             {/* ══════════════════════════════════════════════════════════════
                 Choix de la source + type + options du lot
             ══════════════════════════════════════════════════════════════ */}
             {step === 'source' && (
                 <>
-                    {/* Type de document — obligatoire avant tout, verrouillé pour
-                        une nouvelle version (celle du document précédent) */}
-                    <div className="upload-options">
-                        <div className="form-field">
-                            {precedentDocument && (
-                                <p className="lien-hint" style={{ marginBottom: '0.5rem' }}>
-                                    <i className="fa-solid fa-code-branch" /> Nouvelle version de « {precedentDocument.titre} » — le type de document est verrouillé.
-                                </p>
-                            )}
-                            <select
-                                className="form-field-input up-select"
-                                value={typeDocumentId}
-                                onChange={e => handleTypeChange(Number(e.target.value))}
-                                aria-label="Type de document"
-                                disabled={!!precedentDocument}
-                            >
-                                <option value="">-- Type de document --</option>
-                                {typeDocuments.map(td => (
-                                    <option key={td.id} value={td.id}>{td.nom}</option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-
+                    <div className="import-validate-split">
+                        {/* Gauche : source des documents (fichiers, dossier ou lien) — la zone de dépôt occupe la place libre. */}
+                        <div className="import-source-main">
                     {/* Choix de la source — "Lien" n'a pas de sens pour une
                         nouvelle version (on remplace un fichier précis qu'on a
                         déjà sous la main, jamais une adresse web à explorer) */}
@@ -947,7 +930,43 @@ function ImportDocuments({ onsuccess, preselectedTypeId, preselectedDossierId, p
                         </div>
                     )}
 
-                    {blocAccesDossierEmplacement}
+                        </div>
+
+                        {/* Droite : type de document puis réglages du lot — même découpage que l'écran de validation. */}
+                        <div className="bulk-meta-panel">
+                            <div className="meta-fields">
+                                <p className="meta-fields-title">Type de document :</p>
+                    {/* Type de document — obligatoire avant tout, verrouillé pour
+                        une nouvelle version (celle du document précédent) */}
+                    <div className="upload-options">
+                        <div className="form-field">
+                            {precedentDocument && (
+                                <p className="lien-hint" style={{ marginBottom: '0.5rem' }}>
+                                    <i className="fa-solid fa-code-branch" /> Nouvelle version de « {precedentDocument.titre} » — le type de document est verrouillé.
+                                </p>
+                            )}
+                            <select
+                                className="form-field-input up-select"
+                                value={typeDocumentId}
+                                onChange={e => handleTypeChange(Number(e.target.value))}
+                                aria-label="Type de document"
+                                disabled={!!precedentDocument}
+                            >
+                                <option value="">-- Type de document --</option>
+                                {typeDocuments.map(td => (
+                                    <option key={td.id} value={td.id}>{td.nom}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+
+                            </div>
+                            <div className="meta-fields meta-fields-lot">
+                                <p className="meta-fields-title">Accès, dossier et emplacement — pour tout le lot :</p>
+                                {blocAccesDossierEmplacement}
+                            </div>
+                        </div>
+                    </div>
 
                     {/* Local : pas de bouton — l'analyse démarre seule dès que fichier(s) et
                         type sont tous les deux fournis (voir l'effet plus haut). Lien : reste

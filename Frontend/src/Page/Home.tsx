@@ -1,5 +1,8 @@
 import { useState } from 'react';
 import Footer from '../Page/Footer';
+import Accueil from './Accueil';
+import About from './About';
+import Contact from './Contact';
 import '../Style/Page/Home.css';
 
 function Home() {
@@ -55,9 +58,9 @@ function Home() {
             </header>
 
             <main>
-                <section id="accueil" className="home-section"></section>
-                <section id="about" className="home-section"></section>
-                <section id="contact" className="home-section"></section>
+                <Accueil />
+                <About />
+                <Contact />
             </main>
             <Footer />
         </div>

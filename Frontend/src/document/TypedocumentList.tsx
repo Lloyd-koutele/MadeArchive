@@ -305,7 +305,9 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
     // transparent pour fermer au clic/clic-droit ailleurs, comme un menu
     // contextuel natif. Classes réutilisées telles quelles depuis
     // DossiersPanel (voir import Editor.css plus haut).
-    const contextMenuJsx = contextMenu && (
+    // Rendu dans document.body (portail) : .main-content porte un transform (AdminDashboard.css) qui devient le repère des
+    // éléments position:fixed ; sans portail, top/left (coordonnées de la fenêtre) seraient décalés de la largeur de la sidebar.
+    const contextMenuJsx = contextMenu && createPortal(
         <div
             className="dossier-context-menu-overlay"
             onClick={() => setContextMenu(null)}
@@ -328,7 +330,7 @@ function TypeDocumentList({ refreshTrigger, uoId }: TypeDocumentListProps) {
                 </button>
             </div>
         </div>
-    );
+    , document.body);
 
     return (
         <div className="td-list-wrapper">

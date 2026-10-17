@@ -2793,3 +2793,175 @@ label.bulk-file-item { cursor: pointer; }
 }
 /* Corbeille : motif de suppression sous l'échéance */
 .corbeille-motif { font-size: 0.78rem; color: var(--text-light); margin-top: 0.15rem; }
+
+/* ── Étape de validation (import) : fenêtre à hauteur d'écran ─────────────────
+   La visionneuse PDF et les boutons Recommencer/Archiver restent fixes ; SEUL le panneau de droite
+   (.bulk-meta-panel : métadonnées puis accès/dossier/emplacement du lot) a sa barre de défilement.
+   Champs réduits et métadonnées sur 2 colonnes. Voir document/ImportDocuments.tsx (enValidation). */
+.modal-content-large:has(.upload-wrapper--valider) {
+    height: 94vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.modal-content-large:has(.upload-wrapper--valider) .modal-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 0.8rem 1.2rem 1rem;
+}
+
+.upload-wrapper--valider {
+    flex: 1;
+    min-height: 0;
+    gap: 0.7rem;
+}
+
+.upload-wrapper--valider > * { flex-shrink: 0; }
+
+.upload-wrapper--valider .import-validate-split {
+    flex: 1 1 auto;
+    min-height: 0;
+    gap: 0.75rem;
+}
+
+.upload-wrapper--valider .import-preview-pane { flex: 1 1 60%; }
+.upload-wrapper--valider .import-preview-iframe { min-height: 0; }
+
+.upload-wrapper--valider .bulk-meta-panel {
+    flex: 1 1 40%;
+    min-width: 330px;
+    min-height: 0;
+    padding: 0.65rem 0.8rem;
+    gap: 0.5rem;
+    overflow-y: auto;
+    font-size: 0.8rem;
+}
+
+.upload-wrapper--valider .bulk-meta-header { padding-bottom: 0.4rem; gap: 0.45rem; }
+.upload-wrapper--valider .bulk-meta-filename { font-size: 0.74rem; }
+.upload-wrapper--valider .bulk-meta-ocr-badge { font-size: 0.66rem; padding: 0.12rem 0.45rem; }
+
+.upload-wrapper--valider .meta-fields:not(.meta-fields-lot) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.4rem 0.5rem;
+    margin-bottom: 0.3rem;
+}
+
+.upload-wrapper--valider .meta-fields-title {
+    grid-column: 1 / -1;
+    font-size: 0.68rem;
+    margin-bottom: 0;
+}
+
+.upload-wrapper--valider .meta-field-textarea { grid-column: 1 / -1; }
+
+.upload-wrapper--valider .meta-fields-lot {
+    gap: 0.4rem;
+    padding-top: 0.5rem;
+    margin-bottom: 0;
+}
+
+.upload-wrapper--valider .up-row { justify-content: flex-start; gap: 1.2rem; font-size: 0.8rem; }
+
+.upload-wrapper--valider .meta-field-floating .form-field-input {
+    padding: 1rem 0.55rem 0.2rem;
+    font-size: 0.78rem;
+}
+
+.upload-wrapper--valider .meta-field-floating .meta-floating-label {
+    left: 0.55rem;
+    font-size: 0.76rem;
+}
+
+.upload-wrapper--valider .meta-field-floating .form-field-input:focus + .meta-floating-label,
+.upload-wrapper--valider .meta-field-floating .form-field-input:not(:placeholder-shown) + .meta-floating-label {
+    top: 0.2rem;
+    font-size: 0.6rem;
+}
+
+.upload-wrapper--valider .up-select,
+.upload-wrapper--valider .meta-date-input { padding: 0.35rem 0.55rem; font-size: 0.78rem; }
+
+.upload-wrapper--valider .up-btn-secondary { padding: 0.3rem 0.6rem; font-size: 0.74rem; }
+
+.upload-wrapper--valider .form-field-label { font-size: 0.72rem; font-weight: 600; color: var(--text-light); margin-bottom: 0.15rem; }
+.upload-wrapper--valider .dossier-picker-filtre { padding: 0.3rem 0.55rem; font-size: 0.76rem; }
+.upload-wrapper--valider .dossier-picker-selection { padding: 0.28rem 0.5rem; font-size: 0.76rem; }
+.upload-wrapper--valider .dossier-picker-tree { max-height: 150px; }
+.upload-wrapper--valider .dossier-picker-label { font-size: 0.76rem; }
+
+/* Écran initial : source à gauche (la zone de dépôt remplit la hauteur), réglages à droite. */
+.upload-wrapper--valider .import-source-main {
+    flex: 1 1 60%;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    overflow-y: auto;
+}
+
+.upload-wrapper--valider .import-source-main .drop-zone {
+    flex: 1 1 auto;
+    min-height: 140px;
+}
+
+.upload-wrapper--valider .import-source-main .bulk-source-tabs,
+.upload-wrapper--valider .import-source-main .bulk-folder-btn,
+.upload-wrapper--valider .import-source-main .bulk-file-list,
+.upload-wrapper--valider .import-source-main .lien-form { flex-shrink: 0; }
+
+.upload-wrapper--valider .bulk-validate-actions {
+    padding-top: 0.6rem;
+    border-top: 1px solid var(--border);
+}
+
+@media (max-width: 900px) {
+    .upload-wrapper--valider .import-validate-split { overflow-y: auto; }
+    .upload-wrapper--valider .import-preview-pane { flex: 0 0 auto; min-height: 300px; }
+    .upload-wrapper--valider .bulk-meta-panel { flex: 0 0 auto; overflow: visible; min-width: 0; }
+    .upload-wrapper--valider .import-source-main { flex: 0 0 auto; overflow: visible; }
+    .upload-wrapper--valider .meta-fields:not(.meta-fields-lot) { grid-template-columns: 1fr; }
+}
+
+/* ── Corbeille : colonne Actions centrée, accès aux procès-verbaux d'élimination ─────────────────────────────── */
+.td-table th.corbeille-col-actions,
+.td-table td.corbeille-col-actions { text-align: center; }
+.corbeille-col-actions .td-actions { justify-content: center; }
+
+.corbeille-pv-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.5rem 0.9rem;
+    background: var(--white-choc);
+    color: var(--dark-choc);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color var(--transition), background var(--transition);
+}
+.corbeille-pv-btn:hover { border-color: var(--accent); background: var(--cream); }
+
+.corbeille-pv-intro { font-size: 0.85rem; color: var(--text-light); line-height: 1.5; margin: 0 0 1rem; }
+.corbeille-pv-liste { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.corbeille-pv-ligne {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.6rem 0.8rem;
+    background: var(--cream);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+}
+.corbeille-pv-titre { display: flex; align-items: center; gap: 0.6rem; font-size: 0.88rem; color: var(--dark-choc); min-width: 0; }
+.corbeille-pv-titre i { color: var(--accent); }
+.corbeille-pv-actions { display: flex; gap: 0.4rem; flex-shrink: 0; }

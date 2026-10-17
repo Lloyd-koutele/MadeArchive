@@ -11,6 +11,7 @@ import {
     streamPdfAAsBlob,
     getThumbnailBlob,
     downloadPdfA,
+    getDocumentsAccessibles,
 } from '../services/document/DocumentService';
 import type { DocumentListItemDto } from '../services/document/DocumentService';
 import { hasRole } from '../auth/authService';
@@ -230,9 +231,7 @@ function Corbeille({ lectureSeule = false }: { lectureSeule?: boolean } = {}) {
     const handleSupprimerDefinitivement = async (doc: DocumentListItemDto) => {
         const raison = await demanderMotif({
             title: 'Suppression définitive',
-            message: `Pourquoi supprimer définitivement "${doc.titre}" ? Cette action est irréversible — `
-                + `le fichier et son entrée dans la recherche disparaîtront, seuls l'historique d'audit et le `
-                + `procès-verbal d'élimination seront conservés.`,
+            message: `Pourquoi supprimer définitivement "${doc.titre}" ? Cette action est irréversible — `,
             confirmLabel: 'Supprimer définitivement',
         });
         if (!raison) return;
@@ -306,6 +305,30 @@ function Corbeille({ lectureSeule = false }: { lectureSeule?: boolean } = {}) {
         }
     };
 
+    // ── Procès-verbaux d'élimination ────────────────────────────────────────
+    // Chaque suppression définitive est consignée dans un PV (PDF/A horodaté, un par unité et par jour de purge),
+    // archivé comme un document du type système « Procès-verbal d'élimination » : on le retrouve ici, sans avoir
+    // à le chercher dans les documents.
+    const NOM_TYPE_PV = "Procès-verbal d'élimination";
+    const [pvOuvert, setPvOuvert] = useState(false);
+    const [pvDocs, setPvDocs] = useState<DocumentListItemDto[]>([]);
+    const [pvChargement, setPvChargement] = useState(false);
+
+    const ouvrirProcesVerbaux = async () => {
+        setPvOuvert(true);
+        setPvChargement(true);
+        try {
+            const page = await getDocumentsAccessibles({ titre: NOM_TYPE_PV, size: 100 });
+            setPvDocs(page.content
+                .filter(d => d.typeDocumentNom === NOM_TYPE_PV)
+                .sort((a, b) => (b.createAt ?? '').localeCompare(a.createAt ?? '')));
+        } catch (err: any) {
+            notify.error(err.message ?? 'Erreur lors du chargement des procès-verbaux');
+        } finally {
+            setPvChargement(false);
+        }
+    };
+
     const closePdfViewer = () => {
         setIsPdfOpen(false);
         if (pdfBlobUrl) { URL.revokeObjectURL(pdfBlobUrl); setPdfBlobUrl(null); }
@@ -316,6 +339,9 @@ function Corbeille({ lectureSeule = false }: { lectureSeule?: boolean } = {}) {
             <div className="mes-docs-header">
                 <h2 className="mes-docs-title">Corbeille</h2>
                 <div className="docs-header-actions">
+                    <button type="button" className="corbeille-pv-btn" onClick={ouvrirProcesVerbaux}>
+                        <i className="fa-solid fa-file-signature" /> Procès-verbaux d'élimination
+                    </button>
                     <div className="docs-view-toggle" role="group" aria-label="Mode d'affichage">
                         <button
                             type="button"
@@ -338,13 +364,6 @@ function Corbeille({ lectureSeule = false }: { lectureSeule?: boolean } = {}) {
                     </div>
                 </div>
             </div>
-
-            <p className="users-count" style={{ marginBottom: '0.5rem' }}>
-                <i className="fa-solid fa-circle-info" style={{ marginRight: '0.4rem', color: 'var(--text-light)' }} />
-                Les documents ci-dessous sont supprimés définitivement à la date indiquée (sauf conservation permanente, où un éditeur décide)
-                {peutRestaurer ? ', sauf restauration avant cette échéance.' : '.'}
-                {!peutRestaurer && ' Vue en lecture seule.'}
-            </p>
 
             {!isLoading && (
                 <p className="users-count">
@@ -503,7 +522,7 @@ function Corbeille({ lectureSeule = false }: { lectureSeule?: boolean } = {}) {
                                         consultable en ouvrant le document. */}
                                     <th className="corbeille-col-acces">Accès</th>
                                     <th>Suppression définitive</th>
-                                    <th>Actions</th>
+                                    <th className="corbeille-col-actions">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -523,7 +542,7 @@ function Corbeille({ lectureSeule = false }: { lectureSeule?: boolean } = {}) {
                                             {libelleEcheance(doc)}
                                             {libelleMotifDoc(doc) && <div className="corbeille-motif">Motif : {libelleMotifDoc(doc)}</div>}
                                         </td>
-                                        <td onClick={e => e.stopPropagation()}>
+                                        <td className="corbeille-col-actions" onClick={e => e.stopPropagation()}>
                                             <div className="td-actions">
                                                 {/* Masqués sur écran réduit (voir Editor.css,
                                                     .corbeille-actions-standalone) — repris dans
@@ -686,8 +705,39 @@ function Corbeille({ lectureSeule = false }: { lectureSeule?: boolean } = {}) {
                 </>
             )}
 
-            <Modal isOpen={isPdfOpen} onClose={closePdfViewer} title="Lecture du document">
-                <div className="pdf-viewer-wrapper">
+            {/* Le lecteur est monté APRÈS la liste des PV : ouvert depuis celle-ci, il doit s'afficher par-dessus. */}
+            <Modal isOpen={pvOuvert} onClose={() => setPvOuvert(false)} title="Procès-verbaux d'élimination">
+                {pvChargement ? (
+                    <div className="td-loading"><i className="fa-solid fa-spinner fa-spin" /> Chargement…</div>
+                ) : pvDocs.length === 0 ? (
+                    <div className="td-empty"><p>Aucun procès-verbal pour l'instant.</p></div>
+                ) : (
+                    <ul className="corbeille-pv-liste">
+                        {pvDocs.map(pv => (
+                            <li key={pv.documentId} className="corbeille-pv-ligne">
+                                <div className="corbeille-pv-titre">
+                                    <i className="fa-solid fa-file-signature" />
+                                    <span>{pv.titre}</span>
+                                </div>
+                                <div className="corbeille-pv-actions">
+                                    <button type="button" className="action-button view" title="Lire le procès-verbal" onClick={() => openPdfViewer(pv)}>
+                                        <i className="fa-solid fa-eye" />
+                                    </button>
+                                    <button type="button" className="action-button" title="Télécharger le PDF/A"
+                                        onClick={() => handleDownload(pv)} disabled={downloadingId === pv.documentId}>
+                                        {downloadingId === pv.documentId
+                                            ? <i className="fa-solid fa-spinner fa-spin" />
+                                            : <i className="fa-solid fa-file-pdf" />}
+                                    </button>
+                                </div>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </Modal>
+
+            <Modal isOpen={isPdfOpen} onClose={closePdfViewer} title="Lecture du document" size="large">
+                <div className="pdf-viewer-wrapper" style={{ height: '76vh' }}>
                     {pdfLoading ? (
                         <div className="pdf-viewer-loading">
                             <i className="fa-solid fa-spinner fa-spin" />

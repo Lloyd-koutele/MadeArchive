@@ -81,6 +81,55 @@
     color: var(--white-choc);
 }
 
+/* Indication du glisser-déposer */
+.td-meta-hint {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.78rem;
+    color: var(--text-light);
+}
+
+/* Bas de la liste : « + Ajouter un champ » et le bouton principal, côte à côte */
+.td-actions {
+    display: flex;
+    align-items: stretch;
+    gap: 0.75rem;
+    margin-top: 1rem;
+}
+
+/* Les deux boutons du bas ont exactement la même forme (même largeur, hauteur, police, rayon) : seule la couleur
+   change — bleu ciel pour « Ajouter un champ », bleu nuit pour l'action principale. */
+.td-actions .td-add-btn-bas,
+.td-actions .td-submit {
+    flex: 1 1 0;
+    width: auto;
+    margin-top: 0;
+    min-height: 46px;
+    padding: 0.7rem 1.3rem;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--white-choc);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background var(--transition), box-shadow var(--transition);
+}
+
+.td-actions .td-add-btn-bas { background: var(--accent); }
+.td-actions .td-add-btn-bas:hover {
+    background: color-mix(in srgb, var(--accent) 85%, #000);
+    box-shadow: 0 0 0 3px rgba(6, 174, 253, 0.2);
+    color: var(--white-choc);
+}
+
+.td-actions .td-submit { background: var(--dark-choc); }
+.td-actions .td-submit:hover:not(:disabled) {
+    background: var(--dark-mid);
+    box-shadow: 0 0 0 3px rgba(var(--dark-choc-rgb), 0.15);
+}
+.td-actions .td-submit:disabled { opacity: 0.6; cursor: not-allowed; }
+
 /* Liste métadonnées */
 .td-meta-list {
     display: flex;
@@ -99,7 +148,19 @@
     padding: 0.6rem 0.85rem;
 }
 
+.td-meta-index:active { cursor: grabbing; }
+.td-meta-index:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.td-meta-row.is-dragging { opacity: 0.45; }
+
+.td-meta-row.is-drop-target {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent);
+}
+
 .td-meta-index {
+    cursor: grab;
+    user-select: none;
     width: 28px;
     height: 28px;
     border-radius: 50%;
@@ -807,6 +868,10 @@
         grid-template-columns: 28px 1fr;
         grid-template-rows: auto auto auto;
     }
+    .td-actions { flex-wrap: wrap; }
+    .td-actions .td-add-btn-bas,
+    .td-actions .td-submit { flex: 1 1 100%; padding-top: 0.7rem; padding-bottom: 0.7rem; }
+
     .td-meta-row .td-select,
     .td-meta-row .td-toggle,
     .td-meta-row .td-remove-btn {

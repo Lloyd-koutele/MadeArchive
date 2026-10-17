@@ -1,3 +1,5 @@
+import { useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import type { MetaDataDto, SortFinal } from '../services/document/TypedocumentService';
 import type { PlanClassementOption } from '../services/organisation/PlanClassementService';
 
@@ -35,6 +37,9 @@ interface TypeDocumentFormFieldsProps {
     activites?: PlanClassementOption[];
     activiteId?: number | null;
     onActiviteChange?: (v: number | null) => void;
+    /** Bouton(s) d'action du formulaire (création / mise à jour), affiché au bas de la liste des champs, à côté
+     *  de « + Ajouter un champ ». */
+    actions?: ReactNode;
 }
 
 function TypeDocumentFormFields({
@@ -45,6 +50,7 @@ function TypeDocumentFormFields({
     sortFinal, onSortFinalChange,
     delaiGrace, onDelaiGraceChange,
     activites, activiteId, onActiviteChange,
+    actions,
 }: TypeDocumentFormFieldsProps) {
 
     const handleMetaChange = (index: number, field: keyof MetaDataDto, value: any) => {
@@ -59,6 +65,21 @@ function TypeDocumentFormFields({
         if (metaData.length === 1) return;
         onMetaDataChange(metaData.filter((_, i) => i !== index));
     };
+
+    // ── Réordonner les champs : glisser-déposer sur le numéro (ou flèches haut/bas au clavier) ──
+    const [dragIndex, setDragIndex] = useState<number | null>(null);
+    const [overIndex, setOverIndex] = useState<number | null>(null);
+    const poignees = useRef<(HTMLDivElement | null)[]>([]);
+
+    const moveMeta = (from: number, to: number) => {
+        if (from === to || from < 0 || to < 0 || from >= metaData.length || to >= metaData.length) return;
+        const updated = [...metaData];
+        const [item] = updated.splice(from, 1);
+        updated.splice(to, 0, item);
+        onMetaDataChange(updated);
+    };
+
+    const finGlisser = () => { setDragIndex(null); setOverIndex(null); };
 
     const retentionDefinie = retentionYears !== null;
 
@@ -164,15 +185,54 @@ function TypeDocumentFormFields({
             <div className="td-section">
                 <div className="td-section-header">
                     <h3 className="td-section-title">Métadonnées</h3>
-                    <button type="button" className="td-add-btn" onClick={addMeta}>
-                        + Ajouter un champ
-                    </button>
+                    {metaData.length > 1 && (
+                        <span className="td-meta-hint"></span>
+                    )}
                 </div>
 
                 <div className="td-meta-list">
                     {metaData.map((meta, index) => (
-                        <div key={index} className="td-meta-row">
-                            <div className="td-meta-index">{index + 1}</div>
+                        <div
+                            key={index}
+                            className={'td-meta-row'
+                                + (dragIndex === index ? ' is-dragging' : '')
+                                + (dragIndex !== null && overIndex === index && dragIndex !== index ? ' is-drop-target' : '')}
+                            onDragOver={e => {
+                                if (dragIndex === null) return;
+                                e.preventDefault();
+                                e.dataTransfer.dropEffect = 'move';
+                                if (overIndex !== index) setOverIndex(index);
+                            }}
+                            onDrop={e => {
+                                e.preventDefault();
+                                if (dragIndex !== null) moveMeta(dragIndex, index);
+                                finGlisser();
+                            }}
+                        >
+                            <div
+                                className="td-meta-index"
+                                ref={el => { poignees.current[index] = el; }}
+                                draggable
+                                role="button"
+                                tabIndex={0}
+                                title="Glisser pour changer l'ordre"
+                                aria-label={`Champ ${index + 1} sur ${metaData.length} : glisser, ou flèches haut et bas, pour changer l'ordre`}
+                                onDragStart={e => {
+                                    setDragIndex(index);
+                                    e.dataTransfer.effectAllowed = 'move';
+                                    e.dataTransfer.setData('text/plain', String(index));
+                                    const ligne = e.currentTarget.parentElement;
+                                    if (ligne) e.dataTransfer.setDragImage(ligne, 24, 24);
+                                }}
+                                onDragEnd={finGlisser}
+                                onKeyDown={e => {
+                                    const cible = e.key === 'ArrowUp' ? index - 1 : e.key === 'ArrowDown' ? index + 1 : null;
+                                    if (cible === null || cible < 0 || cible >= metaData.length) return;
+                                    e.preventDefault();
+                                    moveMeta(index, cible);
+                                    requestAnimationFrame(() => poignees.current[cible]?.focus());
+                                }}
+                            >{index + 1}</div>
 
                             <div className="form-field td-meta-nom">
                                 <input
@@ -207,6 +267,13 @@ function TypeDocumentFormFields({
                             </button>
                         </div>
                     ))}
+                </div>
+
+                <div className="td-actions">
+                    <button type="button" className="td-add-btn td-add-btn-bas" onClick={addMeta}>
+                        + Ajouter un champ
+                    </button>
+                    {actions}
                 </div>
             </div>
         </>

@@ -500,8 +500,7 @@ function DocumentsAccessibles({ uoId = null, modeAdministration = false, modeEdi
     const handleEnvoyerCorbeille = async (documentId: string) => {
         const raison = await demanderMotif({
             title: 'Supprimer ce document',
-            message: 'Pourquoi supprimer ce document ? Il sera supprimé définitivement à l\'échéance du délai '
-                + 'de grâce — vous pourrez le restaurer d\'ici là.',
+            message: 'Pourquoi supprimer ce document ?',
         });
         if (!raison) return;
 
@@ -556,8 +555,7 @@ function DocumentsAccessibles({ uoId = null, modeAdministration = false, modeEdi
     const handleEnvoyerCorbeilleRapide = async (doc: DocumentListItemDto) => {
         const raison = await demanderMotif({
             title: 'Supprimer ce document',
-            message: `Pourquoi supprimer "${doc.titre}" ? Il sera supprimé définitivement à l'échéance du délai `
-                + 'de grâce — vous pourrez le restaurer d\'ici là.',
+            message: `Pourquoi supprimer "${doc.titre}" ?`,
         });
         if (!raison) return;
 
@@ -634,9 +632,7 @@ function DocumentsAccessibles({ uoId = null, modeAdministration = false, modeEdi
 
         const raison = await demanderMotif({
             title: `Supprimer ${ids.length} document${ids.length > 1 ? 's' : ''}`,
-            message: `Pourquoi supprimer ${ids.length > 1 ? 'ces ' + ids.length + ' documents' : 'ce document'} ? `
-                + 'Le même motif sera enregistré pour chacun. Ils seront supprimés définitivement à l\'échéance du '
-                + 'délai de grâce — vous pourrez les restaurer d\'ici là.',
+            message: `Pourquoi supprimer ${ids.length > 1 ? 'ces ' + ids.length + ' documents' : 'ce document'} ? `,
         });
         if (!raison) return;
 
@@ -705,7 +701,9 @@ function DocumentsAccessibles({ uoId = null, modeAdministration = false, modeEdi
     // unique (dossier-context-menu-anchored, voir Editor.css) ; centré à
     // l'écran pour une sélection multiple (dossier-context-menu-centre) —
     // aucune carte unique à désigner dans ce cas. ───────────────────────────
-    const contextMenuJsx = contextMenu && (
+    // Rendu dans document.body (portail) : .main-content porte un transform (AdminDashboard.css) qui devient le repère des
+    // éléments position:fixed ; sans portail, top/left (coordonnées de la fenêtre) seraient décalés de la largeur de la sidebar.
+    const contextMenuJsx = contextMenu && createPortal(
         <div
             className="dossier-context-menu-overlay"
             onClick={() => setContextMenu(null)}
@@ -758,7 +756,7 @@ function DocumentsAccessibles({ uoId = null, modeAdministration = false, modeEdi
                 </button>
             </div>
         </div>
-    );
+    , document.body);
 
     return (
         <div className="mes-docs-wrapper">
@@ -872,23 +870,25 @@ function DocumentsAccessibles({ uoId = null, modeAdministration = false, modeEdi
                             </select>
                         </div>
 
-                       {/* Statut */}
-                        <div className="filtre-field">
-                            <select
-                                id="statut-select"
-                                className="filter-input"
-                                aria-label="Filtrer par statut"
-                                value={filtres.statut}
-                                onChange={e => handleFiltreChange('statut', e.target.value)}
-                            >
-                                <option value="">Tous les statuts</option>
-                                <option value="ACTIVE">Actif</option>
-                                <option value="PENDING">En attente</option>
-                                <option value="ACTIVE_WARNING">Avertissement</option>
-                                <option value="CORRUPTED">Corrompu</option>
-                            </select>
-                        </div>
-                        
+                        {/* Statut — réservé aux administrateurs et aux éditeurs, seuls à voir autre chose que des documents
+                            actifs (un simple utilisateur ne voit jamais un document corrompu). Seuls les statuts réellement
+                            gérés par le système sont proposés : actif ou corrompu. */}
+                        {(hasRole('ADMIN') || hasRole('ADMIN_UO') || hasRole('EDITOR')) && (
+                            <div className="filtre-field">
+                                <select
+                                    id="statut-select"
+                                    className="filter-input"
+                                    aria-label="Filtrer par statut"
+                                    value={filtres.statut}
+                                    onChange={e => handleFiltreChange('statut', e.target.value)}
+                                >
+                                    <option value="">Tous les statuts</option>
+                                    <option value="ACTIVE">Actif</option>
+                                    <option value="CORRUPTED">Corrompu</option>
+                                </select>
+                            </div>
+                        )}
+
                         {/* Date début */}
                         <div className="filtre-field filtre-field-date">
                             <input

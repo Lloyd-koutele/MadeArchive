@@ -1171,6 +1171,8 @@ export interface DocumentJournalEntreeDto {
     acteurRole: string | null;
     /** Renseignée seulement pour un ADMIN/ADMIN_UO — null pour les autres. */
     adresseIp: string | null;
+    /** SYSTEME = tâche interne (aucune IP) ; VISITEUR = personne non connectée (IP enregistrée) ; null = utilisateur identifié. */
+    origine?: 'SYSTEME' | 'VISITEUR' | null;
     action: string;
     description: string;
     succes: boolean;

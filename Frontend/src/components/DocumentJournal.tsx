@@ -108,7 +108,7 @@ function DocumentJournal({ documentId }: { documentId: string }) {
                                     <span className="doc-journal-date">{formatHorodatage(e.horodatage)}</span>
                                     <span className="doc-journal-action">{libelleAction(e.action)}{!e.succes && ' (échec)'}</span>
                                     <span className="doc-journal-acteur">
-                                        {e.acteurEmail ?? 'système / anonyme'}
+                                        {e.acteurEmail ?? (e.origine === 'VISITEUR' ? 'Visiteur anonyme' : 'Système')}
                                         {e.acteurRole ? ` · ${e.acteurRole}` : ''}
                                         {e.adresseIp ? ` · IP ${e.adresseIp}` : ''}
                                     </span>

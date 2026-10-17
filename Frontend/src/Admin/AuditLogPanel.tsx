@@ -493,7 +493,11 @@ function AuditLogPanel() {
                                 >
                                     <td className="audit-log-date audit-col-date">{formatHorodatage(log.horodatage)}</td>
                                     <td>
-                                        {log.acteurEmail ?? <span className="audit-log-anonyme">anonyme</span>}
+                                        {log.acteurEmail ?? (
+                                            log.origine === 'VISITEUR'
+                                                ? <span className="audit-log-anonyme">Visiteur anonyme · IP {log.adresseIp}</span>
+                                                : <span className="audit-log-anonyme">Système</span>
+                                        )}
                                         {log.acteurRole && <span className="audit-log-role"> · {log.acteurRole}</span>}
                                     </td>
                                     <td>{ACTION_LABELS[log.action] ?? log.action}</td>

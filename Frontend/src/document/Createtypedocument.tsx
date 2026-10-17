@@ -92,10 +92,12 @@ function CreateTypeDocument({ onsuccess, restrictToUO }: CreateTypeDocumentProps
                     delaiGrace={delaiGrace} onDelaiGraceChange={setDelaiGrace}
                     activites={activites} activiteId={activiteId} onActiviteChange={setActiviteId}
                     metaData={metaData} onMetaDataChange={setMetaData}
+                    actions={(
+                        <button type="submit" className="form-submit-btn td-submit" disabled={isLoading}>
+                            {isLoading ? 'Création en cours...' : 'Créer le type de document'}
+                        </button>
+                    )}
                 />
-                <button type="submit" className="form-submit-btn td-submit" disabled={isLoading}>
-                    {isLoading ? 'Création en cours...' : 'Créer le type de document'}
-                </button>
             </form>
         </div>
     );
