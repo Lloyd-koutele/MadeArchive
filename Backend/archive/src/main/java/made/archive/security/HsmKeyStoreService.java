@@ -178,6 +178,10 @@ public class HsmKeyStoreService
         try
         {
             KeyStore keyStore = loadKeyStore();
+            if (!keyStore.containsAlias(alias) && certificatRevoque(alias).isPresent())
+            {
+                throw new BusinessException("L'alias '" + alias + "' a été révoqué : une nouvelle clé ne peut pas lui être attribuée");
+            }
             if (keyStore.containsAlias(alias))
             {
                 log.warn("[SoftHSM] Une clé existe déjà sous l'alias '{}' : elle n'est pas remplacée", alias);
@@ -326,6 +330,10 @@ public class HsmKeyStoreService
             Certificate certificat = loadKeyStore().getCertificate(alias);
             if (certificat == null)
             {
+                certificat = certificatRevoque(alias).orElse(null);
+            }
+            if (certificat == null)
+            {
                 return Optional.empty();
             }
             clesPubliques.put(alias, certificat.getPublicKey());
@@ -356,6 +364,10 @@ public class HsmKeyStoreService
         try
         {
             Certificate certificat = loadKeyStore().getCertificate(alias);
+            if (certificat == null)
+            {
+                certificat = certificatRevoque(alias).orElse(null);
+            }
             return certificat == null ? Optional.empty() : Optional.of(certificat.getPublicKey());
         }
         catch (Exception e)
@@ -536,6 +548,178 @@ public class HsmKeyStoreService
         finally
         {
             lock.readLock().unlock();
+        }
+    }
+
+    /**
+     * Révoque la clé de signature d'un alias : la CLÉ PRIVÉE est détruite, le certificat auto-signé (donc la clé publique)
+     * est conservé. Plus aucune signature n'est possible avec cet alias, mais les signatures déjà produites restent
+     * vérifiables ({@link #verifier}, {@link #clePublique}) — c'est la racine de confiance des documents déjà archivés.
+     *
+     * Fichier PKCS#12 : la clé privée est retirée de l'entrée, le certificat y reste. Jeton PKCS#11 (SoftHSM) : une
+     * entrée ne peut pas être amputée de sa seule clé privée ; le certificat est donc d'abord copié dans le fichier des
+     * certificats révoqués (hsm.certificats-revoques-path), puis l'entrée du jeton est supprimée. Cet ordre garantit que
+     * la clé publique n'est jamais perdue : si le jeton échoue, la révocation est simplement reprise plus tard.
+     *
+     * Idempotent : si la clé privée n'existe déjà plus (révocation précédente), rien n'est modifié.
+     *
+     * @return true si une clé privée a été détruite, false si l'alias est absent ou déjà révoqué
+     */
+    public boolean revoquerCle(String alias)
+    {
+        if (alias == null || alias.isBlank())
+        {
+            return false;
+        }
+
+        lock.writeLock().lock();
+        try
+        {
+            KeyStore keyStore = loadKeyStore();
+            if (!keyStore.containsAlias(alias) || !keyStore.isKeyEntry(alias))
+            {
+                return false;
+            }
+
+            Certificate certificat = keyStore.getCertificate(alias);
+            if (certificat == null)
+            {
+                throw new BusinessException("Le SoftHSM ne contient pas le certificat de l'alias '" + alias
+                    + "' : révocation refusée, la clé publique serait perdue");
+            }
+
+            if (magasinPkcs11 != null)
+            {
+                KeyStore revoques = ouvrirCertificatsRevoques();
+                if (!revoques.containsAlias(alias))
+                {
+                    revoques.setCertificateEntry(alias, certificat);
+                    ecrireCertificatsRevoques(revoques);
+                }
+                keyStore.deleteEntry(alias);
+            }
+            else
+            {
+                keyStore.deleteEntry(alias);
+                keyStore.setCertificateEntry(alias, certificat);
+                persist(keyStore);
+            }
+            log.info("[SoftHSM] Clé privée de l'alias '{}' détruite ; certificat (clé publique) conservé", alias);
+            return true;
+        }
+        catch (BusinessException e)
+        {
+            throw e;
+        }
+        catch (Exception e)
+        {
+            log.error("[SoftHSM] Erreur lors de la révocation de l'alias '{}' : {}", alias, e.getMessage());
+            throw new BusinessException("Impossible de révoquer la clé dans le SoftHSM", e);
+        }
+        finally
+        {
+            lock.writeLock().unlock();
+        }
+    }
+
+    /** Certificat conservé d'une clé révoquée (mode PKCS#11) — vide si l'alias n'a pas été révoqué ou si le fichier n'existe pas. */
+    private Optional<Certificate> certificatRevoque(String alias)
+    {
+        if (magasinPkcs11 == null || hsmProperties.getCertificatsRevoquesPath() == null
+            || hsmProperties.getCertificatsRevoquesPath().isBlank()
+            || !new File(hsmProperties.getCertificatsRevoquesPath()).isFile())
+        {
+            return Optional.empty();
+        }
+        try
+        {
+            return Optional.ofNullable(ouvrirCertificatsRevoques().getCertificate(alias));
+        }
+        catch (Exception e)
+        {
+            log.warn("[SoftHSM] Lecture du certificat révoqué '{}' impossible : {}", alias, e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    /** Ouvre (ou crée, vide) le fichier des certificats révoqués. Refuse si son chemin n'est pas configuré. */
+    private KeyStore ouvrirCertificatsRevoques() throws Exception
+    {
+        String chemin = hsmProperties.getCertificatsRevoquesPath();
+        if (chemin == null || chemin.isBlank())
+        {
+            throw new BusinessException("hsm.certificats-revoques-path (HSM_CERTIFICATS_REVOQUES_PATH) n'est pas configuré : "
+                + "révocation refusée, la clé publique ne pourrait pas être conservée");
+        }
+        KeyStore magasin = KeyStore.getInstance(KEYSTORE_TYPE);
+        File fichier = new File(chemin);
+        if (fichier.isFile())
+        {
+            try (FileInputStream in = new FileInputStream(fichier))
+            {
+                magasin.load(in, pin());
+            }
+        }
+        else
+        {
+            magasin.load(null, null);
+        }
+        return magasin;
+    }
+
+    private void ecrireCertificatsRevoques(KeyStore magasin) throws Exception
+    {
+        File cible = new File(hsmProperties.getCertificatsRevoquesPath());
+        File parent = cible.getAbsoluteFile().getParentFile();
+        if (parent != null && !parent.exists() && !parent.mkdirs())
+        {
+            throw new BusinessException("Impossible de créer le dossier des certificats révoqués : " + parent);
+        }
+        File tmp = new File(parent, cible.getName() + ".tmp");
+        try (FileOutputStream out = new FileOutputStream(tmp))
+        {
+            magasin.store(out, pin());
+        }
+        Files.move(tmp.toPath(), cible.toPath(),
+            java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+    }
+
+    /**
+     * Supprime entièrement l'entrée d'un alias (clé privée ET certificat). À réserver à une clé qui n'a jamais signé
+     * (compte supprimé sans avoir servi) : sinon les signatures déjà produites ne seraient plus vérifiables, utiliser
+     * {@link #revoquerCle}.
+     *
+     * @return true si une entrée a été supprimée, false si l'alias est absent
+     */
+    public boolean supprimerCle(String alias)
+    {
+        if (alias == null || alias.isBlank())
+        {
+            return false;
+        }
+
+        lock.writeLock().lock();
+        try
+        {
+            KeyStore keyStore = loadKeyStore();
+            if (!keyStore.containsAlias(alias))
+            {
+                return false;
+            }
+            keyStore.deleteEntry(alias);
+            persist(keyStore);
+            clesPubliques.remove(alias);
+            log.info("[SoftHSM] Entrée de l'alias '{}' supprimée (clé privée et certificat)", alias);
+            return true;
+        }
+        catch (Exception e)
+        {
+            log.error("[SoftHSM] Erreur lors de la suppression de l'alias '{}' : {}", alias, e.getMessage());
+            throw new BusinessException("Impossible de supprimer la clé dans le SoftHSM", e);
+        }
+        finally
+        {
+            lock.writeLock().unlock();
         }
     }
 

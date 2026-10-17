@@ -131,6 +131,7 @@ public class DocumentJournalService
             .acteurEmail(e.getActeurEmail())
             .acteurRole(e.getActeurRole())
             .adresseIp(avecIp ? e.getAdresseIp() : null)
+            .origine(AuditLogDto.origineDe(e.getActeurId(), e.getActeurEmail(), e.getAdresseIp()))
             .action(e.getAction())
             .cibleType(e.getCibleType())
             .cibleId(e.getCibleId())

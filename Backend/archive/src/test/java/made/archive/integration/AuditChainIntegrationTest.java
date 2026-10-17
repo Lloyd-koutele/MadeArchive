@@ -323,6 +323,32 @@ class AuditChainIntegrationTest
                 : made.archive.service.integrite.HorodatageVerificationService.Etat.EMPREINTE_DIFFERENTE);
         assertThat(service.verifierChaine(null).isChaineIntacte()).as("avant l'attaque").isTrue();
 
+        String nouveauBout = falsifierToutLeJournalAvecLesCles(cible, sceau);
+        assertThat(nouveauBout).isNotEqualTo(empreinteHorodatee);
+
+        // Sans le contrôle des jetons RFC 3161, la falsification est parfaitement cohérente : indétectable.
+        when(jetons.verifier(any(), anyString())).thenReturn(null);
+        assertThat(service.verifierChaine(null).isChaineIntacte()).as("sans le contrôle de l'horodatage").isTrue();
+
+        // Avec lui, le jeton du tiers atteste toujours l'empreinte d'origine : la falsification est révélée.
+        when(jetons.verifier(any(), anyString())).thenAnswer(i ->
+            empreinteHorodatee.equals(i.getArgument(1))
+                ? made.archive.service.integrite.HorodatageVerificationService.Etat.ATTESTE_ANCRE
+                : made.archive.service.integrite.HorodatageVerificationService.Etat.EMPREINTE_DIFFERENTE);
+        ChaineAuditVerificationDto resultat = service.verifierChaine(null);
+
+        assertThat(resultat.isChaineIntacte()).isFalse();
+        assertThat(resultat.getRuptures())
+            .anyMatch(r -> r.getDescription().contains("jeton d'horodatage") && r.getDescription().contains("atteste une autre empreinte"));
+    }
+
+    /**
+     * L'attaque du pire cas : modification d'une entrée + recalcul complet de la chaîne avec la vraie clé HMAC, réécriture
+     * de l'empreinte scellée, re-signature du scellement avec la clé du système et refonte du registre hors base.
+     * @return la nouvelle empreinte du bout de la chaîne
+     */
+    private String falsifierToutLeJournalAvecLesCles(JournalAudit cible, AuditChainSeal sceau)
+    {
         // ── L'attaque : modification + recalcul complet de la chaîne avec la vraie clé HMAC ──
         jdbc.update("UPDATE journal_audit SET description = 'falsifié' WHERE id = ?", cible.getId());
         long debutHmac = configuration.findById(1L).orElseThrow().getHmacDepuisPosition();
@@ -350,22 +376,39 @@ class AuditChainIntegrationTest
         try { Files.deleteIfExists(DOSSIER_HSM.resolve("audit-scellements.registre")); }
         catch (IOException e) { throw new IllegalStateException(e); }
         registre.ajouter(sceaux.findById(sceau.getId()).orElseThrow());
-        assertThat(nouveauBout).isNotEqualTo(empreinteHorodatee);
+        return nouveauBout;
+    }
 
-        // Sans le contrôle des jetons RFC 3161, la falsification est parfaitement cohérente : indétectable.
-        when(jetons.verifier(any(), anyString())).thenReturn(null);
-        assertThat(service.verifierChaine(null).isChaineIntacte()).as("sans le contrôle de l'horodatage").isTrue();
-
-        // Avec lui, le jeton du tiers atteste toujours l'empreinte d'origine : la falsification est révélée.
+    /**
+     * ATTAQUE NON DÉTECTÉE (scénario 9) : même attaque que celle du scénario 5 (chaîne, base, signatures et registre
+     * réécrits avec les clés), mais l'attaquant obtient en plus, auprès de l'autorité d'horodatage, un jeton valide pour
+     * la NOUVELLE empreinte du scellement (elle signe pour n'importe qui) et le range à la place de l'ancien. Toutes
+     * les preuves internes redeviennent cohérentes : le système rend « chaîne intacte », la falsification passe
+     * inaperçue. Seule une trace hors du serveur (ancrage externe, copie du registre) pourrait la révéler.
+     * Le test affirme ce résultat (détecté : non) pour qu'il reste documenté et suivi.
+     */
+    @Test
+    void attaquantQuiObtientUnHorodatageValideDuNouveauScellement_n_est_pas_detecte()
+    {
+        entree(); JournalAudit cible = entree(); entree();
+        service.calculerChainage();
+        service.scellerSiNecessaire();
+        AuditChainSeal sceau = sceaux.findTopByOrderByIdDesc();
+        String empreinteHorodatee = sceau.getDernierChainHash();
         when(jetons.verifier(any(), anyString())).thenAnswer(i ->
             empreinteHorodatee.equals(i.getArgument(1))
                 ? made.archive.service.integrite.HorodatageVerificationService.Etat.ATTESTE_ANCRE
                 : made.archive.service.integrite.HorodatageVerificationService.Etat.EMPREINTE_DIFFERENTE);
-        ChaineAuditVerificationDto resultat = service.verifierChaine(null);
+        assertThat(service.verifierChaine(null).isChaineIntacte()).as("avant l'attaque").isTrue();
 
-        assertThat(resultat.isChaineIntacte()).isFalse();
-        assertThat(resultat.getRuptures())
-            .anyMatch(r -> r.getDescription().contains("jeton d'horodatage") && r.getDescription().contains("atteste une autre empreinte"));
+        String nouveauBout = falsifierToutLeJournalAvecLesCles(cible, sceau);
+        when(jetons.verifier(any(), anyString())).thenAnswer(i ->
+            nouveauBout.equals(i.getArgument(1))
+                ? made.archive.service.integrite.HorodatageVerificationService.Etat.ATTESTE_ANCRE
+                : made.archive.service.integrite.HorodatageVerificationService.Etat.EMPREINTE_DIFFERENTE);
+
+        assertThat(service.verifierChaine(null).isChaineIntacte())
+            .as("falsification complète avec un horodatage valide de la nouvelle empreinte : non détectée").isTrue();
     }
 
     @Test

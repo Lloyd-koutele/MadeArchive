@@ -185,6 +185,16 @@ class ProcesVerbalEliminationIntegrationTest
         return userRepository.save(u);
     }
 
+    private User administrateur(String email)
+    {
+        Role role = roleRepository.save(new Role(null, Role_Name.ADMIN));
+        User u = new User();
+        u.setNom("Admin"); u.setPrenom("Global"); u.setEmail(email); u.setPassword("x"); u.setActif(true);
+        u.setTelephone("+221" + Math.abs(email.hashCode() % 100000000));
+        u.setRoles(new java.util.HashSet<>(List.of(role)));
+        return userRepository.save(u);
+    }
+
     private TypeDocument type(UniteOrganisationnelle uo, User createur, String nom)
     {
         TypeDocument t = new TypeDocument();
@@ -219,11 +229,12 @@ class ProcesVerbalEliminationIntegrationTest
     }
 
     @Test
-    void unPvParUoEtParJour_avecTitres_accesRestreint_typeSystemeConserver_etNonRegenere() throws Exception
+    void unPvParDocument_avecTitre_accesRestreint_typeSystemeConserver_etNonRegenere() throws Exception
     {
         UniteOrganisationnelle uo1 = uo("UO-Un");
         UniteOrganisationnelle uo2 = uo("UO-Deux");
         User ed = utilisateur("pv@test.local");
+        User admin = administrateur("admin-pv@test.local");
         TypeDocument t1 = type(uo1, ed, "Facture");
         TypeDocument t2 = type(uo2, ed, "Contrat");
         User responsable = utilisateur("responsable@test.local");
@@ -239,8 +250,10 @@ class ProcesVerbalEliminationIntegrationTest
         Document a2 = documentRepository.findById(a.getId()).orElseThrow();
         Document b2 = documentRepository.findById(b.getId()).orElseThrow();
         Document c2 = documentRepository.findById(c.getId()).orElseThrow();
-        assertThat(a2.getProcesVerbalId()).isNotNull().isEqualTo(b2.getProcesVerbalId());   // même UO, même jour
-        assertThat(c2.getProcesVerbalId()).isNotNull().isNotEqualTo(a2.getProcesVerbalId()); // autre UO : autre PV
+        // Un procès-verbal PAR document, même UO et même jour compris
+        assertThat(a2.getProcesVerbalId()).isNotNull();
+        assertThat(b2.getProcesVerbalId()).isNotNull().isNotEqualTo(a2.getProcesVerbalId());
+        assertThat(c2.getProcesVerbalId()).isNotNull().isNotEqualTo(a2.getProcesVerbalId()).isNotEqualTo(b2.getProcesVerbalId());
 
         Document pv = documentRepository.findById(a2.getProcesVerbalId()).orElseThrow();
         assertThat(pv.getStatus()).isEqualTo(DocumentStatus.ACTIVE);
@@ -248,43 +261,49 @@ class ProcesVerbalEliminationIntegrationTest
         assertThat(pv.getUniteOrganisationnelle().getId()).isEqualTo(uo1.getId());
         assertThat(pv.getUploadedBy().getId())
             .isEqualTo(userRepository.findByEmail(UtilisateurSystemeService.EMAIL).orElseThrow().getId());
-        assertThat(pv.getTitre()).contains("2 documents");
+        assertThat(pv.getTitre()).contains("CV de Mamadou Diop.pdf").doesNotContain("Relevé secret.pdf");
 
-        // Le PV reproduit des titres : accès restreint aux responsables de l'UO (jamais public dans l'UO)
+        // Le PV reproduit un titre : accès restreint aux responsables de l'UO et aux administrateurs généraux
         assertThat(pv.getAccess()).isEqualTo(TypeAccess.PRIVE);
         assertThat(pv.getGroupe()).isNotNull();
         List<String> emailsDuGroupe = new org.springframework.transaction.support.TransactionTemplate(transactionManager)
             .execute(status -> groupeAccessRepository.findById(pv.getGroupe().getId()).orElseThrow()
                 .getMembres().stream().map(User::getEmail).toList());
-        assertThat(emailsDuGroupe).containsExactly("responsable@test.local");
+        assertThat(emailsDuGroupe).contains("responsable@test.local", "admin-pv@test.local").doesNotContain("pv@test.local");
 
         TypeDocument typePv = typeDocumentRepository.findById(pv.getTypeDocument().getId()).orElseThrow();
         assertThat(typePv.isSysteme()).isTrue();
         assertThat(typePv.getRetention().getSortFinal()).isEqualTo(SortFinal.CONSERVER);
         assertThat(typePv.getRetention().getRetentionYears()).isNull();
 
-        // Le PDF archivé : titre et informations de chaque document, motifs et auteur
+        // Le PDF archivé de chaque PV ne parle que de SON document : titre, informations, motif et auteur
         ArgumentCaptor<byte[]> pdfSource = ArgumentCaptor.forClass(byte[].class);
-        verify(pdfAConversionService, times(2)).convertirEtVerifier(pdfSource.capture(), anyString());
-        String texte;
-        try (PDDocument d = PDDocument.load(pdfSource.getAllValues().get(0)))
+        verify(pdfAConversionService, times(3)).convertirEtVerifier(pdfSource.capture(), anyString());
+        List<String> textes = new java.util.ArrayList<>();
+        for (byte[] src : pdfSource.getAllValues())
         {
-            texte = new PDFTextStripper().getText(d);
+            try (PDDocument d = PDDocument.load(src))
+            {
+                textes.add(new PDFTextStripper().getText(d));
+            }
         }
-        assertThat(texte).contains(a.getId().toString(), b.getId().toString(), "fin de vie du document",
-            "erreur d'archivage", "le système (suppression automatique)", "pv@test.local");
-        assertThat(texte).contains("CV de Mamadou Diop.pdf", "Relevé secret.pdf").doesNotContain("Autre UO.pdf");
+        String texteA = textes.stream().filter(t -> t.contains(a.getId().toString())).findFirst().orElseThrow();
+        assertThat(texteA).contains("CV de Mamadou Diop.pdf", "fin de vie du document", "le système (suppression automatique)")
+            .doesNotContain("Relevé secret.pdf", "Autre UO.pdf", b.getId().toString());
+        String texteB = textes.stream().filter(t -> t.contains(b.getId().toString())).findFirst().orElseThrow();
+        assertThat(texteB).contains("Relevé secret.pdf", "erreur d'archivage", "pv@test.local")
+            .doesNotContain("CV de Mamadou Diop.pdf");
 
-        // Indexé avec les titres, pour retrouver le PV à partir du document qu'il concerne
+        // Indexé avec le titre du document, pour retrouver le PV à partir de lui
         ArgumentCaptor<String> texteIndexe = ArgumentCaptor.forClass(String.class);
-        verify(meilisearchService, times(2)).indexDocument(any(), texteIndexe.capture(), any());
-        assertThat(texteIndexe.getAllValues().get(0)).contains("CV de Mamadou Diop.pdf", "Relevé secret.pdf");
+        verify(meilisearchService, times(3)).indexDocument(any(), texteIndexe.capture(), any());
+        assertThat(texteIndexe.getAllValues()).anyMatch(t -> t.contains("CV de Mamadou Diop.pdf") && !t.contains("Relevé secret.pdf"));
 
-        verify(horodatageService, times(2)).horodaterApresUpload(any());
+        verify(horodatageService, times(3)).horodaterApresUpload(any());
         // Chaque PV est scellé par la clé du système (pas d'éditeur) et copié dans le bucket de preuves
-        verify(preuveIntegriteService, times(2)).scellerParLeSysteme(any());
-        verify(manifestePreuveService, times(2)).ecrire(any());
-        verify(auditLogService, times(2)).log(any(), eq(made.archive.entite.AuditAction.PV_ELIMINATION_GENERE),
+        verify(preuveIntegriteService, times(3)).scellerParLeSysteme(any());
+        verify(manifestePreuveService, times(3)).ecrire(any());
+        verify(auditLogService, times(3)).log(any(), eq(made.archive.entite.AuditAction.PV_ELIMINATION_GENERE),
             any(), anyString(), any(), anyString(), eq(true), any());
         verify(auditLogService, times(3)).log(any(), eq(made.archive.entite.AuditAction.DOCUMENT_INCLUS_PV_ELIMINATION),
             any(), anyString(), any(), anyString(), eq(true), any());
@@ -293,6 +312,27 @@ class ProcesVerbalEliminationIntegrationTest
         reset(pdfAConversionService);
         service.genererProcesVerbauxEnAttente();
         verify(pdfAConversionService, never()).convertirEtVerifier(any(), anyString());
+    }
+
+    @Test
+    void unAdministrateurNommeApresLaGenerationVoitLesProcesVerbauxDejaEtablis()
+    {
+        UniteOrganisationnelle uo = uo("UO-Admin-Tardif");
+        User ed = utilisateur("tardif@test.local");
+        when(uniteOrganisationnelleService.getAdminUOAvecAutoriteSur(uo.getId())).thenReturn(List.of());
+        Document d = pierreTombale(uo, type(uo, ed, "Type T"), ed, "doc.pdf", MotifSuppression.AUTRE, ed);
+        service.genererProcesVerbauxEnAttente();
+        UUID pvId = documentRepository.findById(d.getId()).orElseThrow().getProcesVerbalId();
+        assertThat(pvId).isNotNull();
+
+        administrateur("nouvel-admin@test.local");
+        service.genererProcesVerbauxEnAttente();   // la passe de nuit rattrape les PV existants
+
+        Document pv = documentRepository.findById(pvId).orElseThrow();
+        List<String> emails = new org.springframework.transaction.support.TransactionTemplate(transactionManager)
+            .execute(status -> groupeAccessRepository.findById(pv.getGroupe().getId()).orElseThrow()
+                .getMembres().stream().map(User::getEmail).toList());
+        assertThat(emails).contains("nouvel-admin@test.local");
     }
 
     @Test

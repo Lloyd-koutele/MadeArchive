@@ -54,12 +54,12 @@ import made.archive.repository.UserRepository;
 /**
  * Tenue en charge de la couche de données : les requêtes de l'API qui parcourent la table des documents
  * (liste paginée d'une unité, recherche par titre, détection de doublon, lecture par identifiant) restent-elles
- * sous 2 secondes quand le catalogue compte des dizaines ou des centaines de milliers de documents ?
+ * sous 1 seconde quand le catalogue compte des dizaines ou des centaines de milliers de documents ?
  *
  * Un vrai PostgreSQL 16 (Testcontainers, nécessite Docker) reçoit le schéma des entités, puis N documents générés
  * directement en SQL (-Dperf.db.documents=100000 par défaut). Les requêtes sont exécutées par le vrai
  * DocumentRepository (mêmes Specification, tri et pagination que l'API). Chaque opération est mesurée après chauffe,
- * 30 fois ; médiane, 95e percentile et maximum sont écrits dans build/perf/db.json. Seuil : -Dperf.db.maxMs=2000.
+ * 30 fois ; médiane, 95e percentile et maximum sont écrits dans build/perf/db.json. Seuil : -Dperf.db.maxMs=1000.
  */
 @Tag("performance")
 @SpringBootTest(classes = DocumentVolumePerformanceTest.Config.class,
@@ -184,7 +184,7 @@ class DocumentVolumePerformanceTest
         Files.writeString(sortie.resolve("db-" + n + ".json"), sb.toString());
         System.out.println("[PERF][DB] " + sb);
 
-        long seuil = Long.getLong("perf.db.maxMs", 2000L);
+        long seuil = Long.getLong("perf.db.maxMs", 1000L);
         assertThat(pire).as("95e percentile le plus élevé (ms) avec %d documents, seuil %d ms", n, seuil).isLessThan(seuil);
     }
 }

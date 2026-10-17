@@ -59,8 +59,8 @@ services:
     image: ollama/ollama:latest
     container_name: ollama
     profiles: ["ollama"]
-    mem_limit: 10g
-    cpus: 5
+    mem_limit: 16g
+    cpus: 8
     ports:
       - "127.0.0.1:11434:11434"
     volumes:
@@ -219,6 +219,7 @@ services:
       MEILISEARCH_HOST: http://meilisearch:7700
       PREUVES_DOSSIER: /app/preuves
       HORODATAGE_ANCRES_PATH: /app/tsa_ancre/tsa-ancres.txt
+      HSM_CERTIFICATS_REVOQUES_PATH: /app/preuves/certificats-revoques.p12
       GOTENBERG_URL: http://gotenberg:3000
       REDIS_HOST: redis
       REDIS_PORT: 6379

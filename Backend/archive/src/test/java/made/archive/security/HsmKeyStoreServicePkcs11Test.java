@@ -54,6 +54,8 @@ class HsmKeyStoreServicePkcs11Test
         Path tokens = fichierConf.getParent().resolve("tokens");
         supprimer(tokens);
         Files.createDirectories(tokens);
+        certificatsRevoques = fichierConf.getParent().resolve("certificats-revoques.p12");
+        Files.deleteIfExists(certificatsRevoques);
         Files.writeString(fichierConf, "directories.tokendb = " + tokens.toAbsolutePath() + "\nobjectstore.backend = file\nlog.level = ERROR\n");
 
         ProcessBuilder pb = new ProcessBuilder("softhsm2-util", "--init-token", "--free", "--label", "test",
@@ -85,12 +87,15 @@ class HsmKeyStoreServicePkcs11Test
         }
     }
 
+    private static Path certificatsRevoques;
+
     private HsmKeyStoreService service()
     {
         HsmProperties props = new HsmProperties();
         props.setType("PKCS11");
         props.setPkcs11Library(bibliotheque);
         props.setPin(PIN);
+        props.setCertificatsRevoquesPath(certificatsRevoques.toString());
         HsmKeyStoreService s = new HsmKeyStoreService(props);
         ReflectionTestUtils.invokeMethod(s, "init");
         return s;
@@ -135,6 +140,67 @@ class HsmKeyStoreServicePkcs11Test
 
         assertThat(apres.hasKey("editor-test-3")).isTrue();
         assertThat(apres.verifier("editor-test-3", HASH, signature)).contains(true);
+    }
+
+    @Test
+    void une_cle_revoquee_ne_signe_plus_mais_ses_signatures_restent_verifiables_apres_reouverture_du_jeton()
+    {
+        HsmKeyStoreService hsm = service();
+        PublicKey publique = hsm.provisionnerCle("editor-test-revoque");
+        String signature = hsm.sign("editor-test-revoque", HASH);
+
+        assertThat(hsm.revoquerCle("editor-test-revoque")).isTrue();
+
+        // La clé privée est détruite DANS le jeton : plus aucune signature possible, même après réouverture.
+        assertThatThrownBy(() -> hsm.sign("editor-test-revoque", HASH)).isInstanceOf(BusinessException.class);
+        HsmKeyStoreService apres = service();
+        assertThatThrownBy(() -> apres.sign("editor-test-revoque", HASH)).isInstanceOf(BusinessException.class);
+
+        // Le certificat (clé publique) reste dans le jeton : la signature déjà produite se vérifie toujours.
+        assertThat(apres.clePubliqueRelue("editor-test-revoque").orElseThrow().getEncoded()).isEqualTo(publique.getEncoded());
+        assertThat(apres.verifier("editor-test-revoque", HASH, signature)).contains(true);
+        assertThat(apres.revoquerCle("editor-test-revoque")).isFalse();   // idempotent
+    }
+
+    @Test
+    void la_revocation_est_refusee_sans_toucher_au_jeton_si_le_fichier_des_certificats_n_est_pas_configure()
+    {
+        HsmKeyStoreService hsm = service();
+        hsm.provisionnerCle("editor-test-sans-fichier");
+        HsmProperties props = new HsmProperties();
+        props.setType("PKCS11");
+        props.setPkcs11Library(bibliotheque);
+        props.setPin(PIN);
+        HsmKeyStoreService sansFichier = new HsmKeyStoreService(props);
+        ReflectionTestUtils.invokeMethod(sansFichier, "init");
+
+        assertThatThrownBy(() -> sansFichier.revoquerCle("editor-test-sans-fichier")).isInstanceOf(BusinessException.class);
+
+        // La clé est intacte : la révocation a échoué AVANT de supprimer quoi que ce soit.
+        assertThat(sansFichier.sign("editor-test-sans-fichier", HASH)).isNotBlank();
+    }
+
+    @Test
+    void un_alias_revoque_ne_recoit_jamais_une_nouvelle_cle()
+    {
+        HsmKeyStoreService hsm = service();
+        hsm.provisionnerCle("editor-test-jamais-regenere");
+        hsm.revoquerCle("editor-test-jamais-regenere");
+
+        assertThatThrownBy(() -> hsm.provisionnerCle("editor-test-jamais-regenere")).isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void une_cle_supprimee_disparait_du_jeton_avec_son_certificat()
+    {
+        HsmKeyStoreService hsm = service();
+        hsm.provisionnerCle("editor-test-supprime");
+
+        assertThat(hsm.supprimerCle("editor-test-supprime")).isTrue();
+
+        HsmKeyStoreService apres = service();
+        assertThat(apres.hasKey("editor-test-supprime")).isFalse();
+        assertThat(apres.clePubliqueRelue("editor-test-supprime")).isEmpty();
     }
 
     @Test

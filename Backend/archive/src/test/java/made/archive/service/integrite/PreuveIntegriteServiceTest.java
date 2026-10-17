@@ -243,6 +243,32 @@ class PreuveIntegriteServiceTest
         assertThat(service.evaluer(d, AUTRE).verdict()).isEqualTo(Verdict.FICHIER_ALTERE);
     }
 
+    /**
+     * ATTAQUE NON DÉTECTÉE (scénario 10) : un attaquant qui contrôle TOUT le système — le stockage, la base,
+     * le jeton SoftHSM — remplace le document, son empreinte, re-signe avec la clé de l'éditeur, re-scelle
+     * l'enregistrement avec la clé du système, obtient auprès de l'autorité d'horodatage un jeton parfaitement valide
+     * pour la NOUVELLE empreinte (elle signe pour n'importe qui) et réécrit le manifeste verrouillé. Plus aucune source
+     * indépendante ne détient l'empreinte d'origine : le système rend un verdict sain, la falsification passe
+     * inaperçue. Seule une trace hors du serveur (ancrage externe, copie du registre) pourrait la révéler — c'est la
+     * perspective du mémoire. Le test affirme ce résultat (détecté : non) pour qu'il reste documenté et suivi.
+     */
+    @Test
+    void attaquantQuiControleToutEtObtientUnNouvelHorodatageValide_n_est_pas_detecte()
+    {
+        Document d = documentSigne(H);
+
+        d.setPdfaSha256(AUTRE);
+        d.setPkiSignature(hsm.sign(ALIAS, AUTRE));
+        service.sceller(d, ALIAS);
+        when(jetons.verifier(any(), any())).thenAnswer(i ->
+            AUTRE.equals(i.getArgument(1)) ? Etat.ATTESTE_ANCRE : Etat.EMPREINTE_DIFFERENTE);
+        when(manifestes.lire(d.getId())).thenReturn(Optional.of(manifeste(d, AUTRE)));
+
+        PreuveIntegriteService.Constat c = service.evaluer(d, AUTRE);
+
+        assertThat(c.verdict()).as("falsification complète et cohérente : non détectée").isEqualTo(Verdict.OK);
+    }
+
     // ── anciens documents et mode dégradé ───────────────────────────────────────────────────────────────────
 
     @Test

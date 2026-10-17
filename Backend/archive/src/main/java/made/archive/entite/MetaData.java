@@ -35,6 +35,10 @@ public class MetaData
     @Column(nullable = false)
     private Boolean obligatoire;
 
+    /** Position du champ dans son type de document (0 = premier) — fixée par l'éditeur à la création ou à la mise à jour. */
+    @Column(nullable = false)
+    private Integer ordre = 0;
+
     // Regex générée par Qwen au premier document — nullable jusqu'alors
     @Column(length = 500)
     private String extractionRegex;

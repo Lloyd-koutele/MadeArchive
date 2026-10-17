@@ -282,6 +282,7 @@ public class AuditLogService
             .acteurEmail(entree.getActeurEmail())
             .acteurRole(entree.getActeurRole())
             .adresseIp(entree.getAdresseIp())
+            .origine(AuditLogDto.origineDe(entree.getActeurId(), entree.getActeurEmail(), entree.getAdresseIp()))
             .action(entree.getAction())
             .cibleType(entree.getCibleType())
             .cibleId(entree.getCibleId())

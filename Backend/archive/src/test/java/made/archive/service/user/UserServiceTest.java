@@ -10,6 +10,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import made.archive.security.HsmKeyStoreService;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -68,6 +69,7 @@ class UserServiceTest
     @Mock private SessionInvalidationService       sessionInvalidationService;
     @Mock private MembreUORepository               membreUORepository;
     @Mock private JournalAuditRepository           journalAuditRepository;
+    @Mock private HsmKeyStoreService               hsmKeyStoreService;
 
     @InjectMocks
     private UserService service;
@@ -248,6 +250,46 @@ class UserServiceTest
         verify(userRepository, never()).save(any());
     }
 
+    @Test
+    void demanderSuppressionSupprimeLaCleDuSoftHsmSiJamaisConnecte()
+    {
+        // Jamais connecté = aucun document signé : la paire de clés (clé privée et certificat) disparaît avec le compte.
+        User admin = utilisateur(Role_Name.ADMIN);
+        User cible = utilisateur(Role_Name.EDITOR);
+        cible.setPkiKeyAlias("editor-" + cible.getId());
+        cible.setPkiKeyStatus(PkiKeyStatus.ACTIVE);
+
+        when(userRepository.findById(cible.getId())).thenReturn(Optional.of(cible));
+        when(journalAuditRepository.existsByActeurIdAndAction(cible.getId(), AuditAction.LOGIN_REUSSI)).thenReturn(false);
+        when(membreUORepository.findByUserId(cible.getId())).thenReturn(List.of());
+        when(hsmKeyStoreService.supprimerCle("editor-" + cible.getId())).thenReturn(true);
+
+        assertThat(service.demanderSuppression(cible.getId(), admin)).isTrue();
+
+        verify(userRepository).delete(cible);
+        verify(hsmKeyStoreService).supprimerCle("editor-" + cible.getId());
+        // La clé n'est surtout pas seulement « révoquée » : aucune signature n'existe, rien à vérifier plus tard.
+        verify(hsmKeyStoreService, never()).revoquerCle(any());
+    }
+
+    @Test
+    void demanderSuppressionEstAnnuleeSiLeSoftHsmEchoue()
+    {
+        User admin = utilisateur(Role_Name.ADMIN);
+        User cible = utilisateur(Role_Name.EDITOR);
+        cible.setPkiKeyAlias("editor-" + cible.getId());
+
+        when(userRepository.findById(cible.getId())).thenReturn(Optional.of(cible));
+        when(journalAuditRepository.existsByActeurIdAndAction(cible.getId(), AuditAction.LOGIN_REUSSI)).thenReturn(false);
+        when(membreUORepository.findByUserId(cible.getId())).thenReturn(List.of());
+        when(hsmKeyStoreService.supprimerCle(any())).thenThrow(new BusinessException("jeton indisponible"));
+
+        // L'exception remonte : la transaction annule le DELETE du compte (rien n'est supprimé à moitié).
+        assertThatThrownBy(() -> service.demanderSuppression(cible.getId(), admin))
+            .isInstanceOf(BusinessException.class)
+            .hasMessageContaining("jeton indisponible");
+    }
+
     // ───────────────────────── annulerSuppression ─────────────────────────
 
     @Test
@@ -353,6 +395,7 @@ class UserServiceTest
         // la cible elle-même) est retirée AVANT le DELETE pour ne pas violer la FK.
         verify(membreUORepository).deleteAll(List.of(adhesion));
         verify(userRepository).delete(cible);
+        verify(hsmKeyStoreService).supprimerCle(any());
         // Chemin "jamais servi" : aucune des étapes de la suppression logique,
         // et pas de second appel à invalider() — déjà fait à la demande.
         verify(sessionInvalidationService, never()).invalider(any(), any());
@@ -365,6 +408,7 @@ class UserServiceTest
         User cible = utilisateur(Role_Name.EDITOR);
         cible.setSuppressionPrevueLe(LocalDate.now().minusDays(1));
         cible.setPkiKeyStatus(PkiKeyStatus.ACTIVE);
+        cible.setPkiKeyAlias("editor-" + cible.getId());
         cible.setEmail("cible@esp.sn");
         cible.setNom("Dupont");
         cible.setPrenom("Awa");
@@ -391,6 +435,9 @@ class UserServiceTest
         assertThat(cible.getPassword()).isEqualTo("un-hash-aleatoire-impossible-a-deviner");
         assertThat(cible.isActif()).isFalse();
         assertThat(cible.getPkiKeyStatus()).isEqualTo(PkiKeyStatus.REVOKED);
+        // Clé privée détruite dans le SoftHSM, certificat conservé : jamais de suppression complète de l'entrée.
+        verify(hsmKeyStoreService).revoquerCle("editor-" + cible.getId());
+        verify(hsmKeyStoreService, never()).supprimerCle(any());
         assertThat(cible.getSupprimeLe()).isNotNull();
         assertThat(cible.getSuppressionPrevueLe()).isNull();
     }
@@ -412,6 +459,32 @@ class UserServiceTest
         service.executerSuppressionsEnAttente();
 
         assertThat(cible.getPkiKeyStatus()).isEqualTo(PkiKeyStatus.NONE);
+        verify(hsmKeyStoreService, never()).revoquerCle(any());
+    }
+
+    @Test
+    void unCompteDontLaCleNePeutPasEtreRevoqueeResteEnAttente()
+    {
+        // Une clé ne doit jamais rester utilisable sur un compte déclaré supprimé : si le jeton est indisponible, le compte
+        // n'est pas marqué supprimé et la tâche le reprendra à la prochaine exécution.
+        User cible = utilisateur(Role_Name.EDITOR);
+        LocalDate echeance = LocalDate.now().minusDays(1);
+        cible.setSuppressionPrevueLe(echeance);
+        cible.setPkiKeyStatus(PkiKeyStatus.ACTIVE);
+        cible.setPkiKeyAlias("editor-" + cible.getId());
+
+        when(userRepository.findBySuppressionPrevueLeLessThanEqualAndSupprimeLeIsNull(LocalDate.now()))
+            .thenReturn(List.of(cible));
+        when(journalAuditRepository.existsByActeurIdAndAction(cible.getId(), AuditAction.LOGIN_REUSSI)).thenReturn(true);
+        when(hsmKeyStoreService.revoquerCle(any())).thenThrow(new BusinessException("jeton indisponible"));
+
+        service.executerSuppressionsEnAttente();
+
+        assertThat(cible.getPkiKeyStatus()).isEqualTo(PkiKeyStatus.ACTIVE);
+        assertThat(cible.getSupprimeLe()).isNull();
+        assertThat(cible.getSuppressionPrevueLe()).isEqualTo(echeance);
+        verify(userRepository, never()).save(any());
+        verify(membreUORepository, never()).findByUserIdAndActifTrue(any());
     }
 
     @Test

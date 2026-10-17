@@ -25,6 +25,8 @@ import org.apache.tika.exception.TikaException;
 import org.apache.tika.metadata.Metadata;
 import org.apache.tika.parser.AutoDetectParser;
 import org.apache.tika.parser.ParseContext;
+import org.apache.tika.parser.ocr.TesseractOCRConfig;
+import org.apache.tika.parser.pdf.PDFParserConfig;
 import org.apache.tika.sax.BodyContentHandler;
 import org.springframework.stereotype.Service;
 import org.xml.sax.SAXException;
@@ -82,7 +84,7 @@ public class OcrService
         OcrResult result = new OcrResult();
         result.setDocument(document);
         result.setProcessedAt(LocalDateTime.now());
-        result.setLanguage(LANGUAGES);
+        result.setLanguage(langues());
 
         if (extractedText == null || extractedText.isBlank())
         {
@@ -112,7 +114,7 @@ public class OcrService
         OcrResult result = new OcrResult();
         result.setDocument(document);
         result.setProcessedAt(LocalDateTime.now());
-        result.setLanguage(LANGUAGES);
+        result.setLanguage(langues());
 
         String extractedText = null;
 
@@ -449,6 +451,17 @@ public class OcrService
         AutoDetectParser parser = new AutoDetectParser();
         Metadata metadata = new Metadata();
         ParseContext context = new ParseContext();
+        if (!ocrViaTika())
+        {
+            // Tika lancerait de lui-même le programme tesseract (langue par défaut, sans dictionnaire du type) sur les
+            // scans : on le désactive pour laisser Tess4J (langues et dictionnaire de l'application) lire les pages.
+            TesseractOCRConfig sansOcr = new TesseractOCRConfig();
+            sansOcr.setSkipOcr(true);
+            context.set(TesseractOCRConfig.class, sansOcr);
+            PDFParserConfig pdf = new PDFParserConfig();
+            pdf.setOcrStrategy(PDFParserConfig.OCR_STRATEGY.NO_OCR);
+            context.set(PDFParserConfig.class, pdf);
+        }
         parser.parse(new ByteArrayInputStream(fileBytes), handler, metadata, context);
         return handler.toString();
     }
@@ -492,6 +505,19 @@ public class OcrService
         return fullText.toString().trim();
     }
 
+    /** true : Tika lance lui-même tesseract sur les scans (comportement historique) ; false : Tess4J seul. */
+    private boolean ocrViaTika()
+    {
+        return tesseractProperties == null || tesseractProperties.isOcrViaTika();
+    }
+
+    /** Langues de reconnaissance (propriété tesseract.langues) ; chaque langue ajoutée allonge le temps par page. */
+    private String langues()
+    {
+        String l = tesseractProperties != null ? tesseractProperties.getLangues() : null;
+        return l == null || l.isBlank() ? LANGUAGES : l;
+    }
+
     /**
      * @param typeDocument si fourni, Tesseract est pointé vers un répertoire
      *                     tessdata isolé pour ce type (voir
@@ -510,7 +536,7 @@ public class OcrService
 
         Tesseract tesseract = new Tesseract();
         tesseract.setDatapath(datapath);
-        tesseract.setLanguage(LANGUAGES);
+        tesseract.setLanguage(langues());
         tesseract.setVariable("user_words_suffix", "user-words");
         tesseract.setVariable("load_system_dawg", "1");
         tesseract.setVariable("load_freq_dawg", "1");

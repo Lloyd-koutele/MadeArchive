@@ -14,6 +14,9 @@ import made.archive.repository.RoleRepository;
 import made.archive.entite.User;
 import made.archive.entite.Role;
 import made.archive.entite.Role_Name;
+import made.archive.entite.AuditAction;
+import made.archive.entite.AuditCible;
+import made.archive.service.audit.AuditLogService;
 
 /**
  * S'assure que les 4 rôles existent en base (indépendant de l'admin
@@ -31,10 +34,13 @@ public class InitialAdminCreation implements CommandLineRunner
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final InitialAdminProperties initialAdminProperties;
+    private final AuditLogService auditLogService;
 
     public InitialAdminCreation(UserRepository userRepository, RoleRepository roleRepository,
-                                 PasswordEncoder passwordEncoder, InitialAdminProperties initialAdminProperties)
+                                 PasswordEncoder passwordEncoder, InitialAdminProperties initialAdminProperties,
+                                 AuditLogService auditLogService)
     {
+        this.auditLogService = auditLogService;
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.passwordEncoder = passwordEncoder;
@@ -118,6 +124,10 @@ public class InitialAdminCreation implements CommandLineRunner
         admin.setRoles(roles);
 
         userRepository.save(admin);
+
+        // Première trace du journal d'audit : le compte qui en administre le reste. Acteur : le système (aucun utilisateur connecté).
+        auditLogService.log(null, AuditAction.UTILISATEUR_CREE, AuditCible.UTILISATEUR, admin.getId().toString(), null,
+            "Création de l'administrateur initial " + adminEmail + " (rôle : ADMIN) — voie automatisée, variables d'environnement", true);
 
         logger.info("Administrateur initial créé avec succès (voie automatisée, .env) : {}", adminEmail);
     }

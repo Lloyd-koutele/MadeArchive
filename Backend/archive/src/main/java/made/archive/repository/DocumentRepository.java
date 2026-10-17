@@ -203,6 +203,9 @@ public interface DocumentRepository extends JpaRepository<Document, UUID>, JpaSp
     /** Pierres tombales dont le procès-verbal d'élimination n'a pas encore été généré. */
     List<Document> findByStatusAndElimineLeIsNotNullAndProcesVerbalIdIsNull(DocumentStatus status);
 
+    /** Documents d'un type système (procès-verbaux), hors tombes : voir ProcesVerbalEliminationService. */
+    List<Document> findByTypeDocumentSystemeTrueAndStatusNot(DocumentStatus status);
+
     /** Documents dont la suppression est prévue dans la fenêtre [from, to] — alertes "suppression imminente". */
     List<Document> findByStatusAndSuppressionPrevueLeBetween(
         DocumentStatus status, LocalDate from, LocalDate to);

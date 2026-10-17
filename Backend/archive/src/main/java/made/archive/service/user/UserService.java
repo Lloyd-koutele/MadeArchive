@@ -41,6 +41,7 @@ import made.archive.service.audit.AuditLogService;
 import made.archive.service.organisation.UniteOrganisationnelleService;
 
 @Service
+@lombok.extern.slf4j.Slf4j
 public class UserService
 {
     @Autowired
@@ -406,11 +407,15 @@ public class UserService
             // préalable), le DELETE échoue sur une violation de contrainte plutôt
             // que de risquer une perte silencieuse de données réelles.
             String emailCible = cible.getEmail();
+            String aliasCle = cible.getPkiKeyAlias();
             membreUORepository.deleteAll(membreUORepository.findByUserId(id));
             userRepository.delete(cible);
+            // Jamais connecté = aucun document signé : la paire de clés (clé privée et certificat) est supprimée du
+            // SoftHSM avec le compte. Un échec du jeton annule toute la suppression (transaction).
+            boolean cleSupprimee = hsmKeyStoreService.supprimerCle(aliasCle);
             auditLogService.log(currentUser, AuditAction.UTILISATEUR_SUPPRIME, AuditCible.UTILISATEUR,
                 id.toString(), uoCible, "Suppression définitive et automatique (compte jamais utilisé) de "
-                    + emailCible, true);
+                    + emailCible + (cleSupprimee ? " — clé de signature supprimée du SoftHSM" : ""), true);
             return true;
         }
 
@@ -513,12 +518,32 @@ public class UserService
                 // jamais se produire. Même traitement que le chemin immédiat de
                 // demanderSuppression : retirer l'adhésion UO avant le DELETE pour
                 // ne pas violer la contrainte de clé étrangère.
+                String aliasCle = cible.getPkiKeyAlias();
                 membreUORepository.deleteAll(membreUORepository.findByUserId(id));
                 userRepository.delete(cible);
+                boolean cleSupprimee = hsmKeyStoreService.supprimerCle(aliasCle);
                 auditLogService.log(null, AuditAction.UTILISATEUR_SUPPRIME, AuditCible.UTILISATEUR,
                     id.toString(), uoCible, "Suppression définitive (compte jamais utilisé) de " + emailCible
-                        + " — délai de grâce écoulé", true);
+                        + " — délai de grâce écoulé" + (cleSupprimee ? ", clé de signature supprimée du SoftHSM" : ""), true);
                 continue;
+            }
+
+            boolean clePriveeDetruite = false;
+            if (cible.getPkiKeyStatus() == PkiKeyStatus.ACTIVE)
+            {
+                // Clé privée détruite dans le SoftHSM, certificat (clé publique) conservé pour vérifier les signatures des
+                // documents déjà archivés. Si le jeton est indisponible, ce compte reste en attente et sera repris à la
+                // prochaine exécution : une clé ne doit jamais rester utilisable sur un compte déclaré supprimé.
+                try
+                {
+                    clePriveeDetruite = hsmKeyStoreService.revoquerCle(cible.getPkiKeyAlias());
+                }
+                catch (BusinessException e)
+                {
+                    log.error("Révocation de la clé du compte {} impossible, suppression reportée : {}", emailCible, e.getMessage());
+                    continue;
+                }
+                cible.setPkiKeyStatus(PkiKeyStatus.REVOKED);
             }
 
             // Suppression logique : le compte a déjà servi. On coupe tout ce qui
@@ -533,10 +558,6 @@ public class UserService
                 membreUORepository.save(m);
             });
 
-            if (cible.getPkiKeyStatus() == PkiKeyStatus.ACTIVE)
-            {
-                cible.setPkiKeyStatus(PkiKeyStatus.REVOKED);
-            }
             cible.setActif(false);
             cible.setPassword(passwordEncoder.encode(UUID.randomUUID().toString()));
             cible.setSuppressionPrevueLe(null);
@@ -546,7 +567,9 @@ public class UserService
             auditLogService.log(null, AuditAction.UTILISATEUR_SUPPRIME, AuditCible.UTILISATEUR,
                 id.toString(), uoCible,
                 "Suppression logique de " + emailCible
-                    + " (mot de passe invalidé, clé PKI révoquée si active) — délai de grâce écoulé", true);
+                    + " (mot de passe invalidé, clé de signature révoquée si active"
+                    + (clePriveeDetruite ? " : clé privée détruite dans le SoftHSM, clé publique conservée" : "")
+                    + ") — délai de grâce écoulé", true);
         }
     }
 

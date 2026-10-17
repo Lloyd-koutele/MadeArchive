@@ -27,7 +27,7 @@ public final class AuditLogExportFormatter
         for (AuditLogDto l : logs)
         {
             sb.append(csv(FORMAT_DATE_EXPORT.format(l.getHorodatage()))).append(',')
-              .append(csv(l.getActeurEmail())).append(',')
+              .append(csv(l.libelleActeur())).append(',')
               .append(csv(l.getActeurRole())).append(',')
               .append(csv(l.getAdresseIp())).append(',')
               .append(csv(l.getAction() != null ? l.getAction().name() : null)).append(',')
@@ -57,7 +57,7 @@ public final class AuditLogExportFormatter
         for (AuditLogDto l : logs)
         {
             sb.append('[').append(FORMAT_DATE_EXPORT.format(l.getHorodatage())).append("] ");
-            sb.append(l.getActeurEmail() != null ? l.getActeurEmail() : "anonyme");
+            sb.append(l.libelleActeur());
             if (l.getActeurRole() != null) sb.append(" (").append(l.getActeurRole()).append(')');
             sb.append(" — ").append(l.getAction());
             if (l.getCibleType() != null)

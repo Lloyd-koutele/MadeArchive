@@ -61,10 +61,13 @@ public class ProcesVerbalPdfService
                 "Unité organisationnelle : " + d.uoNom(), POLICE_TEXTE, 10, largeur)));
             blocs.add(new Bloc(POLICE_TEXTE, 10, List.of(
                 "Date d'élimination : " + d.dateElimination().format(JOUR),
-                "Établi le : " + d.etabliLe().format(HEURE) + " — nombre de documents éliminés : " + d.lignes().size())));
+                "Établi le : " + d.etabliLe().format(HEURE)
+                    + (d.lignes().size() > 1 ? " — nombre de documents éliminés : " + d.lignes().size() : ""))));
             blocs.add(new Bloc(POLICE_TEXTE, 8.5f, enveloppe(
-                "Les documents ci-dessous ont été éliminés de MadeArchive : leur fichier et leur entrée de recherche ont été "
-                + "supprimés ; seules sont conservées les informations qui permettent de les identifier (titre, type, "
+                (d.lignes().size() > 1 ? "Les documents ci-dessous ont été éliminés de MadeArchive : leur fichier et leur entrée de recherche ont été "
+                    : "Le document ci-dessous a été éliminé de MadeArchive : son fichier et son entrée de recherche ont été ")
+                + "supprimés ; seules sont conservées les informations qui permettent de "
+                + (d.lignes().size() > 1 ? "les " : "l'") + "identifier (titre, type, "
                 + "métadonnées, dates, empreinte SHA-256, motif). Ce procès-verbal est à accès restreint.",
                 POLICE_TEXTE, 8.5f, largeur)));
 

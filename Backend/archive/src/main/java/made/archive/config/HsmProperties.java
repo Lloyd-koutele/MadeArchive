@@ -32,6 +32,14 @@ public class HsmProperties
     /** Code PIN utilisateur du jeton. */
     private String pin;
 
+    /**
+     * Fichier PKCS#12 (certificats publics seulement, aucune clé privée) où sont conservés les certificats des clés
+     * révoquées. Un jeton PKCS#11 ne sait pas détruire la seule clé privée d'une entrée en gardant son certificat :
+     * à la révocation, le certificat est d'abord copié ici (volume persistant, hors base), puis l'entrée du jeton est
+     * supprimée. Les signatures déjà produites restent ainsi vérifiables. Obligatoire en mode PKCS11 pour révoquer.
+     */
+    private String certificatsRevoquesPath;
+
     // ── Mode PKCS12 (fichier) ───────────────────────────────────────────────────────────────────────────────────
     /** Chemin du fichier KeyStore PKCS12. */
     private String keystorePath;

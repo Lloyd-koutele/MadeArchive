@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -51,6 +52,7 @@ class DocumentRetentionServiceTest
     private NotificationService notificationService;
     private UserRepository userRepository;
     private made.archive.service.organisation.UniteOrganisationnelleService uoService;
+    private ProcesVerbalEliminationService procesVerbalService;
     private DocumentRetentionService service;
 
     @BeforeEach
@@ -63,8 +65,9 @@ class DocumentRetentionServiceTest
         notificationService = mock(NotificationService.class);
         userRepository = mock(UserRepository.class);
         uoService = mock(made.archive.service.organisation.UniteOrganisationnelleService.class);
+        procesVerbalService = mock(ProcesVerbalEliminationService.class);
         service = new DocumentRetentionService(documentRepository, storageService, meilisearchService,
-            auditLogService, notificationService, userRepository, uoService);
+            auditLogService, notificationService, userRepository, uoService, procesVerbalService);
     }
 
     private Document documentEnCorbeille(SortFinal sort, MotifSuppression motif, LocalDate echeance)
@@ -253,6 +256,49 @@ class DocumentRetentionServiceTest
 
         assertThat(d.getStatus()).isEqualTo(DocumentStatus.DELETED);
         assertThat(d.getMotifSuppression()).isEqualTo(MotifSuppression.SUPPRESSION_LEGALE);
+    }
+
+    @Test
+    void suppressionManuelle_genereLeProcesVerbalToutDeSuite_sansAttendreLaTacheDeNuit()
+    {
+        Document d = documentEnCorbeille(SortFinal.CONSERVER, MotifSuppression.FIN_DE_VIE, LocalDate.now().plusDays(5));
+
+        service.supprimerDefinitivementManuellement(d, utilisateur("ed@x.sn"), MotifSuppression.SUPPRESSION_LEGALE, null);
+
+        verify(procesVerbalService, times(1)).genererEnArrierePlan();
+    }
+
+    @Test
+    void suppressionManuelle_dansUneTransaction_neGenereLeProcesVerbalQuApresLeCommit()
+    {
+        Document d = documentEnCorbeille(SortFinal.CONSERVER, MotifSuppression.FIN_DE_VIE, LocalDate.now().plusDays(5));
+        org.springframework.transaction.support.TransactionSynchronizationManager.initSynchronization();
+        try
+        {
+            service.supprimerDefinitivementManuellement(d, utilisateur("ed@x.sn"), MotifSuppression.SUPPRESSION_LEGALE, null);
+
+            // Tant que la transaction n'est pas validée, la pierre tombale n'est pas visible : rien ne doit être lancé.
+            verify(procesVerbalService, never()).genererEnArrierePlan();
+
+            org.springframework.transaction.support.TransactionSynchronizationManager.getSynchronizations()
+                .forEach(org.springframework.transaction.support.TransactionSynchronization::afterCommit);
+            verify(procesVerbalService, times(1)).genererEnArrierePlan();
+        }
+        finally
+        {
+            org.springframework.transaction.support.TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
+    @Test
+    void suppressionManuelleRefusee_negenerePasDeProcesVerbal()
+    {
+        Document auto = documentEnCorbeille(SortFinal.DETRUIRE, MotifSuppression.FIN_DE_VIE, LocalDate.now().plusDays(5));
+
+        assertThatThrownBy(() -> service.supprimerDefinitivementManuellement(auto, utilisateur("ed@x.sn"), MotifSuppression.AUTRE, "raison"))
+            .isInstanceOf(BusinessException.class);
+
+        verify(procesVerbalService, never()).genererEnArrierePlan();
     }
 
     @Test

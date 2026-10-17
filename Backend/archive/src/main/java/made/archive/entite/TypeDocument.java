@@ -8,6 +8,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OneToOne;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Table;
@@ -46,6 +47,7 @@ public class TypeDocument
     private Retention retention;
 
     @OneToMany(mappedBy = "typeDocument", fetch = FetchType.LAZY, cascade = CascadeType.PERSIST, orphanRemoval = true)
+    @OrderBy("ordre ASC, id ASC")
     @ToString.Exclude
     @EqualsAndHashCode.Exclude
     private List<MetaData> metaData;

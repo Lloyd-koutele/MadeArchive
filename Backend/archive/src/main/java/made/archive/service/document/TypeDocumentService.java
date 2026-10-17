@@ -21,6 +21,7 @@ import made.archive.entite.Document;
 import made.archive.entite.MetaData;
 import made.archive.entite.Retention;
 import made.archive.entite.SortFinal;
+import made.archive.entite.Role_Name;
 import made.archive.entite.TypeDocument;
 import made.archive.entite.UniteOrganisationnelle;
 import made.archive.entite.User;
@@ -439,6 +440,7 @@ public class TypeDocumentService
             typeDocument.setUniteOrganisationnelle(uo);
     
             List<MetaData> metaDataList = new ArrayList<>();
+            int ordreChamp = 0;
             for (MetaDataDto metaDto : dto.getMetaData()) 
             {
                 if (metaDto.getNom() == null || metaDto.getNom().isBlank()) 
@@ -449,6 +451,7 @@ public class TypeDocumentService
                 MetaData metaData = new MetaData();
                 metaData.setNom(metaDto.getNom());
                 metaData.setObligatoire(metaDto.getObligatoire());
+                metaData.setOrdre(ordreChamp++);
                 metaData.setTypeDocument(typeDocument);
                 metaDataList.add(metaData);
             }
@@ -528,36 +531,7 @@ public class TypeDocumentService
     
             if (dto.getMetaData() != null)
             {
-                List<MetaData> currentMetaDatas = typeDocument.getMetaData();
-
-                Set<Long> idsConserves = dto.getMetaData().stream()
-                    .map(MetaDataDto::getId)
-                    .filter(Objects::nonNull)
-                    .collect(Collectors.toSet());
-
-                currentMetaDatas.removeIf(m -> !idsConserves.contains(m.getId()));
-
-                for (MetaDataDto metaDto : dto.getMetaData())
-                {
-                    if (metaDto.getId() != null)
-                    {
-                        currentMetaDatas.stream()
-                            .filter(m -> m.getId().equals(metaDto.getId()))
-                            .findFirst()
-                            .ifPresent(existingMeta -> {
-                                existingMeta.setNom(metaDto.getNom());
-                                existingMeta.setObligatoire(metaDto.getObligatoire());
-                            });
-                    }
-                    else
-                    {
-                        MetaData newMeta = new MetaData();
-                        newMeta.setNom(metaDto.getNom());
-                        newMeta.setObligatoire(metaDto.getObligatoire());
-                        newMeta.setTypeDocument(typeDocument);
-                        currentMetaDatas.add(newMeta);
-                    }
-                }
+                synchroniserMetaData(typeDocument, typeDocument.getMetaData(), dto.getMetaData());
             }
 
             auditLogService.log(currentUser, AuditAction.TYPE_DOCUMENT_MODIFIE, AuditCible.TYPE_DOCUMENT,
@@ -616,6 +590,17 @@ public class TypeDocumentService
      */
     @Transactional
     public List<TypeDocument> getTypeDocumentsVisibles(User currentUser, Long uoIdExplicite)
+    {
+        List<TypeDocument> types = typesVisiblesDuPerimetre(currentUser, uoIdExplicite);
+
+        // Un simple utilisateur ne voit jamais les documents d'un type géré par l'application (procès-verbaux
+        // d'élimination, réservés aux éditeurs et aux administrateurs) : inutile de lui proposer ce type dans le filtre.
+        boolean gestionnaire = currentUser.getRoles().stream().anyMatch(r ->
+            r.getName() == Role_Name.ADMIN || r.getName() == Role_Name.ADMIN_UO || r.getName() == Role_Name.EDITOR);
+        return gestionnaire ? types : types.stream().filter(t -> !t.isSysteme()).toList();
+    }
+
+    private List<TypeDocument> typesVisiblesDuPerimetre(User currentUser, Long uoIdExplicite)
     {
         // null = ADMIN global, aucun filtrage nécessaire — voir
         // UniteOrganisationnelleService.getUoIdsVisiblesPourLecture().
@@ -820,6 +805,48 @@ public class TypeDocumentService
         if (existe)
         {
             throw new BusinessException("Un type de document avec ce nom existe déjà dans cette UO");
+        }
+    }
+
+    /**
+     * Aligne les champs d'un type sur la demande : supprime ceux qui ne sont plus listés, met à jour les
+     * existants (par identifiant, pour conserver leur règle d'extraction), ajoute les nouveaux, et fixe
+     * pour chacun sa position (l'ordre de la liste demandée) — c'est ce qui permet à l'éditeur de réordonner
+     * les champs après la création.
+     */
+    static void synchroniserMetaData(TypeDocument typeDocument, List<MetaData> courants, List<MetaDataDto> demandes)
+    {
+        Set<Long> idsConserves = demandes.stream()
+            .map(MetaDataDto::getId)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+
+        courants.removeIf(m -> !idsConserves.contains(m.getId()));
+
+        int ordre = 0;
+        for (MetaDataDto metaDto : demandes)
+        {
+            final int rang = ordre++;
+            if (metaDto.getId() != null)
+            {
+                courants.stream()
+                    .filter(m -> m.getId().equals(metaDto.getId()))
+                    .findFirst()
+                    .ifPresent(existant -> {
+                        existant.setNom(metaDto.getNom());
+                        existant.setObligatoire(metaDto.getObligatoire());
+                        existant.setOrdre(rang);
+                    });
+            }
+            else
+            {
+                MetaData nouveau = new MetaData();
+                nouveau.setNom(metaDto.getNom());
+                nouveau.setObligatoire(metaDto.getObligatoire());
+                nouveau.setOrdre(rang);
+                nouveau.setTypeDocument(typeDocument);
+                courants.add(nouveau);
+            }
         }
     }
 }

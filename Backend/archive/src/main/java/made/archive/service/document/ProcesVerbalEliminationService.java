@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -55,11 +56,12 @@ import made.archive.service.user.UtilisateurSystemeService;
  * quel que soit le motif), un PV (PDF/A, horodaté RFC 3161) est archivé DANS MadeArchive, comme document
  * d'un type système « Procès-verbal d'élimination » en sort CONSERVER — donc jamais éliminable lui-même.
  *
- * Un PV par UO et par jour de purge, listant pour chaque document éliminé son TITRE et les informations qui
+ * Un PV PAR DOCUMENT éliminé (jamais un PV commun à plusieurs documents), portant son TITRE et les informations qui
  * permettent de l'identifier (identifiant, type, activité, version, dossier, emplacement, métadonnées, déposant,
  * dates, règle de conservation, empreinte SHA-256, motif et auteur) : sans cela, le PV dirait pourquoi et comment
  * on a supprimé, mais pas QUOI. Les titres et métadonnées pouvant être sensibles (ou contenir des données
- * personnelles), le PV est à ACCÈS RESTREINT : voir groupeDesResponsables.
+ * personnelles), le PV est à ACCÈS RESTREINT : voir groupeDesResponsables (éditeurs et administrateurs d'UO de l'UO,
+ * plus les administrateurs généraux).
  *
  * La purge d'abord, le PV ensuite : l'élimination n'est jamais retardée par une panne de génération (PDF/A
  * via Ghostscript, stockage...). Tant qu'un PV échoue, Document.procesVerbalId reste null et chaque nuit
@@ -84,6 +86,7 @@ public class ProcesVerbalEliminationService
     private static final ZoneId FUSEAU = ZoneId.systemDefault();
     private static final DateTimeFormatter JOUR = DateTimeFormatter.ofPattern("dd/MM/yyyy");
     private static final DateTimeFormatter HEURE = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+    private static final DateTimeFormatter HEURE_SEULE = DateTimeFormatter.ofPattern("HH:mm");
 
     private final DocumentRepository             documentRepository;
     private final TypeDocumentRepository         typeDocumentRepository;
@@ -105,14 +108,38 @@ public class ProcesVerbalEliminationService
     private final PreuveIntegriteService         preuveIntegriteService;
     private final ManifestePreuveService         manifestePreuveService;
 
-    /** Un lot à documenter : les pierres tombales d'une même UO purgées le même jour. */
+    /** Une élimination à documenter : la pierre tombale d'un seul document (un procès-verbal par document). */
     private record Groupe(Long uoId, LocalDate jour, List<UUID> documentIds) {}
 
     private record Genere(UUID procesVerbalId, Long uoId, String titre, List<UUID> documentIds, LocalDate jour) {}
 
+    /** Un seul passage à la fois : la tâche de nuit et une suppression manuelle ne doivent jamais documenter deux fois les mêmes éliminations. */
+    private final Object verrou = new Object();
+
+    /**
+     * Déclenchée juste après une suppression manuelle (voir DocumentRetentionService.supprimerDefinitivementManuellement) :
+     * le PV est généré en arrière-plan, sans retarder la réponse à l'éditeur ni attendre la tâche de nuit, qui reste
+     * le filet de sécurité si cette génération échoue.
+     */
+    @Async
+    public void genererEnArrierePlan()
+    {
+        genererProcesVerbauxEnAttente();
+    }
+
     /** Génère les PV de toutes les éliminations qui n'en ont pas encore. Ne lève jamais : tout échec est logué. */
     public void genererProcesVerbauxEnAttente()
     {
+        synchronized (verrou)
+        {
+            genererSousVerrou();
+        }
+    }
+
+    private void genererSousVerrou()
+    {
+        reconcilierAdministrateurs();
+
         List<Groupe> groupes;
         try
         {
@@ -144,25 +171,66 @@ public class ProcesVerbalEliminationService
             {
                 log.error("[PV-Elimination] Échec du procès-verbal de l'UO {} du {} ({} document(s)) — "
                     + "sera réessayé à la prochaine exécution : {}",
-                    groupe.uoId(), groupe.jour(), groupe.documentIds().size(), e.getMessage(), e);
+                    groupe.uoId(), groupe.jour(), groupe.documentIds().get(0), e.getMessage(), e);
             }
         }
     }
 
+    /**
+     * Les administrateurs généraux voient tous les procès-verbaux : le groupe d'accès d'un PV est un instantané, on y
+     * ajoute donc les administrateurs actifs qui n'en font pas encore partie (procès-verbaux déjà établis, administrateurs
+     * nommés depuis). Ne lève jamais : un échec est logué et sera repris au prochain passage.
+     */
+    private void reconcilierAdministrateurs()
+    {
+        try
+        {
+            new TransactionTemplate(transactionManager).executeWithoutResult(status ->
+            {
+                List<User> admins = administrateursActifs();
+                if (admins.isEmpty()) return;
+                for (Document pv : documentRepository.findByTypeDocumentSystemeTrueAndStatusNot(DocumentStatus.DELETED))
+                {
+                    GroupeAccess g = pv.getGroupe();
+                    if (g == null || pv.getAccess() != TypeAccess.PRIVE) continue;
+                    List<User> membres = g.getMembres() != null ? new ArrayList<>(g.getMembres()) : new ArrayList<>();
+                    boolean modifie = false;
+                    for (User a : admins)
+                    {
+                        if (membres.stream().noneMatch(m -> m.getId().equals(a.getId())))
+                        {
+                            membres.add(a);
+                            modifie = true;
+                        }
+                    }
+                    if (modifie)
+                    {
+                        g.setMembres(membres);
+                        groupeAccessRepository.save(g);
+                    }
+                }
+            });
+        }
+        catch (Exception e)
+        {
+            log.error("[PV-Elimination] Ajout des administrateurs aux procès-verbaux existants impossible : {}", e.getMessage(), e);
+        }
+    }
+
+    private List<User> administrateursActifs()
+    {
+        return userRepository.findByRoleName(Role_Name.ADMIN).stream().filter(User::isActif).toList();
+    }
+
     private List<Groupe> regrouper()
     {
-        Map<String, List<Document>> parGroupe = new LinkedHashMap<>();
+        List<Groupe> res = new ArrayList<>();
         for (Document d : documentRepository.findByStatusAndElimineLeIsNotNullAndProcesVerbalIdIsNull(DocumentStatus.DELETED))
         {
             if (d.getUniteOrganisationnelle() == null) continue;
-            LocalDate jour = d.getElimineLe().atZone(FUSEAU).toLocalDate();
-            parGroupe.computeIfAbsent(d.getUniteOrganisationnelle().getId() + "|" + jour, k -> new ArrayList<>()).add(d);
+            res.add(new Groupe(d.getUniteOrganisationnelle().getId(), d.getElimineLe().atZone(FUSEAU).toLocalDate(),
+                List.of(d.getId())));
         }
-        List<Groupe> res = new ArrayList<>();
-        parGroupe.values().forEach(docs -> res.add(new Groupe(
-            docs.get(0).getUniteOrganisationnelle().getId(),
-            docs.get(0).getElimineLe().atZone(FUSEAU).toLocalDate(),
-            docs.stream().map(Document::getId).toList())));
         return res;
     }
 
@@ -225,8 +293,13 @@ public class ProcesVerbalEliminationService
             throw new IllegalStateException("Procès-verbal non vérifié dans le stockage, enregistrement annulé : " + e.getMessage(), e);
         }
 
-        String titre = NOM_TYPE + " du " + groupe.jour().format(JOUR) + " (" + eliminees.size() + " document"
-            + (eliminees.size() > 1 ? "s" : "") + ")";
+        String titreDocument = eliminees.get(0).getTitre();
+        if (titreDocument != null && titreDocument.length() > 150)
+        {
+            titreDocument = titreDocument.substring(0, 147) + "...";
+        }
+        String titre = NOM_TYPE + " — " + titreDocument + " (" + groupe.jour().format(JOUR) + " à "
+            + eliminees.get(0).getElimineLe().atZone(FUSEAU).format(HEURE_SEULE) + ")";
 
         Document pv = new Document();
         pv.setTitre(titre);
@@ -327,8 +400,8 @@ public class ProcesVerbalEliminationService
     }
 
     /**
-     * Les personnes qui peuvent lire le PV d'une UO : ses éditeurs (ceux qui gèrent et suppriment les documents) et
-     * les administrateurs d'UO ayant autorité sur elle. Instantané au moment de la génération du PV : un éditeur
+     * Les personnes qui peuvent lire le PV d'une UO : ses éditeurs (ceux qui gèrent et suppriment les documents),
+     * les administrateurs d'UO ayant autorité sur elle et les administrateurs généraux. Instantané au moment de la génération du PV : un éditeur
      * nommé plus tard ne verra pas les PV déjà établis. Le PV n'est pas public dans l'UO : il reproduit les titres
      * de documents qui pouvaient être privés.
      */
@@ -349,6 +422,10 @@ public class ProcesVerbalEliminationService
             {
                 membres.put(u.getId(), u);
             }
+        }
+        for (User u : administrateursActifs())
+        {
+            membres.put(u.getId(), u);
         }
 
         GroupeAccess groupe = new GroupeAccess();
@@ -409,9 +486,11 @@ public class ProcesVerbalEliminationService
                 t.setRetention(retention);
 
                 List<MetaData> metas = new ArrayList<>();
+                int ordreChamp = 0;
                 for (String champ : List.of(CHAMP_DATE, CHAMP_NOMBRE))
                 {
                     MetaData m = new MetaData();
+                    m.setOrdre(ordreChamp++);
                     m.setNom(champ);
                     m.setObligatoire(false);
                     m.setTypeDocument(t);

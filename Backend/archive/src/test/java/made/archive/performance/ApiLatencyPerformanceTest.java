@@ -30,7 +30,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
- * Mesure du critère de performance « API < 2 s pour les opérations courantes » (mémoire §2.4.3), de bout en bout :
+ * Mesure du critère de performance « API < 1 s pour les opérations courantes » (mémoire §2.4.3), de bout en bout :
  * client HTTP, Traefik, filtre d'authentification JWT, contrôleur, service, PostgreSQL (et MinIO pour la lecture
  * d'un document).
  *
@@ -43,7 +43,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  *
  * Chaque opération est exécutée après un passage de chauffe, puis N fois de suite ; on relève médiane, 95e
  * percentile et maximum, écrits dans build/perf/api.json pour être reportés dans le mémoire. Seuil (95e percentile) :
- * -Dperf.api.maxMs=2000.
+ * -Dperf.api.maxMs=1000.
  */
 @Tag("performance")
 class ApiLatencyPerformanceTest
@@ -180,7 +180,7 @@ class ApiLatencyPerformanceTest
 
         long totalEchecs = resultats.values().stream().mapToLong(Stat::echecs).sum();
         assertThat(totalEchecs).as("requêtes en erreur HTTP (une mesure sur une erreur ne prouve rien)").isZero();
-        long seuil = Long.getLong("perf.api.maxMs", 2000L);
+        long seuil = Long.getLong("perf.api.maxMs", 1000L);
         assertThat(pireP95).as("95e percentile le plus élevé parmi les opérations (ms), seuil %d ms", seuil).isLessThan(seuil);
     }
 }

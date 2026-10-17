@@ -10,12 +10,15 @@ import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import made.archive.dto.SetupAdminRequestDto;
+import made.archive.entite.AuditAction;
+import made.archive.entite.AuditCible;
 import made.archive.entite.Role;
 import made.archive.entite.Role_Name;
 import made.archive.entite.User;
 import made.archive.exception.BusinessException;
 import made.archive.repository.RoleRepository;
 import made.archive.repository.UserRepository;
+import made.archive.service.audit.AuditLogService;
 
 /**
  * Assistant de première configuration — voie INTERACTIVE de création de
@@ -37,6 +40,7 @@ public class SetupService
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
+    private final AuditLogService auditLogService;
 
     @Transactional(readOnly = true)
     public boolean needsSetup()
@@ -79,6 +83,10 @@ public class SetupService
         admin.setRoles(roles);
 
         userRepository.save(admin);
+
+        // Première trace du journal d'audit : le compte qui en administre le reste. Acteur : le système (aucun utilisateur connecté).
+        auditLogService.log(null, AuditAction.UTILISATEUR_CREE, AuditCible.UTILISATEUR, admin.getId().toString(), null,
+            "Création de l'administrateur initial " + admin.getEmail() + " (rôle : ADMIN) — assistant de première configuration", true);
 
         log.info("[Setup] Administrateur initial créé via l'assistant de première configuration : {}",
             admin.getEmail());

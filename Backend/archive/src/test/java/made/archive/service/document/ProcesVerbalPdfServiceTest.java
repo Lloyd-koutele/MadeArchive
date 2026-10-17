@@ -45,10 +45,21 @@ class ProcesVerbalPdfServiceTest
             "Facture ACME mars 2020", "Facture", "03 Finances › 03.2 Factures", "Version : 2",
             "Dossier : Dossier Fournisseurs 2020", "Emplacement physique : Armoire B / Étagère 3",
             "par Awa Ndiaye (awa@test.local)", "Fournisseur : ACME", "Montant : 1500",
-            "a".repeat(64), "fin de vie du document", "nombre de documents éliminés : 1");
+            "a".repeat(64), "fin de vie du document", "Le document ci-dessous a été éliminé");
+        assertThat(t).doesNotContain("nombre de documents éliminés");   // un PV = un document
         // caractères non encodables : remplacés, pas d'exception
         assertThat(t).doesNotContain("✓").doesNotContain("😀");
         assertThat(t).doesNotContain("Aucun titre de document").contains("accès restreint");
+    }
+
+    @Test
+    void plusieursDocuments_lePvIndiqueLeurNombre() throws Exception
+    {
+        byte[] pdf = service.generer(new ProcesVerbalPdfService.Donnees(
+            "UO", LocalDate.of(2026, 10, 3), LocalDateTime.of(2026, 10, 3, 2, 30),
+            List.of(ligne("Titre A", "Facture", "autre"), ligne("Titre B", "Facture", "autre"))));
+
+        assertThat(texte(pdf)).contains("nombre de documents éliminés : 2", "Les documents ci-dessous ont été éliminés");
     }
 
     @Test

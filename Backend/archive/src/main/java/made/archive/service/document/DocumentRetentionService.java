@@ -6,6 +6,8 @@ import java.util.UUID;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -63,6 +65,7 @@ public class DocumentRetentionService
     private final NotificationService notificationService;
     private final UserRepository     userRepository;
     private final UniteOrganisationnelleService uniteOrganisationnelleService;
+    private final ProcesVerbalEliminationService procesVerbalEliminationService;
 
     /** Une alerte par jour tant qu'il reste au plus ce nombre de jours avant la suppression automatique. */
     public static final int JOURS_ALERTE_SUPPRESSION = 3;
@@ -303,6 +306,32 @@ public class DocumentRetentionService
             .trim());
         purgeOne(document, "suppression définitive demandée par "
             + (acteur != null ? acteur.getEmail() : "un éditeur") + libelleMotif(document), acteur);
+        genererProcesVerbalApresCommit();
+    }
+
+    /**
+     * Le procès-verbal d'une suppression manuelle est généré tout de suite (en arrière-plan), pas à la tâche de
+     * nuit : APRÈS le commit, pour que la pierre tombale soit visible de la génération. Un échec ne remet rien en
+     * cause : la tâche de nuit reprend les éliminations restées sans procès-verbal.
+     */
+    private void genererProcesVerbalApresCommit()
+    {
+        if (procesVerbalEliminationService == null) return;
+        if (TransactionSynchronizationManager.isSynchronizationActive())
+        {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization()
+            {
+                @Override
+                public void afterCommit()
+                {
+                    procesVerbalEliminationService.genererEnArrierePlan();
+                }
+            });
+        }
+        else
+        {
+            procesVerbalEliminationService.genererEnArrierePlan();
+        }
     }
 
     /** Bloque la suppression automatique d'un document en corbeille — motif obligatoire. */
